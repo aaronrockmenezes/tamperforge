@@ -1,0 +1,64 @@
+# tamperforge
+
+> A pre-release procedure that entangles **safety** with **capability** in
+> open-weight LLMs, so that cheap automated uncensoring is self-defeating.
+
+Model makers run tamperforge on a finished model (after pre-train / SFT / RLHF,
+**before** publishing weights). The released checkpoint then resists the cheap,
+scripted attacks: abliterating safety also degrades capability — *smart-and-safe
+or dumb-and-dangerous*.
+
+This is the **framework** spinoff of the [mindweather](https://github.com/aaronrockmenezes/mindweather)
+research repo (which holds the blog drafts + exploratory experiments).
+
+## What it does / does not claim
+
+- ✅ **Kill cheap attacks** — stock abliteration notebooks degrade the model.
+- ✅ **Raise cost** — surgical removal requires skill, not copy-paste.
+- ❌ **Not** un-finetunable. With open weights, fine-tuning can re-learn removal.
+  That tier is characterized, not solved. See `THREAT_MODEL.md`.
+
+Read **`THREAT_MODEL.md`** (attacker tiers, success metric) and **`ROADMAP.md`**
+(phased experiments) before contributing.
+
+## Status
+
+Early. The MAD thesis is **unverified** — experiment P1 is go/no-go. See ROADMAP.
+
+## Install
+
+```bash
+conda activate env_ml      # uses existing env — never scaffold a new venv
+./setup.sh                 # editable install + HF-auth check + smoke test
+```
+
+## Layout
+
+```
+src/tamperforge/      # the library (source of truth)
+  model.py            # load model+SAE, device (cuda/mps/cpu), residual capture
+  abliterate.py       # weight-space abliteration (the attack)
+  directions.py       # refusal dir: empirical (mean-diff) + SAE
+  adapter.py          # prototype entanglement block
+  safety.py           # refusal detection (placeholder → P3 judge)
+  data.py             # AdvBench loader (+ load_advbench_prompts: tuple-gotcha-safe)
+  eval/               # P3 harness: asr / capability / fluency / stats
+experiments/          # thin CLIs, one per ROADMAP phase
+configs/              # model + experiment configs (no CLI flag soup)
+data/                 # advbench csv, features_safety.json
+results/              # JSON outputs
+```
+
+## Core facts
+
+- Model: `google/gemma-3-1b-it` (26 layers, d_model=1152, bf16).
+- SAE: `gemma-scope-2-1b-it-res / layer_13_width_16k_l0_medium` (16k feats, L0≈75).
+- `SAE.from_pretrained(...)` returns the SAE directly (new sae_lens API).
+- bf16 → fp32 cast before any numpy / small-vector matmul.
+
+## References
+
+- Arditi et al. 2024 — Refusal is Mediated by a Single Direction (the attack).
+- Tamirisa et al. 2024 — TAR: Tamper-Resistant Safeguards (closest prior work).
+- Rosati et al. 2024 — RepNoise.
+- Gemma Scope 2 (DeepMind), SAE Lens (jbloomAUS).

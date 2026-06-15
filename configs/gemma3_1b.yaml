@@ -1,0 +1,24 @@
+# Base model + SAE config for tamperforge experiments.
+model:
+  id: google/gemma-3-1b-it
+  dtype: bfloat16
+  n_layers: 26
+  d_model: 1152
+
+sae:
+  release: gemma-scope-2-1b-it-res
+  sae_id: layer_13_width_16k_l0_medium
+  layer: 13
+
+abliterate:
+  # which layers the attacker projects the refusal direction out of
+  layers: [13]          # use `all` (0..25) for the self-defeating regime
+
+eval:
+  n_advbench: 100
+  n_arc: 100
+  seed: 42
+
+data:
+  advbench_csv: data/advbench_harmful_behaviors.csv
+  features_safety: data/features_safety.json

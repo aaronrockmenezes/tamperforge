@@ -1,0 +1,28 @@
+"""tamperforge — a pre-release procedure to entangle safety with capability.
+
+See ROADMAP.md and THREAT_MODEL.md. The goal is to make cheap automated
+uncensoring (abliteration) self-defeating, not to make a model un-finetunable.
+"""
+
+from .abliterate import abliterate_model_inplace, project_out_read, project_out_write
+from .adapter import SafetyAdapter, load_adapter, make_adapter_hook
+from .directions import empirical_refusal_direction, sae_feature_directions
+from .model import load_model, load_sae, pick_device, capture_residual
+from .safety import REFUSAL_PHRASES, is_refusal
+
+__all__ = [
+    "abliterate_model_inplace",
+    "project_out_read",
+    "project_out_write",
+    "SafetyAdapter",
+    "load_adapter",
+    "make_adapter_hook",
+    "empirical_refusal_direction",
+    "sae_feature_directions",
+    "load_model",
+    "load_sae",
+    "pick_device",
+    "capture_residual",
+    "REFUSAL_PHRASES",
+    "is_refusal",
+]
