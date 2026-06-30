@@ -5,19 +5,32 @@ official generation length.
 
 ## Machine to rent
 
-RTX 5090 is good **if** the image has working Blackwell/CUDA support.
+RTX 5090 is good **only if the host driver exposes CUDA 12.9+**. A 5090 host
+showing `CUDA Version: 12.8` in `nvidia-smi` is not usable for our vLLM path:
+vLLM/FlashAttention fails on Blackwell SM 12.x with driver/runtime mismatch.
 
 Pick:
 
-- GPU: RTX 5090 32GB first choice if price is sane.
-- Fallback: RTX 4090 24GB.
-- Image: recent PyTorch CUDA image, CUDA 12.8+ preferred for 5090.
+- GPU: RTX 4090 24GB is the safest cheap choice.
+- Alternate: RTX 5090 32GB only if `nvidia-smi` reports CUDA 12.9+.
+- Fallback: L40S/A100/H100 if 4090 market is bad.
+- Image: recent PyTorch CUDA image.
 - Disk: 160GB minimum, 250GB safer.
 - RAM: 32GB minimum, 64GB nicer.
 - Host: verified, high uptime, good network/disk.
 
-Do not rent H100/A100 for this phase unless the 5090/4090 market is broken.
+Do not rent H100/A100 for this phase unless the 4090 market is broken.
 Gemma 3 1B is small; repeated generation/eval is the bottleneck.
+
+Known bad box:
+
+```text
+NVIDIA GeForce RTX 5090, Driver 570.195.03, CUDA Version 12.8
+```
+
+This imports vLLM after CUDA library path repair, but generation fails during
+engine startup with `CUDA driver version is insufficient for CUDA runtime
+version`. Stop that instance instead of debugging further.
 
 ## Model list
 

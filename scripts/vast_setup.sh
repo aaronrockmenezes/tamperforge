@@ -5,13 +5,14 @@
 #   bash scripts/vast_setup.sh
 #
 # Assumes a recent PyTorch CUDA image. For RTX 5090/Blackwell, prefer images
-# with CUDA 12.8+ and recent PyTorch. If Torch CUDA is missing, set:
+# with host CUDA 12.9+ and recent PyTorch. If Torch CUDA is missing, set:
 #   INSTALL_TORCH=1 bash scripts/vast_setup.sh
 set -euo pipefail
 
 PYTHON_BIN="${PYTHON_BIN:-python}"
 TORCH_INDEX_URL="${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu128}"
 ALLOW_NO_CUDA="${ALLOW_NO_CUDA:-0}"
+ALLOW_UNSUPPORTED_BLACKWELL="${ALLOW_UNSUPPORTED_BLACKWELL:-0}"
 SKIP_INSTALL="${SKIP_INSTALL:-0}"
 
 write_cuda_library_hook() {
@@ -89,6 +90,48 @@ PY
   )"
 }
 
+check_blackwell_host_cuda() {
+  if ! command -v nvidia-smi >/dev/null 2>&1; then
+    return 0
+  fi
+
+  "${PYTHON_BIN}" - <<'PY'
+import os
+import re
+import subprocess
+import sys
+
+allow = os.environ.get("ALLOW_UNSUPPORTED_BLACKWELL") == "1"
+try:
+    smi = subprocess.check_output(["nvidia-smi"], text=True, stderr=subprocess.STDOUT)
+except Exception as exc:
+    print(f"WARNING: could not inspect nvidia-smi for Blackwell support: {exc}", file=sys.stderr)
+    raise SystemExit(0)
+
+is_blackwell = bool(re.search(r"\bRTX\s+50\d0\b|RTX\s+5090|RTX\s+5080|SM\s*12", smi, re.I))
+match = re.search(r"CUDA Version:\s*([0-9]+)\.([0-9]+)", smi)
+if not is_blackwell or not match:
+    raise SystemExit(0)
+
+major, minor = (int(match.group(1)), int(match.group(2)))
+if (major, minor) >= (12, 9):
+    print(f"    Blackwell host CUDA {major}.{minor} OK for vLLM")
+    raise SystemExit(0)
+
+msg = (
+    f"ERROR: detected Blackwell/RTX 50 GPU with host CUDA {major}.{minor}. "
+    "vLLM/FlashAttention on SM 12.x needs host CUDA 12.9+. "
+    "Rent RTX 4090/L40S/A100/H100, or a 5090 host with newer driver/CUDA. "
+    "Set ALLOW_UNSUPPORTED_BLACKWELL=1 only if you are intentionally using a non-vLLM fallback."
+)
+if allow:
+    print("WARNING:", msg, file=sys.stderr)
+else:
+    print(msg, file=sys.stderr)
+    raise SystemExit(1)
+PY
+}
+
 if [ ! -f "pyproject.toml" ] || [ ! -d "src/tamperforge" ]; then
   echo "ERROR: run this from the tamperforge repo root." >&2
   exit 1
@@ -100,6 +143,7 @@ echo "==> [1/8] System/GPU"
 uname -a || true
 if command -v nvidia-smi >/dev/null 2>&1; then
   nvidia-smi
+  check_blackwell_host_cuda
 else
   echo "WARNING: nvidia-smi not found. This is not a usable Vast GPU image yet." >&2
 fi
