@@ -101,15 +101,18 @@ chmod 600 .env
 ```bash
 PYTHONPATH=src python experiments/p0_baseline_eval.py \
   --model-id google/gemma-3-1b-it \
+  --backend vllm \
   --n-advbench 2 \
-  --n-arc 2 \
+  --n-arc 0 \
   --max-new-tokens 32 \
+  --max-length 4096 \
+  --vllm-batch-size 2 \
   --run-id vast_smoke_base
 ```
 
 ```bash
 lm_eval \
-  --model hf \
+  --model vllm \
   --model_args pretrained=google/gemma-3-1b-it,dtype=bfloat16,trust_remote_code=True \
   --tasks arc_challenge \
   --num_fewshot 25 \
@@ -125,37 +128,45 @@ lm_eval \
 Run generation first, no judge inline. This keeps local GPU work separate from
 OpenRouter work and lets us retry judge without regenerating.
 
-If a run appears stuck, check whether `[generate:base] 1/520 ...` printed. Newer
-harness versions print generation start/done per row and append
-`generations.jsonl` incrementally. If there is no per-row print, `git pull`.
+Safety generation uses vLLM batching. `generations.jsonl` is appended after each
+completed vLLM batch.
 
 ```bash
 PYTHONPATH=src python experiments/p0_baseline_eval.py \
   --model-id google/gemma-3-1b-it \
+  --backend vllm \
   --n-advbench 520 \
   --n-arc 0 \
   --max-new-tokens 512 \
   --max-length 4096 \
+  --vllm-batch-size 64 \
+  --vllm-gpu-memory-utilization 0.9 \
   --run-id safety_base_advbench520_nojudge
 ```
 
 ```bash
 PYTHONPATH=src python experiments/p0_baseline_eval.py \
   --model-id DavidAU/gemma-3-1b-it-heretic-abliterated-uncensored \
+  --backend vllm \
   --n-advbench 520 \
   --n-arc 0 \
   --max-new-tokens 512 \
   --max-length 4096 \
+  --vllm-batch-size 64 \
+  --vllm-gpu-memory-utilization 0.9 \
   --run-id safety_hf_heretic_advbench520_nojudge
 ```
 
 ```bash
 PYTHONPATH=src python experiments/p0_baseline_eval.py \
   --model-id DavidAU/gemma-3-1b-it-heretic-extreme-uncensored-abliterated \
+  --backend vllm \
   --n-advbench 520 \
   --n-arc 0 \
   --max-new-tokens 512 \
   --max-length 4096 \
+  --vllm-batch-size 64 \
+  --vllm-gpu-memory-utilization 0.9 \
   --run-id safety_hf_extreme_advbench520_nojudge
 ```
 
@@ -212,7 +223,7 @@ Full ARC-Challenge test split:
 
 ```bash
 lm_eval \
-  --model hf \
+  --model vllm \
   --model_args pretrained=google/gemma-3-1b-it,dtype=bfloat16,trust_remote_code=True \
   --tasks arc_challenge \
   --num_fewshot 25 \
@@ -224,7 +235,7 @@ lm_eval \
 
 ```bash
 lm_eval \
-  --model hf \
+  --model vllm \
   --model_args pretrained=DavidAU/gemma-3-1b-it-heretic-abliterated-uncensored,dtype=bfloat16,trust_remote_code=True \
   --tasks arc_challenge \
   --num_fewshot 25 \
@@ -236,7 +247,7 @@ lm_eval \
 
 ```bash
 lm_eval \
-  --model hf \
+  --model vllm \
   --model_args pretrained=DavidAU/gemma-3-1b-it-heretic-extreme-uncensored-abliterated,dtype=bfloat16,trust_remote_code=True \
   --tasks arc_challenge \
   --num_fewshot 25 \
@@ -250,7 +261,7 @@ Capped 600-example version, if the bill is getting annoying:
 
 ```bash
 lm_eval \
-  --model hf \
+  --model vllm \
   --model_args pretrained=MODEL_ID_OR_PATH,dtype=bfloat16,trust_remote_code=True \
   --tasks arc_challenge \
   --num_fewshot 25 \
@@ -268,7 +279,7 @@ expensive but more standard for paper tables.
 
 ```bash
 lm_eval \
-  --model hf \
+  --model vllm \
   --model_args pretrained=google/gemma-3-1b-it,dtype=bfloat16,trust_remote_code=True \
   --tasks mmlu \
   --num_fewshot 5 \
@@ -281,7 +292,7 @@ lm_eval \
 
 ```bash
 lm_eval \
-  --model hf \
+  --model vllm \
   --model_args pretrained=google/gemma-3-1b-it,dtype=bfloat16,trust_remote_code=True \
   --tasks gsm8k \
   --num_fewshot 8 \

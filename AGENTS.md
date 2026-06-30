@@ -25,8 +25,9 @@ abliteration raises ASR only by damaging capability.
   same prompts, same `max_new_tokens`, same benchmarks, same DeepSeek V4 Flash
   judge config.
 - Server benchmark policy: safety uses all 520 AdvBench prompts; standalone
-  model capability uses EleutherAI `lm-eval` ARC-Challenge, not the small custom
-  ARC loop. P1 still uses internal ARC because the adapter is a forward hook.
+  model evals use vLLM. Capability uses EleutherAI `lm-eval --model vllm`
+  ARC-Challenge, not the small custom ARC loop. P1 still uses internal
+  Transformers loops because the adapter is a forward hook.
 - Keep P1/P2/P3 result artifacts under `results/<run_id>/` with raw generations
   and summaries.
 - Use `DeepSeek V4 Flash` (`deepseek/deepseek-v4-flash`) as the default paid
@@ -76,10 +77,12 @@ Safety generation command shape:
 ```bash
 PYTHONPATH=src python experiments/p0_baseline_eval.py \
   --model-id MODEL_OR_PATH \
+  --backend vllm \
   --n-advbench 520 \
   --n-arc 0 \
   --max-new-tokens 512 \
   --max-length 4096 \
+  --vllm-batch-size 64 \
   --run-id RUN_ID
 ```
 

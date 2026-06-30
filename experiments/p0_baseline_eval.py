@@ -22,7 +22,9 @@ from tamperforge.data import load_advbench_prompts
 from tamperforge.eval.env import load_dotenv
 from tamperforge.eval.judge import OpenRouterJudge
 from tamperforge.eval.log import RunLogger, make_run_id
+from tamperforge.eval.safety_eval import eval_advbench_keyword
 from tamperforge.eval.suite import EvalConfig, evaluate_condition
+from tamperforge.eval.vllm_safety import generate_responses_vllm
 from tamperforge.model import load_model
 
 
@@ -42,6 +44,11 @@ def main() -> None:
                     help="Use OpenRouter response_format=json_object when provider supports it")
     ap.add_argument("--model-id", default="google/gemma-3-1b-it")
     ap.add_argument("--device", default=None)
+    ap.add_argument("--backend", choices=["transformers", "vllm"], default="transformers")
+    ap.add_argument("--vllm-batch-size", type=int, default=64)
+    ap.add_argument("--vllm-dtype", default="bfloat16")
+    ap.add_argument("--vllm-tensor-parallel-size", type=int, default=1)
+    ap.add_argument("--vllm-gpu-memory-utilization", type=float, default=0.9)
     args = ap.parse_args()
 
     load_dotenv(ROOT / ".env")
@@ -59,9 +66,48 @@ def main() -> None:
     manifest = {"script": "p0_baseline_eval.py", "args": vars(args), "eval_config": cfg}
     logger.write_manifest(manifest)
 
-    model, tok, device = load_model(args.model_id, args.device)
     prompts = load_advbench_prompts(ROOT / "data" / "advbench_harmful_behaviors.csv",
                                     n=args.n_advbench, seed=cfg.seed)
+
+    if args.backend == "vllm":
+        if args.judge:
+            raise RuntimeError("For vLLM backend, run judge_generations.py after generation.")
+        if args.n_arc > 0 or args.n_mmlu_per_subject > 0:
+            raise RuntimeError("For vLLM backend, use lm_eval for capability; set --n-arc 0.")
+        rows, device = generate_responses_vllm(
+            model_id=args.model_id,
+            prompts=prompts,
+            max_new_tokens=args.max_new_tokens,
+            max_length=args.max_length,
+            dtype=args.vllm_dtype,
+            tensor_parallel_size=args.vllm_tensor_parallel_size,
+            gpu_memory_utilization=args.vllm_gpu_memory_utilization,
+            batch_size=args.vllm_batch_size,
+            logger=logger,
+            condition="base",
+        )
+        keyword = eval_advbench_keyword(rows)
+        summary = {
+            "run_id": run_id,
+            "device": device,
+            "backend": "vllm",
+            "conditions": {
+                "base": {
+                    "condition": "base",
+                    "safety_keyword": {k: v for k, v in keyword.items() if k != "rows"},
+                    "safety_judge": None,
+                    "ppl": None,
+                    "arc_challenge": None,
+                    "mmlu": None,
+                }
+            },
+        }
+        path = logger.summary(summary)
+        print(json.dumps(summary, indent=2))
+        print(f"[saved] {path}")
+        return
+
+    model, tok, device = load_model(args.model_id, args.device)
     judge = OpenRouterJudge(args.judge_model, json_mode=args.judge_json_mode) if args.judge else None
     result = evaluate_condition(
         name="base",

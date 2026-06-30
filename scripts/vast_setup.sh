@@ -70,14 +70,15 @@ if [ "${SKIP_INSTALL}" = "1" ]; then
   echo "    SKIP_INSTALL=1; skipping package install"
 else
   "${PYTHON_BIN}" -m pip install -e ".[dev,eval]"
-  "${PYTHON_BIN}" -m pip install --upgrade "lm_eval[hf]" accelerate sentencepiece
+  "${PYTHON_BIN}" -m pip install --upgrade "lm_eval[hf]" accelerate sentencepiece vllm
 fi
 
 echo "==> [5/8] CLI checks"
 "${PYTHON_BIN}" - <<'PY'
-import datasets, transformers, torch, tamperforge
+import datasets, transformers, torch, tamperforge, vllm
 print("transformers", transformers.__version__)
 print("datasets", datasets.__version__)
+print("vllm", vllm.__version__)
 print("tamperforge exports", len(tamperforge.__all__))
 print("device", tamperforge.pick_device())
 PY
