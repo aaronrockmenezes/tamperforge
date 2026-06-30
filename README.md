@@ -18,12 +18,14 @@ research repo (which holds the blog drafts + exploratory experiments).
 - ❌ **Not** un-finetunable. With open weights, fine-tuning can re-learn removal.
   That tier is characterized, not solved. See `THREAT_MODEL.md`.
 
-Read **`THREAT_MODEL.md`** (attacker tiers, success metric) and **`ROADMAP.md`**
-(phased experiments) before contributing.
+Read **`AGENTS.md`** and **`HANDOFF.md`** first. Then read
+**`THREAT_MODEL.md`** (attacker tiers, success metric) and **`ROADMAP.md`**
+(phased experiments).
 
 ## Status
 
-Early. The MAD thesis is **unverified** — experiment P1 is go/no-go. See ROADMAP.
+Early. The MAD thesis is **unverified** — experiment P1 is go/no-go. The eval
+harness now exists and base Gemma baselines have been logged; see `HANDOFF.md`.
 
 ## Install
 
@@ -36,25 +38,28 @@ conda activate env_ml      # uses existing env — never scaffold a new venv
 
 ```
 src/tamperforge/      # the library (source of truth)
-  model.py            # load model+SAE, device (cuda/mps/cpu), residual capture
+  model.py            # load model, optional SAE, device (cuda/mps/cpu), residual capture
   abliterate.py       # weight-space abliteration (the attack)
-  directions.py       # refusal dir: empirical (mean-diff) + SAE
+  directions.py       # empirical refusal directions; SAE helpers for later analysis
   adapter.py          # prototype entanglement block
-  safety.py           # refusal detection (placeholder → P3 judge)
+  safety.py           # keyword fallback only; use judge for publishable ASR
   data.py             # AdvBench loader (+ load_advbench_prompts: tuple-gotcha-safe)
-  eval/               # P3 harness: asr / capability / fluency / stats
-experiments/          # thin CLIs, one per ROADMAP phase
+  eval/               # safety gen, OpenRouter judge, ARC/MMLU/PPL, logging
+experiments/          # thin CLIs: baseline, judge, ablation, training, P1
 configs/              # model + experiment configs (no CLI flag soup)
 data/                 # advbench csv, features_safety.json
 results/              # JSON outputs
+outputs/              # local checkpoints (gitignored model weights)
 ```
 
 ## Core facts
 
 - Model: `google/gemma-3-1b-it` (26 layers, d_model=1152, bf16).
-- SAE: `gemma-scope-2-1b-it-res / layer_13_width_16k_l0_medium` (16k feats, L0≈75).
-- `SAE.from_pretrained(...)` returns the SAE directly (new sae_lens API).
+- P1 proof-of-concept does not depend on SAEs. SAE support is retained for later
+  mechanistic analysis.
 - bf16 → fp32 cast before any numpy / small-vector matmul.
+- Future ablation experiments use all layers by default. L13-only is a legacy
+  comparison.
 
 ## References
 

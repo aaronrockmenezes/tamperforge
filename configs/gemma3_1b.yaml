@@ -1,4 +1,4 @@
-# Base model + SAE config for tamperforge experiments.
+# Base model config for tamperforge experiments.
 model:
   id: google/gemma-3-1b-it
   dtype: bfloat16
@@ -6,13 +6,16 @@ model:
   d_model: 1152
 
 sae:
+  # Optional later-analysis path. P1 does not depend on SAE directions.
   release: gemma-scope-2-1b-it-res
   sae_id: layer_13_width_16k_l0_medium
   layer: 13
 
 abliterate:
-  # which layers the attacker projects the refusal direction out of
-  layers: [13]          # use `all` (0..25) for the self-defeating regime
+  # which layers the attacker projects attack directions out of
+  # Default policy: all layers. L13-only is retained only as a one-off legacy
+  # comparison against the old mindweather result.
+  layers: all
 
 eval:
   n_advbench: 100

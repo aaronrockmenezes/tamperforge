@@ -14,6 +14,27 @@ from __future__ import annotations
 import torch
 
 
+def orthonormalize_directions(directions: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+    """Return an orthonormal row basis spanning ``directions``.
+
+    ``directions`` may be ``[d_model]`` or ``[n_dirs, d_model]``. Near-zero or
+    linearly dependent rows are dropped.
+    """
+    if directions.dim() == 1:
+        directions = directions.unsqueeze(0)
+    basis: list[torch.Tensor] = []
+    for row in directions.float():
+        v = row.clone()
+        for b in basis:
+            v = v - torch.dot(v, b) * b
+        norm = v.norm()
+        if norm > eps:
+            basis.append(v / norm)
+    if not basis:
+        raise ValueError("no non-zero directions to orthonormalize")
+    return torch.stack(basis, dim=0)
+
+
 def project_out_read(W: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
     """Project *d* out of a READ matrix ``[hidden, d_model]`` (q/k/v/gate/up)."""
     d = d / d.norm().clamp(min=1e-8)
@@ -42,10 +63,7 @@ def abliterate_model_inplace(
         layers: Layer indices to abliterate (e.g. ``[13]`` or ``list(range(26))``).
     """
     dev = next(model.parameters()).device
-    if directions.dim() == 1:
-        directions = directions.unsqueeze(0)
-    dirs = [(directions[i].float().to(dev) / directions[i].float().norm().clamp(min=1e-8))
-            for i in range(directions.shape[0])]
+    dirs = [d.to(dev) for d in orthonormalize_directions(directions)]
 
     print(f"[abliterate] {len(dirs)} direction(s), "
           f"{len(layers)} layer(s): {layers[0]}..{layers[-1]}")
@@ -74,3 +92,28 @@ def abliterate_model_inplace(
             mod.weight.data = W.to(mod.weight.dtype)
 
     print("[abliterate] done")
+
+
+def adapter_wout_directions(adapter, eps: float = 1e-8) -> torch.Tensor:
+    """Return orthonormal output directions written by ``adapter.W_out``.
+
+    PyTorch stores linear weights as ``[out_features, in_features]``. Each
+    column of ``W_out`` is one residual-stream write direction.
+    """
+    w = adapter.W_out.weight.detach().float().cpu()
+    cols = w.T
+    norms = cols.norm(dim=1)
+    cols = cols[norms > eps]
+    if cols.numel() == 0:
+        raise ValueError("adapter W_out has no non-zero output directions")
+    return orthonormalize_directions(cols, eps=eps)
+
+
+def abliterate_adapter_out_inplace(adapter, directions: torch.Tensor) -> None:
+    """Project ``directions`` out of the adapter output matrix in-place."""
+    dev = adapter.W_out.weight.device
+    dirs = [d.to(dev) for d in orthonormalize_directions(directions)]
+    W = adapter.W_out.weight.data.float().to(dev)
+    for d in dirs:
+        W = project_out_write(W, d)
+    adapter.W_out.weight.data = W.to(adapter.W_out.weight.dtype)

@@ -1,10 +1,21 @@
-"""Evaluation harness (ROADMAP P3).
+"""Reusable evaluation harness for tamperforge experiments."""
 
-Planned modules:
-  asr.py        — harmfulness judge (LLM-judge / HarmBench), NOT keyword matching
-  capability.py — ARC-Challenge + MMLU subset + GSM8K
-  fluency.py    — perplexity
-  stats.py      — bootstrap confidence intervals
+from .capability import arc_challenge_accuracy, compute_perplexity, mmlu_accuracy
+from .judge import OpenRouterJudge, judge_responses
+from .log import RunLogger, make_run_id
+from .safety_eval import eval_advbench_keyword, generate_responses
+from .suite import EvalConfig, evaluate_condition
 
-Until built, experiments fall back to tamperforge.safety.is_refusal (placeholder).
-"""
+__all__ = [
+    "EvalConfig",
+    "OpenRouterJudge",
+    "RunLogger",
+    "arc_challenge_accuracy",
+    "compute_perplexity",
+    "eval_advbench_keyword",
+    "evaluate_condition",
+    "generate_responses",
+    "judge_responses",
+    "make_run_id",
+    "mmlu_accuracy",
+]

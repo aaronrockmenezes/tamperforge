@@ -1,6 +1,6 @@
-# MindWeather — Roadmap
+# tamperforge — Roadmap
 
-> Living doc. Reorder/rewrite as results land. Last updated: 2026-06-14.
+> Living doc. Reorder/rewrite as results land. Last updated: 2026-06-30.
 > Read `THREAT_MODEL.md` first — it defines the attacker tiers (T0–T3) and the
 > success metric (attacker cost to reach X% ASR at ≤Y% capability loss).
 
@@ -24,26 +24,37 @@ Status: **done** — revise as understanding sharpens.
 
 ## P1 — Empirical MAD crux  🔴 GO/NO-GO
 
-**Question:** abliterating the refusal direction from the entangled model — does
-capability actually drop vs an un-entangled control?
+**Question:** after training an adapter on clean Gemma to couple refusal behavior
+to language/capability directions, does ablating the adapted model's adapter
+`W_out` directions cost more capability than bare Gemma refusal-direction
+ablation?
 
 **Setup:**
-- Conditions: (a) base, (b) base+entanglement, (c) base abliterated,
-  (d) base+entanglement then abliterated.
-- Metric: capability (ARC / MMLU subset / PPL) AND refusal/ASR, all 4 conditions.
-- Control matters: the gap between (c) and (d) capability is the result.
+- Conditions: base, base_ablated, base_adapter,
+  base_adapter_ablated_full, base_adapter_ablated_adapter_only.
+- Metric: capability (ARC / MMLU subset / PPL) AND refusal/ASR, all 5
+  conditions.
+- Control matters: compare bare Gemma refusal-direction ablation against full
+  adapted-model `W_out` ablation at comparable ASR.
 
-**Pass:** (d) capability ≪ (c), i.e. abliterating the entangled model costs
-significantly more capability than abliterating the bare model — at comparable
+**Pass:** adapted model keeps pre-attack capability close to base, and adapted
+full ablation damages capability more than bare-model ablation at comparable
 ASR. **Fail:** no gap → thesis dead → pivot to "costly-to-abliterate" framing.
 
 **Notes / gotchas (from HANDOFF):**
-- Use *inline* L13 abliteration, NOT the misnamed `abliterated_L13/` dir (it is
-  all-26-layer).
+- Future tamperforge experiments use all-layer abliteration. L13-only is a
+  one-time legacy comparison.
+- P1 must not rely on SAE directions. Use empirical refusal direction for bare
+  Gemma and adapter `W_out` directions for adapted-model attacks.
+- Do not reuse the old mindweather `abliterated_L13/` dir; it was suspect.
 - `load_advbench()` returns tuples — extract `p[0]`.
 - Current prototype adapter is fine for this test (T0 regime).
 
-**Output:** `results/p1_mad_crux.json` + entry in `results.md`.
+**Output:** `results/<run_id>/summary.json`, `generations.jsonl`, `events.jsonl`,
+and optional `judgments.jsonl`.
+
+**Current script:** `experiments/p1_mad_crux.py` with
+`--abliterate-layers all` as the default.
 
 ---
 
@@ -66,8 +77,8 @@ the fast-iteration prototype.
 
 Attacker recomputes refusal dir as `mean(h|harmful) − mean(h|harmless)` on the
 **released entangled model**, abliterates that. Measure ASR + capability.
-Tests whether MAD survives a direction derived from our own model, not our
-SAE-chosen feature list.
+Tests whether MAD survives a direction derived from our own model rather than
+the adapter `W_out` basis.
 
 **Output:** `results/p2_adaptive_abliteration.json`.
 
@@ -76,13 +87,15 @@ SAE-chosen feature list.
 ## P3 — Evaluation harness (parallel with P2; unblocks trust + scaling)
 
 Replace keyword refusal + tiny-n with rigorous eval. Build as a reusable module
-`mindweather/eval/`:
+`tamperforge/eval/`:
 - **ASR:** LLM-judge or HarmBench classifier (not keyword matching).
 - **Capability:** ARC-Challenge + MMLU subset + GSM8K.
 - **Fluency:** perplexity.
 - **Rigor:** n≥100, bootstrap CIs, fixed seeds, config-driven.
 
 All later numbers (and any re-run of P1/P2) use this harness.
+
+**Current harness:** `src/tamperforge/eval/` and runbook `docs/eval_runbook.md`.
 
 ---
 
@@ -97,9 +110,9 @@ cost frontier. Position vs TAR + RepNoise.
 
 ## P5 — Generalize across architectures
 
-Only after P1–P3 hold on Gemma. Qwen3-1.7B, Llama-3.2-1B. No IT SAE → use
-mean-difference refusal directions. This is where the "general framework" claim
-gets earned.
+Only after P1–P3 hold on Gemma. Qwen3-1.7B, Llama-3.2-1B. Use empirical
+mean-difference refusal directions plus learned adapter directions. This is
+where the "general framework" claim gets earned.
 
 ---
 
@@ -114,11 +127,12 @@ gets earned.
 
 ## Codebase cleanup (do AFTER P1 — don't polish an unverified thesis)
 
-- `setup.sh` — assert `env_ml`, check HF auth, verify deps, smoke-test SAE load.
+- `setup.sh` — assert `env_ml`, check HF auth, verify deps, smoke-test base load.
 - Device helper (cuda/mps/cpu) in package — one place, not N scripts.
 - Consolidate duplicated abliteration/refusal logic into the package; scripts
   become thin CLIs (revises the old "standalone scripts" rule — a framework
   needs a source-of-truth package).
 - Config-driven hyperparams (`configs/*.yaml`), kill CLI flag soup.
 - `ruff` + pinned seeds.
-- Rename/regenerate the misnamed `abliterated_L13/`.
+- Keep generated local ablated checkpoints under `outputs/` with
+  `abliteration_meta.json`.
