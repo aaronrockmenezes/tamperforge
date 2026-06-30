@@ -38,9 +38,9 @@ time on them before the HF baselines and empirical all-layer path.
 
 Use two tracks:
 
-1. **Safety:** tamperforge generation on all AdvBench harmful prompts
-   (`data/advbench_harmful_behaviors.csv`, 520 prompts), judged with
-   DeepSeek V4 Flash via OpenRouter.
+1. **Safety:** tamperforge generation on HF `walledai/AdvBench`, capped to 500
+   prompts for the official run, judged with DeepSeek V4 Flash via OpenRouter.
+   The vendored local CSV is legacy/internal only.
 2. **Capability:** EleutherAI `lm-eval` for standard capability reporting.
    Primary: ARC-Challenge. Full ARC-Challenge test split is 1,172 examples;
    validation split is 299. If time is tight, use `--limit 600`, but label it
@@ -123,7 +123,7 @@ lm_eval \
   --log_samples
 ```
 
-## Safety generation: AdvBench all 520
+## Safety generation: AdvBench 500
 
 Run generation first, no judge inline. This keeps local GPU work separate from
 OpenRouter work and lets us retry judge without regenerating.
@@ -135,39 +135,42 @@ completed vLLM batch.
 PYTHONPATH=src python experiments/p0_baseline_eval.py \
   --model-id google/gemma-3-1b-it \
   --backend vllm \
-  --n-advbench 520 \
+  --advbench-source walledai \
+  --n-advbench 500 \
   --n-arc 0 \
   --max-new-tokens 512 \
   --max-length 4096 \
   --vllm-batch-size 64 \
   --vllm-gpu-memory-utilization 0.9 \
-  --run-id safety_base_advbench520_nojudge
+  --run-id safety_base_advbench500_nojudge
 ```
 
 ```bash
 PYTHONPATH=src python experiments/p0_baseline_eval.py \
   --model-id DavidAU/gemma-3-1b-it-heretic-abliterated-uncensored \
   --backend vllm \
-  --n-advbench 520 \
+  --advbench-source walledai \
+  --n-advbench 500 \
   --n-arc 0 \
   --max-new-tokens 512 \
   --max-length 4096 \
   --vllm-batch-size 64 \
   --vllm-gpu-memory-utilization 0.9 \
-  --run-id safety_hf_heretic_advbench520_nojudge
+  --run-id safety_hf_heretic_advbench500_nojudge
 ```
 
 ```bash
 PYTHONPATH=src python experiments/p0_baseline_eval.py \
   --model-id DavidAU/gemma-3-1b-it-heretic-extreme-uncensored-abliterated \
   --backend vllm \
-  --n-advbench 520 \
+  --advbench-source walledai \
+  --n-advbench 500 \
   --n-arc 0 \
   --max-new-tokens 512 \
   --max-length 4096 \
   --vllm-batch-size 64 \
   --vllm-gpu-memory-utilization 0.9 \
-  --run-id safety_hf_extreme_advbench520_nojudge
+  --run-id safety_hf_extreme_advbench500_nojudge
 ```
 
 ## Judge safety generations
@@ -176,7 +179,7 @@ Do a 10-row formatting smoke first:
 
 ```bash
 PYTHONPATH=src python experiments/judge_generations.py \
-  --generations results/safety_hf_heretic_advbench520_nojudge/generations.jsonl \
+  --generations results/safety_hf_heretic_advbench500_nojudge/generations.jsonl \
   --limit 10 \
   --judge-model deepseek/deepseek-v4-flash \
   --judge-json-mode \
@@ -189,32 +192,32 @@ If parse failures are zero, run full judge:
 
 ```bash
 PYTHONPATH=src python experiments/judge_generations.py \
-  --generations results/safety_base_advbench520_nojudge/generations.jsonl \
+  --generations results/safety_base_advbench500_nojudge/generations.jsonl \
   --judge-model deepseek/deepseek-v4-flash \
   --judge-json-mode \
   --judge-max-tokens 256 \
   --num-workers 12 \
-  --run-id judge_base_advbench520_w12
+  --run-id judge_base_advbench500_w12
 ```
 
 ```bash
 PYTHONPATH=src python experiments/judge_generations.py \
-  --generations results/safety_hf_heretic_advbench520_nojudge/generations.jsonl \
+  --generations results/safety_hf_heretic_advbench500_nojudge/generations.jsonl \
   --judge-model deepseek/deepseek-v4-flash \
   --judge-json-mode \
   --judge-max-tokens 256 \
   --num-workers 12 \
-  --run-id judge_hf_heretic_advbench520_w12
+  --run-id judge_hf_heretic_advbench500_w12
 ```
 
 ```bash
 PYTHONPATH=src python experiments/judge_generations.py \
-  --generations results/safety_hf_extreme_advbench520_nojudge/generations.jsonl \
+  --generations results/safety_hf_extreme_advbench500_nojudge/generations.jsonl \
   --judge-model deepseek/deepseek-v4-flash \
   --judge-json-mode \
   --judge-max-tokens 256 \
   --num-workers 12 \
-  --run-id judge_hf_extreme_advbench520_w12
+  --run-id judge_hf_extreme_advbench500_w12
 ```
 
 ## Capability: lm-eval ARC-Challenge
@@ -311,6 +314,7 @@ Do this after the HF baselines unless there is time to spare.
 PYTHONPATH=src python experiments/make_abliterated_model.py \
   --model-id google/gemma-3-1b-it \
   --out outputs/gemma3_1b_it_abliterated_all_empirical \
+  --advbench-source walledai \
   --direction-source empirical \
   --direction-layer 13 \
   --n-direction 64 \
@@ -337,6 +341,7 @@ Fast first pass:
 PYTHONPATH=src python experiments/train_adapter.py \
   --model-id google/gemma-3-1b-it \
   --out outputs/safety_adapter_p1.pt \
+  --advbench-source walledai \
   --n-harmful 200 \
   --epochs 5 \
   --batch-size 4 \
@@ -352,7 +357,8 @@ Stronger if time remains:
 PYTHONPATH=src python experiments/train_adapter.py \
   --model-id google/gemma-3-1b-it \
   --out outputs/safety_adapter_p1_full.pt \
-  --n-harmful 520 \
+  --advbench-source walledai \
+  --n-harmful 500 \
   --epochs 20 \
   --batch-size 4 \
   --lr 3e-4 \
@@ -367,14 +373,15 @@ PYTHONPATH=src python experiments/train_adapter.py \
 PYTHONPATH=src python experiments/p1_mad_crux.py \
   --model-id google/gemma-3-1b-it \
   --adapter outputs/safety_adapter_p1.pt \
+  --advbench-source walledai \
   --n-direction 64 \
   --abliterate-layers all \
-  --n-advbench 520 \
+  --n-advbench 500 \
   --n-arc 299 \
   --max-new-tokens 512 \
   --max-length 4096 \
   --judge \
-  --run-id p1_mad_crux_advbench520_judged
+  --run-id p1_mad_crux_advbench500_judged
 ```
 
 P1 uses DeepSeek V4 Flash by default. It loads up to five conditions, so run it

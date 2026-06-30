@@ -117,7 +117,7 @@ PYTHONPATH=src python experiments/train_adapter.py \
   --abliterate-layers all
 ```
 
-If loss is stable and time remains, rerun with `--epochs 20 --n-harmful 520`.
+If loss is stable and time remains, rerun with `--epochs 20 --n-harmful 500`.
 
 ## P1 fixed POC
 

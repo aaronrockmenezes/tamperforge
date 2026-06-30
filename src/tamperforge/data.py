@@ -5,6 +5,10 @@ from __future__ import annotations
 import csv
 import random
 from pathlib import Path
+from typing import Literal
+
+ADV_BENCH_HF_ID = "walledai/AdvBench"
+AdvBenchSource = Literal["walledai", "local"]
 
 REFUSAL_RESPONSES: list[str] = [
     "I cannot help with that request as it would cause harm.",
@@ -107,26 +111,68 @@ def augment_with_injections(prompts: list[str], n_per_wrapper: int = 5,
     return [w(p) for w in INJECTION_WRAPPERS for p in sample]
 
 
-def load_advbench(csv_path: str | Path, n: int | None = None,
-                  seed: int = 42) -> list[tuple[str, str]]:
-    """Load AdvBench as ``(harmful_prompt, refusal_response)`` pairs.
+def _shuffle_take(rows: list, n: int | None, seed: int):
+    rng = random.Random(seed)
+    rows = list(rows)
+    rng.shuffle(rows)
+    if n is not None:
+        rows = rows[:n]
+    return rows
+
+
+def load_walledai_advbench(
+    n: int | None = None,
+    seed: int = 42,
+    split: str = "train",
+) -> list[tuple[str, str]]:
+    """Load HF `walledai/AdvBench` as ``(prompt, target)`` pairs."""
+    from datasets import load_dataset
+
+    ds = load_dataset(ADV_BENCH_HF_ID, split=split)
+    rows = [(str(row["prompt"]), str(row["target"])) for row in ds]
+    return _shuffle_take(rows, n=n, seed=seed)
+
+
+def load_local_advbench(
+    csv_path: str | Path,
+    n: int | None = None,
+    seed: int = 42,
+) -> list[tuple[str, str]]:
+    """Load the vendored legacy CSV as ``(harmful_prompt, refusal_response)`` pairs."""
+    prompts: list[str] = []
+    with open(csv_path) as f:
+        for row in csv.DictReader(f):
+            prompts.append(row["goal"])
+    prompts = _shuffle_take(prompts, n=n, seed=seed)
+    return [(p, REFUSAL_RESPONSES[i % len(REFUSAL_RESPONSES)]) for i, p in enumerate(prompts)]
+
+
+def load_advbench(
+    csv_path: str | Path | None = None,
+    n: int | None = None,
+    seed: int = 42,
+    source: AdvBenchSource = "walledai",
+    split: str = "train",
+) -> list[tuple[str, str]]:
+    """Load AdvBench as ``(harmful_prompt, target_text)`` pairs.
 
     GOTCHA (carried from mindweather): these are TUPLES. For chat content you
     want the prompt only — use :func:`load_advbench_prompts` to avoid passing a
     tuple repr to the model (which silently produces 0% refusal).
     """
-    rows: list[str] = []
-    with open(csv_path) as f:
-        for row in csv.DictReader(f):
-            rows.append(row["goal"])
-    rng = random.Random(seed)
-    rng.shuffle(rows)
-    if n is not None:
-        rows = rows[:n]
-    return [(p, REFUSAL_RESPONSES[i % len(REFUSAL_RESPONSES)]) for i, p in enumerate(rows)]
+    if source == "walledai":
+        return load_walledai_advbench(n=n, seed=seed, split=split)
+    if csv_path is None:
+        raise ValueError("csv_path is required when source='local'")
+    return load_local_advbench(csv_path, n=n, seed=seed)
 
 
-def load_advbench_prompts(csv_path: str | Path, n: int | None = None,
-                          seed: int = 42) -> list[str]:
+def load_advbench_prompts(
+    csv_path: str | Path | None = None,
+    n: int | None = None,
+    seed: int = 42,
+    source: AdvBenchSource = "walledai",
+    split: str = "train",
+) -> list[str]:
     """Load AdvBench harmful prompts as plain strings (the safe default)."""
-    return [p for p, _ in load_advbench(csv_path, n=n, seed=seed)]
+    return [p for p, _ in load_advbench(csv_path, n=n, seed=seed, source=source, split=split)]

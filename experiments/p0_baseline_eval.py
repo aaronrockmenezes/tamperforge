@@ -44,6 +44,9 @@ def main() -> None:
                     help="Use OpenRouter response_format=json_object when provider supports it")
     ap.add_argument("--model-id", default="google/gemma-3-1b-it")
     ap.add_argument("--device", default=None)
+    ap.add_argument("--advbench-source", choices=["walledai", "local"], default="walledai")
+    ap.add_argument("--advbench-split", default="train")
+    ap.add_argument("--advbench-csv", default=str(ROOT / "data" / "advbench_harmful_behaviors.csv"))
     ap.add_argument("--backend", choices=["transformers", "vllm"], default="transformers")
     ap.add_argument("--vllm-batch-size", type=int, default=64)
     ap.add_argument("--vllm-dtype", default="bfloat16")
@@ -66,8 +69,13 @@ def main() -> None:
     manifest = {"script": "p0_baseline_eval.py", "args": vars(args), "eval_config": cfg}
     logger.write_manifest(manifest)
 
-    prompts = load_advbench_prompts(ROOT / "data" / "advbench_harmful_behaviors.csv",
-                                    n=args.n_advbench, seed=cfg.seed)
+    prompts = load_advbench_prompts(
+        args.advbench_csv,
+        n=args.n_advbench,
+        seed=cfg.seed,
+        source=args.advbench_source,
+        split=args.advbench_split,
+    )
 
     if args.backend == "vllm":
         if args.judge:

@@ -60,6 +60,9 @@ def main() -> None:
     ap.add_argument("--model-id", default="google/gemma-3-1b-it")
     ap.add_argument("--device", default=None)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--advbench-source", choices=["walledai", "local"], default="walledai")
+    ap.add_argument("--advbench-split", default="train")
+    ap.add_argument("--advbench-csv", default=str(ROOT / "data" / "advbench_harmful_behaviors.csv"))
     ap.add_argument("--layers", default="all", help="all, 13, or comma/range like 13,17,22")
     ap.add_argument("--direction-source", choices=["sae", "empirical"], default="empirical")
     ap.add_argument("--direction-layer", type=int, default=13)
@@ -78,9 +81,11 @@ def main() -> None:
         direction_meta = {"source": "sae", "feature_ids": feat_ids}
     else:
         prompts = load_advbench_prompts(
-            ROOT / "data" / "advbench_harmful_behaviors.csv",
+            args.advbench_csv,
             n=args.n_direction,
             seed=args.seed,
+            source=args.advbench_source,
+            split=args.advbench_split,
         )
         harmful = prompts[: args.n_direction]
         harmless = BENIGN_PROMPTS[: min(args.n_direction, len(BENIGN_PROMPTS))]

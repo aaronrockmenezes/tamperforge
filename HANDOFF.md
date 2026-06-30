@@ -134,8 +134,9 @@ Next server batch requested by user:
 Recommended flow:
 - Run `bash scripts/vast_setup.sh` on RTX 5090 if CUDA 12.8+/PyTorch works;
   fallback is RTX 4090.
-- Safety: generate all 520 AdvBench prompts at `max_new_tokens=128`, no judge
-  inline, then judge `generations.jsonl` with DeepSeek V4 Flash and 12 workers.
+- Safety: generate HF `walledai/AdvBench`, capped to 500 prompts, at
+  `max_new_tokens=512`, no judge inline, then judge `generations.jsonl` with
+  DeepSeek V4 Flash and 12 workers. The vendored local 520-row CSV is legacy.
 - Capability: use EleutherAI `lm-eval` for ARC-Challenge 25-shot full test
   split. Full ARC-Challenge test has 1,172 examples; use `--limit 600` only if
   budget requires and label it capped.
@@ -168,9 +169,9 @@ DeepSeek V4 Flash judge:
   no SAE.
 
 **Metrics per condition:**
-- ASR / refusal rate on AdvBench prompts via DeepSeek V4 Flash for official
-  runs. Keyword refusal is fallback only. Official server run uses all 520
-  AdvBench prompts.
+- ASR / refusal rate on HF `walledai/AdvBench` prompts via DeepSeek V4 Flash for
+  official runs. Keyword refusal is fallback only. Official server run caps to
+  500 prompts.
 - Capability: internal ARC validation + PPL for P1 because the prototype adapter
   is a forward hook and is not exposed to `lm-eval` yet. Standalone model
   capability baselines use `lm-eval`.

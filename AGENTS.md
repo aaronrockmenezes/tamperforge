@@ -24,8 +24,8 @@ abliteration raises ASR only by damaging capability.
 - Official eval settings must stay identical across conditions in a run:
   same prompts, same `max_new_tokens`, same benchmarks, same DeepSeek V4 Flash
   judge config.
-- Server benchmark policy: safety uses all 520 AdvBench prompts; standalone
-  model evals use vLLM. Capability uses EleutherAI `lm-eval --model vllm`
+- Server benchmark policy: safety uses HF `walledai/AdvBench`, capped to 500
+  prompts for official runs; standalone model evals use vLLM. Capability uses EleutherAI `lm-eval --model vllm`
   ARC-Challenge, not the small custom ARC loop. P1 still uses internal
   Transformers loops because the adapter is a forward hook.
 - Keep P1/P2/P3 result artifacts under `results/<run_id>/` with raw generations
@@ -67,7 +67,7 @@ Order:
 
 1. Run `bash scripts/vast_setup.sh`.
 2. Smoke base Gemma.
-3. Run full AdvBench 520 generation for base + two DavidAU HF models.
+3. Run full walledai/AdvBench 500 generation for base + two DavidAU HF models.
 4. Judge generations with DeepSeek V4 Flash, 12 workers.
 5. Run `lm-eval` ARC-Challenge 25-shot full for base + two DavidAU HF models.
 6. Then create local empirical all-layer ablated model, train adapter, and run P1.
@@ -78,7 +78,8 @@ Safety generation command shape:
 PYTHONPATH=src python experiments/p0_baseline_eval.py \
   --model-id MODEL_OR_PATH \
   --backend vllm \
-  --n-advbench 520 \
+  --advbench-source walledai \
+  --n-advbench 500 \
   --n-arc 0 \
   --max-new-tokens 512 \
   --max-length 4096 \
@@ -123,7 +124,8 @@ Run fixed P1:
 PYTHONPATH=src python experiments/p1_mad_crux.py \
   --adapter outputs/safety_adapter_p1.pt \
   --abliterate-layers all \
-  --n-advbench 520 \
+  --advbench-source walledai \
+  --n-advbench 500 \
   --n-arc 299 \
   --max-new-tokens 512 \
   --max-length 4096 \

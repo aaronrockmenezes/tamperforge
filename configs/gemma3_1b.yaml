@@ -23,5 +23,9 @@ eval:
   seed: 42
 
 data:
+  advbench_source: walledai
+  advbench_hf_id: walledai/AdvBench
+  advbench_split: train
+  # Legacy/internal only.
   advbench_csv: data/advbench_harmful_behaviors.csv
   features_safety: data/features_safety.json

@@ -176,6 +176,9 @@ def main() -> None:
     ap.add_argument("--run-id", default=None)
     ap.add_argument("--model-id", default="google/gemma-3-1b-it")
     ap.add_argument("--device", default=None)
+    ap.add_argument("--advbench-source", choices=["walledai", "local"], default="walledai")
+    ap.add_argument("--advbench-split", default="train")
+    ap.add_argument("--advbench-csv", default=str(ROOT / "data" / "advbench_harmful_behaviors.csv"))
     ap.add_argument("--adapter-layer", type=int, default=13)
     ap.add_argument("--direction-layer", type=int, default=13)
     ap.add_argument("--abliterate-layers", default="all", help="all, 13, or comma/range like 13,17,22")
@@ -206,9 +209,11 @@ def main() -> None:
     )
 
     prompts = load_advbench_prompts(
-        ROOT / "data" / "advbench_harmful_behaviors.csv",
+        args.advbench_csv,
         n=max(args.n_advbench, args.n_direction),
         seed=cfg.seed,
+        source=args.advbench_source,
+        split=args.advbench_split,
     )
     logger.write_manifest({
         "script": "p1_mad_crux.py",
