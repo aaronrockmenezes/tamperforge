@@ -2,8 +2,12 @@
 
 Goal: every paid run writes enough raw evidence for paper tables later.
 
-For RTX 5090/4090 server runs, `docs/vast_runbook.md` is authoritative. This
-file keeps local/small examples and older command shapes for reference.
+For RTX 4090 or valid RTX 5090 server runs, `docs/vast_runbook.md` is
+authoritative. This file keeps local/small examples and older command shapes for
+reference.
+
+Current human-readable result snapshot: `docs/results_2026_07_01.md`.
+Known infra/eval failure fixes: `docs/common_issues.md`.
 
 ## Artifact layout
 
@@ -100,6 +104,10 @@ PYTHONPATH=src python experiments/p0_baseline_eval.py \
 
 For free models that do not support OpenRouter JSON mode, add
 `--no-judge-json-mode`.
+
+DeepSeek V4 Flash is the current paid judge. It must be called through the fixed
+OpenRouter request in `src/tamperforge/eval/judge.py`, which disables reasoning.
+Older requests can return `content: null` and create parse failures.
 
 ## Train adapter on rented GPU
 

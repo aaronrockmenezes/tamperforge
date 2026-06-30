@@ -80,6 +80,19 @@ conda env list
 Do not create a new env unless the image is broken; `scripts/vast_setup.sh`
 uses `python` from the active env by default.
 
+Observed good RTX 4090 package state:
+
+```text
+Python 3.12.13
+torch 2.11.0+cu130
+torch.version.cuda 13.0
+vLLM 0.24.0
+GPU NVIDIA GeForce RTX 4090
+```
+
+This is valid even if an intermediate install mentions CUDA 12.8 wheels. The
+driver can run older bundled CUDA runtimes.
+
 ```bash
 nvidia-smi
 python --version
@@ -198,10 +211,12 @@ PYTHONPATH=src python experiments/judge_generations.py \
   --judge-json-mode \
   --judge-max-tokens 256 \
   --num-workers 1 \
-  --run-id judge_smoke_hf_heretic_10
+  --run-id judge_smoke_hf_heretic_10_v2
 ```
 
-If parse failures are zero, run full judge:
+If parse failures are zero, run full judge. The current judge client disables
+OpenRouter reasoning; without that, DeepSeek can return `content: null` after
+spending the whole completion budget on hidden reasoning.
 
 ```bash
 PYTHONPATH=src python experiments/judge_generations.py \

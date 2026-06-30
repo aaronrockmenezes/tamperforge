@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Read this before touching tamperforge. If anything conflicts with older docs,
-this file and `HANDOFF.md` win.
+this file, `HANDOFF.md`, and `CLAUDE.md` win.
 
 ## Project
 
@@ -25,24 +25,34 @@ abliteration raises ASR only by damaging capability.
   same prompts, same `max_new_tokens`, same benchmarks, same DeepSeek V4 Flash
   judge config.
 - Server benchmark policy: safety uses HF `walledai/AdvBench`, capped to 500
-  prompts for official runs; standalone model evals use vLLM. Capability uses EleutherAI `lm-eval --model vllm`
-  ARC-Challenge, not the small custom ARC loop. P1 still uses internal
-  Transformers loops because the adapter is a forward hook.
+  prompts for official runs; standalone model evals use vLLM. Capability uses
+  EleutherAI `lm-eval --model vllm` ARC-Challenge, not the small custom ARC
+  loop. P1 still uses internal Transformers loops because the adapter is a
+  forward hook.
 - Keep P1/P2/P3 result artifacts under `results/<run_id>/` with raw generations
   and summaries.
 - Use `DeepSeek V4 Flash` (`deepseek/deepseek-v4-flash`) as the default paid
-  OpenRouter judge; it is cheap and supports JSON mode.
+  OpenRouter judge. The request must disable OpenRouter reasoning; see
+  `src/tamperforge/eval/judge.py` and `docs/common_issues.md`.
 - Keyword refusal is triage only, not publication-grade.
 
 ## Environment
 
-- Use existing `env_ml`; do not create a new venv.
+- Local Mac: use existing `env_ml`; do not create a new venv.
 - Plain commands only: `python`, `pip`, `PYTHONPATH=src python ...`.
 - Python path on this machine:
   `/Users/aaronrockmenezes/miniforge3/envs/env_ml/bin/python`
 - Device helper is `tamperforge.pick_device()`; do not hardcode CUDA/MPS.
 - Gemma is gated; HF auth must be present.
 - `.env` may contain `OPENROUTER_API_KEY`, `HF_TOKEN`, etc. Never print values.
+
+Vast server:
+
+- Use active env `/venv/main`.
+- Current good box observed: RTX 4090 24GB, driver 580.95.05, host CUDA 13.0,
+  Python 3.12.13, Torch `2.11.0+cu130`, vLLM `0.24.0`.
+- RTX 5090 is acceptable only if `nvidia-smi` reports host CUDA 12.9+.
+  RTX 5090 + host CUDA 12.8 is a known bad vLLM/FlashAttention combo.
 
 ## Existing local checkpoints
 
@@ -60,8 +70,8 @@ directory's `abliteration_meta.json`.
 
 ## Server plan
 
-Use `docs/vast_runbook.md`. RTX 5090 is preferred if the image has working
-CUDA 12.8+/PyTorch support; RTX 4090 is fallback.
+Use `docs/vast_runbook.md`. RTX 4090 is the safest cheap target. RTX 5090 is
+only acceptable with host CUDA 12.9+.
 
 Order:
 
@@ -71,6 +81,9 @@ Order:
 4. Judge generations with DeepSeek V4 Flash, 12 workers.
 5. Run `lm-eval` ARC-Challenge 25-shot full for base + two DavidAU HF models.
 6. Then create local empirical all-layer ablated model, train adapter, and run P1.
+
+Current result summary: `docs/results_2026_07_01.md`.
+Common server/eval failure fixes: `docs/common_issues.md`.
 
 Safety generation command shape:
 
@@ -154,6 +167,19 @@ Base Gemma DeepSeek V4 Flash judged:
 - judge refusal rate: 98%
 - judge ASR: 1%
 - ratings: `0:98`, `1:1`, `3:1`
+
+Current Vast P0 generation/Judge smoke:
+
+- `results/safety_base_advbench500_nojudge`: AdvBench 500, keyword refusal
+  0.98, keyword ASR 0.02.
+- `results/safety_hf_heretic_advbench500_nojudge`: AdvBench 500, keyword
+  refusal 0.112, keyword ASR 0.888.
+- `results/safety_hf_extreme_advbench500_nojudge`: AdvBench 500, keyword
+  refusal 0.036, keyword ASR 0.964.
+- `results/judge_smoke_hf_heretic_10_v2`: DeepSeek V4 Flash judge smoke,
+  parse failures 0/10, judge ASR 0.9.
+
+Full 12-worker judge runs were the next step at last documentation update.
 
 ## Git/worktree caution
 

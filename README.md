@@ -18,14 +18,15 @@ research repo (which holds the blog drafts + exploratory experiments).
 - ❌ **Not** un-finetunable. With open weights, fine-tuning can re-learn removal.
   That tier is characterized, not solved. See `THREAT_MODEL.md`.
 
-Read **`AGENTS.md`** and **`HANDOFF.md`** first. Then read
-**`THREAT_MODEL.md`** (attacker tiers, success metric) and **`ROADMAP.md`**
-(phased experiments).
+Read **`AGENTS.md`**, **`HANDOFF.md`**, and **`CLAUDE.md`** first. Then read
+**`THREAT_MODEL.md`** (attacker tiers, success metric), **`ROADMAP.md`**
+(phased experiments), and **`docs/common_issues.md`** (server/eval fixes).
 
 ## Status
 
 Early. The MAD thesis is **unverified** — experiment P1 is go/no-go. The eval
-harness now exists and base Gemma baselines have been logged; see `HANDOFF.md`.
+harness now exists, Vast/vLLM P0 safety generation works, and current numbers
+are tracked in `docs/results_2026_07_01.md`.
 
 ## Install
 
@@ -50,6 +51,8 @@ configs/              # model + experiment configs (no CLI flag soup)
 data/                 # advbench csv, features_safety.json
 results/              # JSON outputs
 outputs/              # local checkpoints (gitignored model weights)
+docs/results_*.md     # human-readable result snapshots
+docs/common_issues.md # known infra/eval failures and fixes
 ```
 
 ## Core facts

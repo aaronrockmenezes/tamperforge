@@ -1,7 +1,7 @@
 # tamperforge — Handoff
 
-> For the next agent / chat. Read `AGENTS.md` first, then this file. Last
-> updated: 2026-06-30.
+> For the next agent / chat. Read `AGENTS.md` first, then this file, then
+> `CLAUDE.md` if using Claude Code. Last updated: 2026-07-01.
 
 ## TL;DR
 
@@ -73,7 +73,7 @@ README ROADMAP THREAT_MODEL HANDOFF pyproject setup.sh .gitignore
   TUPLES — passing a tuple as chat content → model sees repr → 0% refusal.
 - Device is centralized in `pick_device()`. No more per-script mps/cpu strings.
 
-## Current eval/harness state (2026-06-30)
+## Current eval/harness state (2026-07-01)
 
 Implemented:
 - `src/tamperforge/eval/` reusable harness:
@@ -95,13 +95,17 @@ Implemented:
 - `scripts/vast_setup.sh` — Vast GPU setup script. It validates CUDA Torch,
   installs tamperforge + `lm_eval[hf]`, checks HF auth, and supports local dry
   validation with `ALLOW_NO_CUDA=1 SKIP_INSTALL=1`.
+- `CLAUDE.md` — Claude Code handoff with current server status and next steps.
+- `docs/results_2026_07_01.md` — current result snapshot.
+- `docs/common_issues.md` — server/eval failure modes and fixes.
 
 Existing local ablated checkpoints:
 - `outputs/gemma3_1b_it_abliterated_l13_sae`
   - Generated locally, one-time L13 legacy comparison.
   - Smoke only: `results/smoke_l13_ablated_8tok/`.
   - Local MPS 128-token eval was interrupted because generation was too slow
-    before first output. Prefer Vast/5090 or 4090 for official runs.
+    before first output. Prefer Vast RTX 4090 for official runs; RTX 5090 only
+    if host CUDA is 12.9+.
 - `outputs/gemma3_1b_it_abliterated_all_sae`
   - Generated locally, all-layer SAE ablation.
   - Legacy mechanistic comparison only. Do not use as P1 proof.
@@ -125,26 +129,69 @@ Interrupted/partial judge runs:
 - `results/baseline_nemotron3_ultra_judge*` are partial/slow/free-tier runs.
   Do not use as final numbers.
 
-Next server batch requested by user:
+Current Vast server facts:
+
+- SSH alias: `vast_tamperforge`
+- Path: `/workspace/tamperforge`
+- Env: `/venv/main`
+- Good instance observed: RTX 4090 24GB, driver 580.95.05, host CUDA 13.0,
+  Python 3.12.13, Torch `2.11.0+cu130`, vLLM `0.24.0`.
+- Bad instance observed: RTX 5090, driver 570.195.03, host CUDA 12.8. vLLM
+  imports but generation fails with driver/runtime mismatch. Do not debug; stop
+  and rent a 4090 or a 5090 with host CUDA 12.9+.
+
+Recent server batch requested by user:
 1. Base `google/gemma-3-1b-it`.
 2. `DavidAU/gemma-3-1b-it-heretic-abliterated-uncensored`.
 3. `DavidAU/gemma-3-1b-it-heretic-extreme-uncensored-abliterated`.
 4. Then local empirical all-layer ablated Gemma + adapter/P1.
 
 Recommended flow:
-- Run `bash scripts/vast_setup.sh` on RTX 5090 if CUDA 12.8+/PyTorch works;
-  fallback is RTX 4090.
+- Run `bash scripts/vast_setup.sh` on RTX 4090, or RTX 5090 only if host CUDA
+  12.9+.
 - Safety: generate HF `walledai/AdvBench`, capped to 500 prompts, at
   `max_new_tokens=512`, no judge inline, then judge `generations.jsonl` with
   DeepSeek V4 Flash and 12 workers. The vendored local 520-row CSV is legacy.
+  Judge request must disable OpenRouter reasoning; fixed in commit `56db984`.
 - Capability: use EleutherAI `lm-eval` for ARC-Challenge 25-shot full test
   split. Full ARC-Challenge test has 1,172 examples; use `--limit 600` only if
   budget requires and label it capped.
+  On 24GB GPUs use `max_model_len=4096,gpu_memory_utilization=0.65,max_num_seqs=1`
+  and `--batch_size 1`; `--batch_size auto` OOMed.
 - Google's model card gives Gemma 3 PT 1B ARC-c 25-shot = 38.4, not a clean
   `gemma-3-1b-it` official number. Treat server-run `google/gemma-3-1b-it` with
   the exact same `lm-eval` command as the local reference for all comparisons.
 
-## NEXT TASK — P1: fixed POC (go/no-go)
+## Recent P0 server evidence
+
+Detailed snapshot: `docs/results_2026_07_01.md`.
+
+- Base safety generation completed:
+  `results/safety_base_advbench500_nojudge`, AdvBench 500, keyword refusal
+  0.98, keyword ASR 0.02.
+- HF heretic safety generation completed:
+  `results/safety_hf_heretic_advbench500_nojudge`, keyword refusal 0.112,
+  keyword ASR 0.888.
+- HF extreme safety generation completed:
+  `results/safety_hf_extreme_advbench500_nojudge`, keyword refusal 0.036,
+  keyword ASR 0.964.
+- Judge smoke was fixed and re-run:
+  `results/judge_smoke_hf_heretic_10_v2`, DeepSeek V4 Flash, parse failures
+  0/10, judge ASR 0.9.
+- Full 12-worker judge summaries were not verified from local at doc update time.
+  Inspect on server if user ran them:
+  `results/judge_*_advbench500_w12/summary.json`.
+
+## NEXT TASK — finish P0, then P1 fixed POC (go/no-go)
+
+Before P1, finish P0 baseline table:
+
+1. Verify/run full DeepSeek judges for base, heretic, extreme.
+2. Run ARC-Challenge 25-shot full with the 24GB-safe lm-eval command for base,
+   heretic, extreme.
+3. Update `docs/results_2026_07_01.md`.
+
+Then proceed to P1:
 
 **Question:** after training a clean-base adapter to fuse refusal behavior with
 language/capability directions, does ablating the adapted model's adapter
@@ -189,8 +236,8 @@ should be interpreted as inconclusive on the strict crux.
 
 **Output:** `results/<run_id>/summary.json` plus raw JSONL logs.
 
-**Cost:** loads Gemma up to 6×, ARC×5, judge×5. Prefer Vast/5090 or 4090; local
-MPS is too slow for official runs.
+**Cost:** loads Gemma up to 6×, ARC×5, judge×5. Prefer Vast RTX 4090; RTX 5090
+only with host CUDA 12.9+. Local MPS is too slow for official runs.
 
 **Gotchas:** use all-layer ablation for future experiments. L13-only is legacy
 comparison only. The old mindweather `abliterated_L13/` dir was suspect; do not

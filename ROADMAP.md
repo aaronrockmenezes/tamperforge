@@ -1,6 +1,6 @@
 # tamperforge — Roadmap
 
-> Living doc. Reorder/rewrite as results land. Last updated: 2026-06-30.
+> Living doc. Reorder/rewrite as results land. Last updated: 2026-07-01.
 > Read `THREAT_MODEL.md` first — it defines the attacker tiers (T0–T3) and the
 > success metric (attacker cost to reach X% ASR at ≤Y% capability loss).
 
@@ -55,6 +55,12 @@ and optional `judgments.jsonl`.
 
 **Current script:** `experiments/p1_mad_crux.py` with
 `--abliterate-layers all` as the default.
+
+**Current blocker before P1:** finish P0 external baselines on Vast:
+
+- DeepSeek V4 Flash full judge for base, HF heretic, HF extreme.
+- `lm_eval --model vllm` ARC-Challenge 25-shot full for the same three models.
+- Update `docs/results_2026_07_01.md` from the resulting summaries.
 
 ---
 
