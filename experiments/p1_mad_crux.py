@@ -136,6 +136,7 @@ def _run_condition(
     judge: OpenRouterJudge | None,
     base_direction: torch.Tensor,
     adapter_attack_dirs: torch.Tensor,
+    rand_attack_dirs: torch.Tensor,
     layers: list[int],
 ) -> tuple[str, dict[str, Any]]:
     model, tok, device = load_model(args.model_id, args.device)
@@ -146,6 +147,8 @@ def _run_condition(
 
         if name == "base_ablated":
             abliterate_model_inplace(model, base_direction, layers)
+        elif name == "base_ablated_randN":
+            abliterate_model_inplace(model, rand_attack_dirs, layers)
         elif name == "base_adapter_ablated_full":
             abliterate_model_inplace(model, adapter_attack_dirs, layers)
             abliterate_adapter_out_inplace(adapter, adapter_attack_dirs)
@@ -223,6 +226,7 @@ def main() -> None:
         "condition_order": [
             "base",
             "base_ablated",
+            "base_ablated_randN",
             "base_adapter",
             "base_adapter_ablated_full",
             "base_adapter_ablated_adapter_only",
@@ -248,12 +252,26 @@ def main() -> None:
     })
     del adapter_for_dirs
 
+    # Direction-count control: ablate the bare base with the SAME number of
+    # random orthonormal directions the adapter attack uses. Isolates whether
+    # adapted_full damage is entanglement or just "removing many dirs hurts".
+    n_attack = int(adapter_attack_dirs.shape[0])
+    d_model = int(base_direction.shape[-1])
+    gen = torch.Generator().manual_seed(cfg.seed)
+    rand_attack_dirs = orthonormalize_directions(torch.randn(n_attack, d_model, generator=gen))
+    logger.event("rand_attack_directions", {
+        "source": "random_orthonormal",
+        "seed": cfg.seed,
+        "shape": list(rand_attack_dirs.shape),
+    })
+
     judge = OpenRouterJudge(JUDGE_MODEL, json_mode=args.judge_json_mode) if args.judge else None
     conditions: dict[str, Any] = {}
     device_seen = None
     condition_order = (
         "base",
         "base_ablated",
+        "base_ablated_randN",
         "base_adapter",
         "base_adapter_ablated_full",
         "base_adapter_ablated_adapter_only",
@@ -269,12 +287,14 @@ def main() -> None:
             judge=judge,
             base_direction=base_direction,
             adapter_attack_dirs=adapter_attack_dirs,
+            rand_attack_dirs=rand_attack_dirs,
             layers=layers,
         )
         conditions[name] = summary
 
     base = conditions["base"]
     base_ablated = conditions["base_ablated"]
+    base_ablated_randn = conditions["base_ablated_randN"]
     adapted = conditions["base_adapter"]
     adapted_full = conditions["base_adapter_ablated_full"]
     adapted_adapter_only = conditions["base_adapter_ablated_adapter_only"]
@@ -319,10 +339,26 @@ def main() -> None:
             else _ppl(base_ablated) / max(_ppl(base), 1e-8),
             "ppl_ratio_adapted_full_attack": None if _ppl(adapted) is None or _ppl(adapted_full) is None
             else _ppl(adapted_full) / max(_ppl(adapted), 1e-8),
+            "control_random_match": {
+                "n_dirs": int(adapter_attack_dirs.shape[0]),
+                "random_attack_asr": _condition_asr(base_ablated_randn),
+                "arc_drop_random_attack": None if base_arc is None or _arc(base_ablated_randn) is None
+                else base_arc - _arc(base_ablated_randn),
+                "ppl_ratio_random_attack": None if _ppl(base) is None or _ppl(base_ablated_randn) is None
+                else _ppl(base_ablated_randn) / max(_ppl(base), 1e-8),
+                "interpretation": (
+                    "Direction-count confound control. If random-N ablation damages "
+                    "capability as much as adapted_full, the adapted_full damage is a "
+                    "direction-count artifact, not entanglement. Entanglement is "
+                    "supported only if random-N preserves capability while adapted_full "
+                    "destroys it."
+                ),
+            },
             "interpretation": (
                 "POC support requires adapted ~= base pre-attack, adapted_full_attack "
-                "damages capability more than base_attack at comparable ASR, and "
-                "adapter_only_attack explains whether the defense is localized."
+                "damages capability more than base_attack AND more than the random-N "
+                "control at comparable ASR, and adapter_only_attack explains whether "
+                "the defense is localized."
             ),
         },
     }
