@@ -34,6 +34,8 @@ def main() -> None:
     ap.add_argument("--n-arc", type=int, default=100)
     ap.add_argument("--n-mmlu-per-subject", type=int, default=0)
     ap.add_argument("--max-new-tokens", type=int, default=128)
+    ap.add_argument("--max-length", type=int, default=None,
+                    help="Truncate chat-formatted prompt to this many input tokens")
     ap.add_argument("--judge", action="store_true")
     ap.add_argument("--judge-model", default="deepseek/deepseek-v4-flash")
     ap.add_argument("--judge-json-mode", action=argparse.BooleanOptionalAction, default=True,
@@ -52,6 +54,7 @@ def main() -> None:
         run_mmlu=args.n_mmlu_per_subject > 0,
         run_judge=args.judge,
         max_new_tokens=args.max_new_tokens,
+        max_length=args.max_length,
     )
     manifest = {"script": "p0_baseline_eval.py", "args": vars(args), "eval_config": cfg}
     logger.write_manifest(manifest)

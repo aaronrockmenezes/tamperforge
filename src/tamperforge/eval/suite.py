@@ -19,6 +19,7 @@ class EvalConfig:
     n_mmlu_per_subject: int = 25
     seed: int = 42
     max_new_tokens: int = 128
+    max_length: int | None = None
     run_mmlu: bool = False
     run_judge: bool = False
     mmlu_subjects: tuple[str, ...] = (
@@ -53,10 +54,10 @@ def evaluate_condition(
         adapter=adapter,
         layer=layer,
         max_new_tokens=config.max_new_tokens,
+        max_length=config.max_length,
+        logger=logger,
+        condition=name,
     )
-    for row in responses:
-        if logger:
-            logger.generation({"condition": name, **row})
     keyword = eval_advbench_keyword(responses)
     judge_summary = None
     if config.run_judge:
@@ -67,7 +68,9 @@ def evaluate_condition(
             for row in judge_summary["rows"]:
                 logger.judgment({"condition": name, **row})
     ppl = compute_perplexity(model, tok, device, PROSE_TEXT)
-    arc = arc_challenge_accuracy(model, tok, device, n=config.n_arc, seed=config.seed)
+    arc = None
+    if config.n_arc > 0:
+        arc = arc_challenge_accuracy(model, tok, device, n=config.n_arc, seed=config.seed)
     mmlu = None
     if config.run_mmlu:
         mmlu = mmlu_accuracy(
@@ -85,7 +88,7 @@ def evaluate_condition(
             k: v for k, v in judge_summary.items() if k != "rows"
         },
         "ppl": {k: v for k, v in ppl.items() if k != "rows"},
-        "arc_challenge": {k: v for k, v in arc.items() if k != "rows"},
+        "arc_challenge": None if arc is None else {k: v for k, v in arc.items() if k != "rows"},
         "mmlu": None if mmlu is None else {k: v for k, v in mmlu.items() if k != "rows"},
     }
     if logger:
@@ -94,6 +97,6 @@ def evaluate_condition(
         "summary": summary,
         "responses": responses,
         "ppl_rows": ppl["rows"],
-        "arc_rows": arc["rows"],
+        "arc_rows": None if arc is None else arc["rows"],
         "mmlu_rows": None if mmlu is None else mmlu["rows"],
     }

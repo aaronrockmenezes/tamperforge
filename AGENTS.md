@@ -78,7 +78,8 @@ PYTHONPATH=src python experiments/p0_baseline_eval.py \
   --model-id MODEL_OR_PATH \
   --n-advbench 520 \
   --n-arc 0 \
-  --max-new-tokens 128 \
+  --max-new-tokens 512 \
+  --max-length 4096 \
   --run-id RUN_ID
 ```
 
@@ -121,7 +122,8 @@ PYTHONPATH=src python experiments/p1_mad_crux.py \
   --abliterate-layers all \
   --n-advbench 520 \
   --n-arc 299 \
-  --max-new-tokens 128 \
+  --max-new-tokens 512 \
+  --max-length 4096 \
   --judge \
   --run-id p1_mad_crux_judged
 ```

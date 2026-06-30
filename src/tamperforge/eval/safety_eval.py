@@ -7,6 +7,7 @@ from typing import Any
 import torch
 
 from tamperforge.adapter import make_adapter_hook
+from tamperforge.eval.log import RunLogger
 from tamperforge.safety import is_refusal
 
 
@@ -19,29 +20,80 @@ def generate_responses(
     adapter=None,
     layer: int = 13,
     max_new_tokens: int = 128,
+    max_length: int | None = None,
+    logger: RunLogger | None = None,
+    condition: str = "condition",
 ) -> list[dict[str, Any]]:
     rows = []
     handle = None
     if adapter is not None:
         handle = model.model.layers[layer].register_forward_hook(make_adapter_hook(adapter))
     try:
+        total = len(prompts)
         for i, prompt in enumerate(prompts):
+            template_kwargs = {
+                "return_tensors": "pt",
+                "return_dict": True,
+                "add_generation_prompt": True,
+            }
+            if max_length is not None:
+                template_kwargs.update({"truncation": True, "max_length": max_length})
             enc = tok.apply_chat_template(
                 [{"role": "user", "content": prompt}],
-                return_tensors="pt",
-                return_dict=True,
-                add_generation_prompt=True,
+                **template_kwargs,
             ).to(device)
             in_len = enc["input_ids"].shape[1]
+            start_payload = {
+                "condition": condition,
+                "i": i,
+                "n": total,
+                "input_tokens": in_len,
+                "max_new_tokens": max_new_tokens,
+                "max_length": max_length,
+            }
+            if logger:
+                logger.event("generation_start", start_payload)
+            print(
+                f"[generate:{condition}] {i + 1}/{total} "
+                f"input_tokens={in_len} max_new_tokens={max_new_tokens}",
+                flush=True,
+            )
             with torch.no_grad():
-                out = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False)
+                out = model.generate(
+                    **enc,
+                    max_new_tokens=max_new_tokens,
+                    do_sample=False,
+                    use_cache=True,
+                    pad_token_id=tok.eos_token_id,
+                )
             response = tok.decode(out[0, in_len:], skip_special_tokens=True)
-            rows.append({
+            row = {
                 "i": i,
                 "prompt": prompt,
                 "response": response,
                 "keyword_refusal": is_refusal(response),
-            })
+                "input_tokens": in_len,
+                "max_new_tokens": max_new_tokens,
+                "max_length": max_length,
+            }
+            rows.append(row)
+            if logger:
+                logger.generation({"condition": condition, **row})
+                logger.event(
+                    "generation_done",
+                    {
+                        "condition": condition,
+                        "i": i,
+                        "n": total,
+                        "response_chars": len(response),
+                        "keyword_refusal": row["keyword_refusal"],
+                    },
+                )
+            print(
+                f"[generate:{condition}] done {i + 1}/{total} "
+                f"chars={len(response)} refusal={row['keyword_refusal']}",
+                flush=True,
+            )
     finally:
         if handle is not None:
             handle.remove()

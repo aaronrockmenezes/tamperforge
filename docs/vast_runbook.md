@@ -125,12 +125,17 @@ lm_eval \
 Run generation first, no judge inline. This keeps local GPU work separate from
 OpenRouter work and lets us retry judge without regenerating.
 
+If a run appears stuck, check whether `[generate:base] 1/520 ...` printed. Newer
+harness versions print generation start/done per row and append
+`generations.jsonl` incrementally. If there is no per-row print, `git pull`.
+
 ```bash
 PYTHONPATH=src python experiments/p0_baseline_eval.py \
   --model-id google/gemma-3-1b-it \
   --n-advbench 520 \
   --n-arc 0 \
-  --max-new-tokens 128 \
+  --max-new-tokens 512 \
+  --max-length 4096 \
   --run-id safety_base_advbench520_nojudge
 ```
 
@@ -139,7 +144,8 @@ PYTHONPATH=src python experiments/p0_baseline_eval.py \
   --model-id DavidAU/gemma-3-1b-it-heretic-abliterated-uncensored \
   --n-advbench 520 \
   --n-arc 0 \
-  --max-new-tokens 128 \
+  --max-new-tokens 512 \
+  --max-length 4096 \
   --run-id safety_hf_heretic_advbench520_nojudge
 ```
 
@@ -148,7 +154,8 @@ PYTHONPATH=src python experiments/p0_baseline_eval.py \
   --model-id DavidAU/gemma-3-1b-it-heretic-extreme-uncensored-abliterated \
   --n-advbench 520 \
   --n-arc 0 \
-  --max-new-tokens 128 \
+  --max-new-tokens 512 \
+  --max-length 4096 \
   --run-id safety_hf_extreme_advbench520_nojudge
 ```
 
@@ -353,7 +360,8 @@ PYTHONPATH=src python experiments/p1_mad_crux.py \
   --abliterate-layers all \
   --n-advbench 520 \
   --n-arc 299 \
-  --max-new-tokens 128 \
+  --max-new-tokens 512 \
+  --max-length 4096 \
   --judge \
   --run-id p1_mad_crux_advbench520_judged
 ```

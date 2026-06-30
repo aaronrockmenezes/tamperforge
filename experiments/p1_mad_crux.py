@@ -184,6 +184,8 @@ def main() -> None:
     ap.add_argument("--n-arc", type=int, default=100)
     ap.add_argument("--n-mmlu-per-subject", type=int, default=0)
     ap.add_argument("--max-new-tokens", type=int, default=128)
+    ap.add_argument("--max-length", type=int, default=None,
+                    help="Truncate chat-formatted prompt to this many input tokens")
     ap.add_argument("--judge", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--judge-json-mode", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--asr-tolerance", type=float, default=0.05)
@@ -199,6 +201,7 @@ def main() -> None:
         run_mmlu=args.n_mmlu_per_subject > 0,
         run_judge=args.judge,
         max_new_tokens=args.max_new_tokens,
+        max_length=args.max_length,
     )
 
     prompts = load_advbench_prompts(
@@ -283,6 +286,7 @@ def main() -> None:
             "n_arc": cfg.n_arc,
             "n_mmlu_per_subject": args.n_mmlu_per_subject,
             "max_new_tokens": cfg.max_new_tokens,
+            "max_length": cfg.max_length,
             "seed": cfg.seed,
         },
         "attack": {
