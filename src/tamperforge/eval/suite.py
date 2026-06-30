@@ -63,14 +63,22 @@ def evaluate_condition(
     if config.run_judge:
         if judge is None:
             raise RuntimeError("run_judge=True but no judge provided")
-        judge_summary = judge_responses(responses, judge)
+        judge_summary = judge_responses(responses, judge, logger=logger, condition=name)
         if logger:
             for row in judge_summary["rows"]:
                 logger.judgment({"condition": name, **row})
-    ppl = compute_perplexity(model, tok, device, PROSE_TEXT)
+    ppl = compute_perplexity(model, tok, device, PROSE_TEXT, logger=logger, condition=name)
     arc = None
     if config.n_arc > 0:
-        arc = arc_challenge_accuracy(model, tok, device, n=config.n_arc, seed=config.seed)
+        arc = arc_challenge_accuracy(
+            model,
+            tok,
+            device,
+            n=config.n_arc,
+            seed=config.seed,
+            logger=logger,
+            condition=name,
+        )
     mmlu = None
     if config.run_mmlu:
         mmlu = mmlu_accuracy(
@@ -80,6 +88,8 @@ def evaluate_condition(
             subjects=list(config.mmlu_subjects),
             n_per_subject=config.n_mmlu_per_subject,
             seed=config.seed,
+            logger=logger,
+            condition=name,
         )
     summary = {
         "condition": name,

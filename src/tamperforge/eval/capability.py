@@ -12,6 +12,9 @@ import random
 from typing import Any
 
 import torch
+from tqdm.auto import tqdm
+
+from tamperforge.eval.log import RunLogger
 
 
 def _choice_score(model, tok, device: str, prompt: str, choice: str) -> float:
@@ -34,8 +37,16 @@ def _shuffle_take(ds, n: int | None, seed: int):
     return ds.select(idx[: min(n, len(idx))])
 
 
-def arc_challenge_accuracy(model, tok, device: str, n: int = 100, seed: int = 42,
-                           split: str = "validation") -> dict[str, Any]:
+def arc_challenge_accuracy(
+    model,
+    tok,
+    device: str,
+    n: int = 100,
+    seed: int = 42,
+    split: str = "validation",
+    logger: RunLogger | None = None,
+    condition: str = "condition",
+) -> dict[str, Any]:
     """ARC-Challenge multiple-choice log-prob accuracy."""
     from datasets import load_dataset
 
@@ -43,7 +54,15 @@ def arc_challenge_accuracy(model, tok, device: str, n: int = 100, seed: int = 42
     ds = _shuffle_take(ds, n, seed)
     rows = []
     correct = 0
-    for i, ex in enumerate(ds):
+    total = len(ds)
+    if logger:
+        logger.event("arc_start", {"condition": condition, "split": split, "n": total})
+    for i, ex in tqdm(
+        enumerate(ds),
+        total=total,
+        desc=f"arc:{condition}",
+        dynamic_ncols=True,
+    ):
         labels = list(ex["choices"]["label"])
         texts = list(ex["choices"]["text"])
         answer = str(ex["answerKey"])
@@ -56,6 +75,17 @@ def arc_challenge_accuracy(model, tok, device: str, n: int = 100, seed: int = 42
         pred = labels[pred_i]
         ok = pred == answer
         correct += int(ok)
+        if logger:
+            logger.event(
+                "arc_progress",
+                {
+                    "condition": condition,
+                    "done": i + 1,
+                    "total": total,
+                    "correct": correct,
+                    "accuracy_so_far": correct / max(i + 1, 1),
+                },
+            )
         rows.append({
             "task": "arc_challenge",
             "i": i,
@@ -66,12 +96,17 @@ def arc_challenge_accuracy(model, tok, device: str, n: int = 100, seed: int = 42
             "scores": dict(zip(labels, scores)),
             "correct": ok,
         })
-    return {"task": "arc_challenge", "n": len(rows), "accuracy": correct / max(len(rows), 1), "rows": rows}
+    summary = {"task": "arc_challenge", "n": len(rows), "accuracy": correct / max(len(rows), 1), "rows": rows}
+    if logger:
+        logger.event("arc_done", {"condition": condition, **{k: v for k, v in summary.items() if k != "rows"}})
+    return summary
 
 
 def mmlu_accuracy(model, tok, device: str, subjects: list[str] | None = None,
                   n_per_subject: int = 25, seed: int = 42,
-                  split: str = "test") -> dict[str, Any]:
+                  split: str = "test",
+                  logger: RunLogger | None = None,
+                  condition: str = "condition") -> dict[str, Any]:
     """MMLU log-prob accuracy over selected subjects.
 
     Default subjects keep cost low while covering STEM, humanities, and law.
@@ -87,7 +122,14 @@ def mmlu_accuracy(model, tok, device: str, subjects: list[str] | None = None,
     for subject in subjects:
         ds = load_dataset("cais/mmlu", subject, split=split)
         ds = _shuffle_take(ds, n_per_subject, seed)
-        for i, ex in enumerate(ds):
+        if logger:
+            logger.event("mmlu_subject_start", {"condition": condition, "subject": subject, "n": len(ds)})
+        for i, ex in tqdm(
+            enumerate(ds),
+            total=len(ds),
+            desc=f"mmlu:{condition}:{subject}",
+            dynamic_ncols=True,
+        ):
             choices = list(ex["choices"])
             answer_idx = int(ex["answer"])
             prompt = f"Subject: {subject.replace('_', ' ')}\nQuestion: {ex['question'].strip()}\nChoices:\n"
@@ -99,6 +141,19 @@ def mmlu_accuracy(model, tok, device: str, subjects: list[str] | None = None,
             ok = pred_idx == answer_idx
             correct += int(ok)
             total += 1
+            if logger:
+                logger.event(
+                    "mmlu_progress",
+                    {
+                        "condition": condition,
+                        "subject": subject,
+                        "done_subject": i + 1,
+                        "total_subject": len(ds),
+                        "done_all": total,
+                        "correct": correct,
+                        "accuracy_so_far": correct / max(total, 1),
+                    },
+                )
             rows.append({
                 "task": "mmlu",
                 "subject": subject,
@@ -110,19 +165,50 @@ def mmlu_accuracy(model, tok, device: str, subjects: list[str] | None = None,
                 "scores": dict(zip(labels, scores)),
                 "correct": ok,
             })
-    return {"task": "mmlu", "n": total, "accuracy": correct / max(total, 1), "rows": rows}
+    summary = {"task": "mmlu", "n": total, "accuracy": correct / max(total, 1), "rows": rows}
+    if logger:
+        logger.event("mmlu_done", {"condition": condition, **{k: v for k, v in summary.items() if k != "rows"}})
+    return summary
 
 
-def compute_perplexity(model, tok, device: str, texts: list[str]) -> dict[str, Any]:
+def compute_perplexity(
+    model,
+    tok,
+    device: str,
+    texts: list[str],
+    logger: RunLogger | None = None,
+    condition: str = "condition",
+) -> dict[str, Any]:
     """Mean token-level perplexity over short prose strings."""
     losses = []
     rows = []
-    for i, text in enumerate(texts):
+    if logger:
+        logger.event("ppl_start", {"condition": condition, "n": len(texts)})
+    for i, text in tqdm(
+        enumerate(texts),
+        total=len(texts),
+        desc=f"ppl:{condition}",
+        dynamic_ncols=True,
+    ):
         enc = tok(text, return_tensors="pt").to(device)
         with torch.no_grad():
             out = model(**enc, labels=enc["input_ids"])
         loss = float(out.loss.item())
         losses.append(loss)
+        if logger:
+            logger.event(
+                "ppl_progress",
+                {
+                    "condition": condition,
+                    "done": i + 1,
+                    "total": len(texts),
+                    "loss": loss,
+                    "ppl": math.exp(loss),
+                },
+            )
         rows.append({"task": "ppl", "i": i, "text": text, "loss": loss, "ppl": math.exp(loss)})
     mean_loss = sum(losses) / max(len(losses), 1)
-    return {"task": "ppl", "n": len(rows), "loss": mean_loss, "ppl": math.exp(mean_loss), "rows": rows}
+    summary = {"task": "ppl", "n": len(rows), "loss": mean_loss, "ppl": math.exp(mean_loss), "rows": rows}
+    if logger:
+        logger.event("ppl_done", {"condition": condition, **{k: v for k, v in summary.items() if k != "rows"}})
+    return summary

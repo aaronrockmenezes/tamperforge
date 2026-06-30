@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import torch
+from tqdm.auto import tqdm
 
 from tamperforge.adapter import make_adapter_hook
 from tamperforge.eval.log import RunLogger
@@ -30,7 +31,13 @@ def generate_responses(
         handle = model.model.layers[layer].register_forward_hook(make_adapter_hook(adapter))
     try:
         total = len(prompts)
-        for i, prompt in enumerate(prompts):
+        pbar = tqdm(
+            enumerate(prompts),
+            total=total,
+            desc=f"generate:{condition}",
+            dynamic_ncols=True,
+        )
+        for i, prompt in pbar:
             template_kwargs = {
                 "return_tensors": "pt",
                 "return_dict": True,
@@ -53,11 +60,7 @@ def generate_responses(
             }
             if logger:
                 logger.event("generation_start", start_payload)
-            print(
-                f"[generate:{condition}] {i + 1}/{total} "
-                f"input_tokens={in_len} max_new_tokens={max_new_tokens}",
-                flush=True,
-            )
+            pbar.set_postfix(input_tokens=in_len, max_new_tokens=max_new_tokens)
             with torch.no_grad():
                 out = model.generate(
                     **enc,
@@ -89,11 +92,7 @@ def generate_responses(
                         "keyword_refusal": row["keyword_refusal"],
                     },
                 )
-            print(
-                f"[generate:{condition}] done {i + 1}/{total} "
-                f"chars={len(response)} refusal={row['keyword_refusal']}",
-                flush=True,
-            )
+            pbar.set_postfix(chars=len(response), refusal=row["keyword_refusal"])
     finally:
         if handle is not None:
             handle.remove()

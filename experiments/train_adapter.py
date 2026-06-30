@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from tqdm.auto import tqdm
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -202,11 +203,12 @@ def main() -> None:
     opt = torch.optim.AdamW(adapter.parameters(), lr=args.lr)
 
     benign = BENIGN_PROMPTS[: args.n_benign]
-    for epoch in range(1, args.epochs + 1):
+    for epoch in tqdm(range(1, args.epochs + 1), desc="epochs", dynamic_ncols=True):
         random.shuffle(pairs)
         chunks = [pairs[i:i + args.batch_size] for i in range(0, len(pairs), args.batch_size)]
         total = {"refusal": 0.0, "suppress": 0.0, "entangle": 0.0, "loss": 0.0}
-        for chunk in chunks:
+        pbar = tqdm(chunks, desc=f"train epoch {epoch}", dynamic_ncols=True, leave=False)
+        for step, chunk in enumerate(pbar, start=1):
             opt.zero_grad(set_to_none=True)
             loss_refusal = _refusal_loss(model, tok, adapter, chunk, device, args.adapter_layer)
             loss_suppress = _suppress_loss(model, tok, adapter, benign, device, args.adapter_layer)
@@ -218,6 +220,26 @@ def main() -> None:
             total["suppress"] += float(loss_suppress.item())
             total["entangle"] += float(loss_entangle.item())
             total["loss"] += float(loss.item())
+            running = {k: v / step for k, v in total.items()}
+            pbar.set_postfix(
+                loss=f"{running['loss']:.4f}",
+                refusal=f"{running['refusal']:.4f}",
+                suppress=f"{running['suppress']:.4f}",
+                entangle=f"{running['entangle']:.4f}",
+            )
+            logger.event(
+                "train_step",
+                {
+                    "epoch": epoch,
+                    "step": step,
+                    "steps": len(chunks),
+                    "loss": float(loss.item()),
+                    "refusal": float(loss_refusal.item()),
+                    "suppress": float(loss_suppress.item()),
+                    "entangle": float(loss_entangle.item()),
+                    "running_loss": running["loss"],
+                },
+            )
         denom = max(len(chunks), 1)
         metrics = {k: v / denom for k, v in total.items()}
         logger.event("epoch", {"epoch": epoch, **metrics})

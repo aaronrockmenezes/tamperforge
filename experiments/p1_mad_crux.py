@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
+from tqdm.auto import tqdm
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -245,13 +246,15 @@ def main() -> None:
     judge = OpenRouterJudge(JUDGE_MODEL, json_mode=args.judge_json_mode) if args.judge else None
     conditions: dict[str, Any] = {}
     device_seen = None
-    for name in (
+    condition_order = (
         "base",
         "base_ablated",
         "base_adapter",
         "base_adapter_ablated_full",
         "base_adapter_ablated_adapter_only",
-    ):
+    )
+    for name in tqdm(condition_order, desc="p1 conditions", dynamic_ncols=True):
+        logger.event("p1_condition_dispatch", {"condition": name})
         device_seen, summary = _run_condition(
             name=name,
             args=args,

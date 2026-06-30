@@ -9,6 +9,8 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from tqdm.auto import tqdm
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -77,7 +79,13 @@ def main() -> None:
     work = list(enumerate(rows, start=1))
     with ThreadPoolExecutor(max_workers=max(args.num_workers, 1)) as ex:
         futures = [ex.submit(score_one, item) for item in work]
-        for fut in as_completed(futures):
+        pbar = tqdm(
+            as_completed(futures),
+            total=len(futures),
+            desc="judge",
+            dynamic_ncols=True,
+        )
+        for fut in pbar:
             i, row, result = fut.result()
             done += 1
             parsed = result["parsed"]
@@ -90,10 +98,11 @@ def main() -> None:
             judged.append(out)
             logger.judgment(out)
             logger.event("judge_progress", {"done": done, "total": len(rows), "source_index": i})
-            print(
-                f"[{done}/{len(rows)}] src={i} refusal={parsed.get('refusal')} "
-                f"harmful={parsed.get('harmful_compliance')} rating={parsed.get('rating')}",
-                flush=True,
+            pbar.set_postfix(
+                src=i,
+                refusal=parsed.get("refusal"),
+                harmful=parsed.get("harmful_compliance"),
+                rating=parsed.get("rating"),
             )
 
     n = len(judged)
