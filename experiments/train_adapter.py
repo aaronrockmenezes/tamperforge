@@ -138,6 +138,42 @@ def _entangle_loss(adapter: SafetyAdapter, language_dirs: torch.Tensor) -> torch
     return (1.0 - sims.max(dim=0).values).mean()
 
 
+@torch.no_grad()
+def _kl_vs_base(model, tok, adapter, prompts, device: str, layer: int) -> float:
+    """Mean token-level KL(base || base+adapter) over *prompts*.
+
+    Measures how far the adapter moves the next-token distribution from the
+    original model on benign inputs. Monitor only (not a training loss); want it
+    small so the adapter preserves general capability.
+    """
+    import torch.nn.functional as F
+
+    def hook(module, inp, out):  # noqa: ARG001
+        h = out[0] if isinstance(out, tuple) else out
+        delta = adapter(h.float()).to(h.dtype)
+        return (h + delta,) + out[1:] if isinstance(out, tuple) else h + delta
+
+    total = 0.0
+    count = 0
+    for prompt in prompts:
+        enc = tok.apply_chat_template(
+            [{"role": "user", "content": prompt}],
+            return_tensors="pt", return_dict=True, add_generation_prompt=True,
+        ).to(device)
+        base_logits = model(**enc).logits.float()
+        handle = model.model.layers[layer].register_forward_hook(hook)
+        try:
+            adapted_logits = model(**enc).logits.float()
+        finally:
+            handle.remove()
+        logp_base = F.log_softmax(base_logits, dim=-1)
+        logp_adapt = F.log_softmax(adapted_logits, dim=-1)
+        kl = (logp_base.exp() * (logp_base - logp_adapt)).sum(-1)  # [1, seq]
+        total += float(kl.mean().item())
+        count += 1
+    return total / max(count, 1)
+
+
 def _direction(args, model, tok, device: str, prompts: list[str]) -> torch.Tensor:
     if args.direction_source == "sae":
         sae = load_sae(device="cpu")
@@ -250,12 +286,14 @@ def main() -> None:
             )
         denom = max(len(chunks), 1)
         metrics = {k: v / denom for k, v in total.items()}
+        metrics["kl_vs_base"] = _kl_vs_base(model, tok, adapter, benign, device, args.adapter_layer)
         logger.event("epoch", {"epoch": epoch, **metrics})
         print(f"epoch {epoch}: {metrics}")
 
     w = adapter.W_out.weight.detach().float().cpu()
     cols = w / (w.norm(dim=0, keepdim=True) + 1e-8)
     align = float((lang_dirs @ cols).abs().max(dim=0).values.mean().item())
+    final_kl = _kl_vs_base(model, tok, adapter, benign, device, args.adapter_layer)
     out_path = ROOT / args.out
     out_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save({
@@ -268,6 +306,7 @@ def main() -> None:
         "abliterate_layers": layers,
         "trained_on_abliterated_base": trained_on_abliterated_base,
         "W_out_lang_alignment": align,
+        "kl_vs_base": final_kl,
         "args": vars(args),
     }, out_path)
     summary = {
@@ -275,6 +314,7 @@ def main() -> None:
         "adapter": str(out_path),
         "trained_on_abliterated_base": trained_on_abliterated_base,
         "W_out_lang_alignment": align,
+        "kl_vs_base": final_kl,
     }
     logger.summary(summary)
     print(json.dumps(summary, indent=2))
