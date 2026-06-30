@@ -20,7 +20,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["ruff", "pytest"]
-eval = ["lm-eval>=0.4.9", "vllm"]
+eval = ["lm-eval>=0.4.9"]
+vllm = ["vllm"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
