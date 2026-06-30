@@ -126,11 +126,11 @@ PYTHONPATH=src python experiments/p0_baseline_eval.py \
 ```bash
 lm_eval \
   --model vllm \
-  --model_args pretrained=google/gemma-3-1b-it,dtype=bfloat16,trust_remote_code=True \
+  --model_args pretrained=google/gemma-3-1b-it,dtype=bfloat16,trust_remote_code=True,max_model_len=4096,gpu_memory_utilization=0.65,max_num_seqs=1 \
   --tasks arc_challenge \
   --num_fewshot 25 \
   --limit 10 \
-  --batch_size auto \
+  --batch_size 1 \
   --device cuda:0 \
   --output_path results/lm_eval_smoke_gemma3_1b_it_arc_c_25shot \
   --log_samples
@@ -235,15 +235,19 @@ PYTHONPATH=src python experiments/judge_generations.py \
 
 ## Capability: lm-eval ARC-Challenge
 
+ARC-Challenge uses loglikelihood scoring. On 24GB GPUs, do not let vLLM default
+to Gemma's 32k context or `--batch_size auto`; that can OOM while computing
+prompt logprobs. Keep the command identical across models.
+
 Full ARC-Challenge test split:
 
 ```bash
 lm_eval \
   --model vllm \
-  --model_args pretrained=google/gemma-3-1b-it,dtype=bfloat16,trust_remote_code=True \
+  --model_args pretrained=google/gemma-3-1b-it,dtype=bfloat16,trust_remote_code=True,max_model_len=4096,gpu_memory_utilization=0.65,max_num_seqs=1 \
   --tasks arc_challenge \
   --num_fewshot 25 \
-  --batch_size auto \
+  --batch_size 1 \
   --device cuda:0 \
   --output_path results/lm_eval_base_arc_challenge_25shot_full \
   --log_samples
@@ -252,10 +256,10 @@ lm_eval \
 ```bash
 lm_eval \
   --model vllm \
-  --model_args pretrained=DavidAU/gemma-3-1b-it-heretic-abliterated-uncensored,dtype=bfloat16,trust_remote_code=True \
+  --model_args pretrained=DavidAU/gemma-3-1b-it-heretic-abliterated-uncensored,dtype=bfloat16,trust_remote_code=True,max_model_len=4096,gpu_memory_utilization=0.65,max_num_seqs=1 \
   --tasks arc_challenge \
   --num_fewshot 25 \
-  --batch_size auto \
+  --batch_size 1 \
   --device cuda:0 \
   --output_path results/lm_eval_hf_heretic_arc_challenge_25shot_full \
   --log_samples
@@ -264,10 +268,10 @@ lm_eval \
 ```bash
 lm_eval \
   --model vllm \
-  --model_args pretrained=DavidAU/gemma-3-1b-it-heretic-extreme-uncensored-abliterated,dtype=bfloat16,trust_remote_code=True \
+  --model_args pretrained=DavidAU/gemma-3-1b-it-heretic-extreme-uncensored-abliterated,dtype=bfloat16,trust_remote_code=True,max_model_len=4096,gpu_memory_utilization=0.65,max_num_seqs=1 \
   --tasks arc_challenge \
   --num_fewshot 25 \
-  --batch_size auto \
+  --batch_size 1 \
   --device cuda:0 \
   --output_path results/lm_eval_hf_extreme_arc_challenge_25shot_full \
   --log_samples
@@ -278,11 +282,11 @@ Capped 600-example version, if the bill is getting annoying:
 ```bash
 lm_eval \
   --model vllm \
-  --model_args pretrained=MODEL_ID_OR_PATH,dtype=bfloat16,trust_remote_code=True \
+  --model_args pretrained=MODEL_ID_OR_PATH,dtype=bfloat16,trust_remote_code=True,max_model_len=4096,gpu_memory_utilization=0.65,max_num_seqs=1 \
   --tasks arc_challenge \
   --num_fewshot 25 \
   --limit 600 \
-  --batch_size auto \
+  --batch_size 1 \
   --device cuda:0 \
   --output_path results/lm_eval_RUN_arc_challenge_25shot_limit600 \
   --log_samples
@@ -296,11 +300,11 @@ expensive but more standard for paper tables.
 ```bash
 lm_eval \
   --model vllm \
-  --model_args pretrained=google/gemma-3-1b-it,dtype=bfloat16,trust_remote_code=True \
+  --model_args pretrained=google/gemma-3-1b-it,dtype=bfloat16,trust_remote_code=True,max_model_len=4096,gpu_memory_utilization=0.65,max_num_seqs=1 \
   --tasks mmlu \
   --num_fewshot 5 \
   --limit 600 \
-  --batch_size auto \
+  --batch_size 1 \
   --device cuda:0 \
   --output_path results/lm_eval_base_mmlu_5shot_limit600 \
   --log_samples
@@ -309,11 +313,11 @@ lm_eval \
 ```bash
 lm_eval \
   --model vllm \
-  --model_args pretrained=google/gemma-3-1b-it,dtype=bfloat16,trust_remote_code=True \
+  --model_args pretrained=google/gemma-3-1b-it,dtype=bfloat16,trust_remote_code=True,max_model_len=4096,gpu_memory_utilization=0.65,max_num_seqs=1 \
   --tasks gsm8k \
   --num_fewshot 8 \
   --limit 600 \
-  --batch_size auto \
+  --batch_size 1 \
   --device cuda:0 \
   --output_path results/lm_eval_base_gsm8k_8shot_limit600 \
   --log_samples
