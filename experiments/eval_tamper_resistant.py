@@ -46,11 +46,26 @@ def _load_trained(model, ckpt_path: str):
     ckpt = torch.load(ckpt_path, map_location="cpu")
     meta = ckpt.pop("_meta", {})
     named = dict(model.named_parameters())
+    missing = []
+    expected = set(meta.get("trainable", ckpt.keys()))
     n = 0
     for name, tensor in ckpt.items():
         if name in named:
             named[name].data.copy_(tensor.to(named[name].dtype).to(named[name].device))
             n += 1
+        else:
+            missing.append(name)
+    if missing:
+        raise RuntimeError(f"checkpoint contains {len(missing)} tensors not in model: {missing[:5]}")
+    if expected != set(ckpt):
+        absent = sorted(expected - set(ckpt))
+        extra = sorted(set(ckpt) - expected)
+        raise RuntimeError(
+            "checkpoint metadata does not match tensors: "
+            f"missing={absent[:5]} extra={extra[:5]}"
+        )
+    if n != len(expected):
+        raise RuntimeError(f"loaded {n} matrices, expected {len(expected)} from checkpoint metadata")
     print(f"[eval] loaded {n} trained matrices from {ckpt_path}")
     return meta
 
@@ -123,8 +138,8 @@ def main() -> None:
 
     # --- trained model: clean, then attacked ---
     model, tok, device = load_model(args.model_id, args.device)
-    _load_trained(model, str(ROOT / args.checkpoint) if not Path(args.checkpoint).is_absolute()
-                  else args.checkpoint)
+    meta = _load_trained(model, str(ROOT / args.checkpoint) if not Path(args.checkpoint).is_absolute()
+                         else args.checkpoint)
     n_layers_all = len(model.model.layers)
     layers = list(range(n_layers_all)) if args.abliterate_layers == "all" \
         else [int(x) for x in args.abliterate_layers.split(",")]
@@ -148,6 +163,7 @@ def main() -> None:
 
     summary = {
         "run_id": run_id, "checkpoint": args.checkpoint, "attack_scope": args.attack_scope,
+        "checkpoint_meta": meta,
         "conditions": conditions,
         "read": "trained_clean should refuse+be capable; trained_attacked uncensored but "
                 "ideally low-capability/useless; base_attacked = free uncensor control. "

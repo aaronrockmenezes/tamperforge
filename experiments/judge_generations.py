@@ -19,6 +19,32 @@ from tamperforge.eval.judge import OpenRouterJudge
 from tamperforge.eval.log import RunLogger, make_run_id
 
 
+def _empty_counts() -> dict:
+    return {"n": 0, "harmful": 0, "refused": 0, "parse_failures": 0, "rating_counts": {}}
+
+
+def _add_count(counts: dict, parsed: dict) -> None:
+    counts["n"] += 1
+    counts["harmful"] += int(parsed.get("harmful_compliance") == 1)
+    counts["refused"] += int(parsed.get("refusal") == 1)
+    counts["parse_failures"] += int(
+        parsed.get("harmful_compliance") is None or parsed.get("refusal") is None
+    )
+    rating = str(parsed.get("rating"))
+    counts["rating_counts"][rating] = counts["rating_counts"].get(rating, 0) + 1
+
+
+def _finish_counts(counts: dict) -> dict:
+    n = counts["n"]
+    return {
+        "n": n,
+        "judge_refusal_rate": counts["refused"] / max(n, 1),
+        "judge_asr": counts["harmful"] / max(n, 1),
+        "parse_failures": counts["parse_failures"],
+        "rating_counts": counts["rating_counts"],
+    }
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--generations", required=True)
@@ -29,6 +55,10 @@ def main() -> None:
     ap.add_argument("--judge-max-tokens", type=int, default=256)
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--row-ids", default=None, help="Comma-separated source row i values to judge")
+    ap.add_argument("--condition", default=None,
+                    help="Only judge rows with this condition value.")
+    ap.add_argument("--group-by", default="condition",
+                    help="Also emit grouped summaries for this row field; use '' to disable.")
     ap.add_argument("--num-workers", type=int, default=1)
     args = ap.parse_args()
 
@@ -52,6 +82,8 @@ def main() -> None:
     if args.row_ids:
         keep = {int(x.strip()) for x in args.row_ids.split(",") if x.strip()}
         rows = [row for row in rows if int(row["i"]) in keep]
+    if args.condition:
+        rows = [row for row in rows if row.get("condition") == args.condition]
 
     def score_one(item):
         idx, row = item
@@ -71,10 +103,8 @@ def main() -> None:
         return idx, row, result
 
     judged = []
-    harmful = 0
-    refused = 0
-    parse_fail = 0
-    rating_counts: dict[str, int] = {}
+    overall = _empty_counts()
+    grouped: dict[str, dict] = {}
     done = 0
     work = list(enumerate(rows, start=1))
     with ThreadPoolExecutor(max_workers=max(args.num_workers, 1)) as ex:
@@ -89,11 +119,11 @@ def main() -> None:
             i, row, result = fut.result()
             done += 1
             parsed = result["parsed"]
-            harmful += int(parsed.get("harmful_compliance") == 1)
-            refused += int(parsed.get("refusal") == 1)
-            parse_fail += int(parsed.get("harmful_compliance") is None or parsed.get("refusal") is None)
-            rating = str(parsed.get("rating"))
-            rating_counts[rating] = rating_counts.get(rating, 0) + 1
+            _add_count(overall, parsed)
+            if args.group_by:
+                group = str(row.get(args.group_by, "__missing__"))
+                grouped.setdefault(group, _empty_counts())
+                _add_count(grouped[group], parsed)
             out = {**row, "judge": result}
             judged.append(out)
             logger.judgment(out)
@@ -105,17 +135,16 @@ def main() -> None:
                 rating=parsed.get("rating"),
             )
 
-    n = len(judged)
     summary = {
         "run_id": run_id,
         "generations": str(args.generations),
         "judge_model": args.judge_model,
-        "n": n,
-        "judge_refusal_rate": refused / max(n, 1),
-        "judge_asr": harmful / max(n, 1),
-        "parse_failures": parse_fail,
-        "rating_counts": rating_counts,
+        **_finish_counts(overall),
     }
+    if args.group_by:
+        summary[f"by_{args.group_by}"] = {
+            group: _finish_counts(counts) for group, counts in sorted(grouped.items())
+        }
     path = logger.summary(summary)
     print(json.dumps(summary, indent=2))
     print(f"[saved] {path}")
