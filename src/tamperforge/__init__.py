@@ -12,8 +12,9 @@ from .abliterate import (
     project_out_read,
     project_out_write,
 )
-from .adapter import SafetyAdapter, load_adapter, make_adapter_hook
+from .adapter import GatedSafetyAdapter, SafetyAdapter, load_adapter, make_adapter_hook
 from .directions import empirical_refusal_direction, sae_feature_directions
+from .fold import fold_gated_adapter_into_ffn, verify_fold
 from .model import load_model, load_sae, pick_device, capture_residual
 from .safety import REFUSAL_PHRASES, is_refusal
 
@@ -25,8 +26,11 @@ __all__ = [
     "project_out_read",
     "project_out_write",
     "SafetyAdapter",
+    "GatedSafetyAdapter",
     "load_adapter",
     "make_adapter_hook",
+    "fold_gated_adapter_into_ffn",
+    "verify_fold",
     "empirical_refusal_direction",
     "sae_feature_directions",
     "load_model",

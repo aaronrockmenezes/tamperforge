@@ -41,6 +41,36 @@ class SafetyAdapter(nn.Module):
         return self.alpha * self.W_out(self.gate(self.W_in(h)))
 
 
+class GatedSafetyAdapter(nn.Module):
+    """SwiGLU-shaped safety adapter — foldable into a gated MLP (P1b step B)::
+
+        adapter(h) = alpha * W_down( silu(W_gate(h)) * W_up(h) )
+
+    Same neuron form as the Gemma FFN (``down(silu(gate·h) ⊙ up·h)``), so its
+    ``d_hidden`` neurons concatenate exactly onto the FFN's intermediate neurons
+    via :func:`tamperforge.fold.fold_gated_adapter_into_ffn` — leaving no
+    discrete residual block for an attacker to excise. The plain
+    :class:`SafetyAdapter` (non-gated SiLU MLP) does NOT fold exactly, which is
+    why this variant exists.
+    """
+
+    def __init__(self, d_model: int, d_hidden: int = 256, alpha: float = 1.0) -> None:
+        super().__init__()
+        self.d_model = d_model
+        self.d_hidden = d_hidden
+        self.alpha = alpha
+        self.W_gate = nn.Linear(d_model, d_hidden, bias=False)
+        self.W_up = nn.Linear(d_model, d_hidden, bias=False)
+        self.W_down = nn.Linear(d_hidden, d_model, bias=False)
+        self.act = nn.SiLU()
+        nn.init.normal_(self.W_gate.weight, std=0.01)
+        nn.init.normal_(self.W_up.weight, std=0.01)
+        nn.init.zeros_(self.W_down.weight)
+
+    def forward(self, h: torch.Tensor) -> torch.Tensor:
+        return self.alpha * self.W_down(self.act(self.W_gate(h)) * self.W_up(h))
+
+
 def load_adapter(path: str | Path, device: Optional[str] = None) -> tuple[SafetyAdapter, dict]:
     """Load a ``SafetyAdapter`` checkpoint saved by the training script."""
     if device is None:
