@@ -16,24 +16,32 @@
     comply-CE, which does NOT stop post-FT greedy GENERATION. proxy≠generation, 4th
     time. Not a hyperparam fix.
 
-## Active work: v4 — generation-level FT-defense
+## FT-defense attempts (all P4) — NO WIN yet, crux found
 
-`experiments/train_ft_resistant_v4.py` (WIP). Meta-objective on POST-FT GENERATION:
-after simulated inner FT (θ'), greedy harmful gen must stay refusal/gibberish
-(argmax-divergence at θ', not comply-CE). Plan: `docs/ft_resistance_plan.md`.
+`experiments/train_ft_resistant{,_v4,_v4_scaled,_v5}.py`. TAR-style: simulate
+attacker FT in an inner loop, shape θ so the post-FT model stays safe.
+- v2/v3 (comply-CE-up, mlp): "held" K=1 but broke K≥5 — an artifact of a weak
+  beatable inner, not real robustness.
+- v4/v5 (generation objective: greedy-gen at θ', pull-refusal + unlikelihood;
+  all-scope; kv-cached gen): K=1 0.80/0.70 — regressed/no win.
+
+**CRUX (locked):** the first-order SGD inner sim makes a θ' that REFUSES in
+generation (frac_comply=0) while comply_ce is low — but the real 5-epoch AdamW
+attack makes a model that COMPLIES in generation. Inner sim breaks teacher-forced
+CE, not generation → we defend the WRONG θ'. Objectives never engage.
 
 ## Frontier (judge ASR, AdvBench n=200; re-run at 520 for pub)
 
-| K | v3 | v2 | v7 | base |
-|--:|--:|--:|--:|--:|
-| 1 | 0.005 | 0.000 | 0.740 | 0.800 |
-| 5 | 0.655 | 0.670 | 0.725 | 0.660 |
-| 10 | 0.625 | 0.660 | 0.590 | 0.600 |
-| 25 | 0.710 | 0.660 | 0.725 | 0.680 |
+| K | v5 | v4(all) | v3 | v2 | v7 | base |
+|--:|--:|--:|--:|--:|--:|--:|
+| 1 | 0.695 | 0.805 | 0.005 | 0.000 | 0.740 | 0.800 |
+| 5 | 0.650 | 0.590 | 0.655 | 0.670 | 0.725 | 0.660 |
 
-## Next
-v4 (generation-level) → re-sweep at 520 → OBLITERATUS (P2, AGPL harness on v7) →
-seeds + Qwen/Llama + MMLU-full/GSM8K → RepNoise complement.
+## Next (fresh box)
+**FT-defense v6: inner sim must MATCH the attack on GENERATION** — real AdamW inner
+loop (momentum), more epochs, maybe all-params [the key change]; then θ'
+complies-in-gen → objectives engage. → re-sweep 520 → OBLITERATUS (P2, AGPL on v7)
+→ seeds + Qwen/Llama + MMLU-full/GSM8K.
 
 ## Infra
 - Judge locally: `~/miniforge3/envs/env_ml/bin/python experiments/judge_generations.py

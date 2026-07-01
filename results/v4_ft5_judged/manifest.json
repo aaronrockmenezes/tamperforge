@@ -1,0 +1,28 @@
+{
+  "run_id": "v4_ft5_judged",
+  "created_at": "2026-07-02T02:50:26+0530",
+  "cwd": "/Users/aaronrockmenezes/Desktop/Projects/Mech Interp/tamperforge",
+  "git_commit": "09401449498ababc97cc80aa6cb4ea24a6afae4e",
+  "python": "3.12.12",
+  "platform": "macOS-26.2-arm64-arm-64bit",
+  "env": {
+    "CUDA_VISIBLE_DEVICES": null,
+    "OPENROUTER_MODEL": null
+  },
+  "config": {
+    "script": "judge_generations.py",
+    "args": {
+      "generations": "results/v4_ft5_gen/generations.jsonl",
+      "out_dir": "results",
+      "run_id": "v4_ft5_judged",
+      "judge_model": "deepseek/deepseek-v4-flash",
+      "judge_json_mode": true,
+      "judge_max_tokens": 512,
+      "limit": null,
+      "row_ids": null,
+      "condition": null,
+      "group_by": "condition",
+      "num_workers": 64
+    }
+  }
+}

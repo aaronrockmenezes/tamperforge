@@ -1,0 +1,49 @@
+{
+  "run_id": "_smoke_v4s",
+  "created_at": "2026-07-01T21:19:53+0000",
+  "cwd": "/workspace/tamperforge",
+  "git_commit": "a7b4548c054cd29256e0e77d908627b825ce3f78",
+  "python": "3.12.13",
+  "platform": "Linux-5.15.0-139-generic-x86_64-with-glibc2.39",
+  "env": {
+    "CUDA_VISIBLE_DEVICES": null,
+    "OPENROUTER_MODEL": null
+  },
+  "config": {
+    "script": "train_ft_resistant_v4_scaled.py",
+    "args": {
+      "out": "outputs/_smoke_v4s.pt",
+      "out_dir": "results",
+      "run_id": "_smoke_v4s",
+      "model_id": "google/gemma-3-1b-it",
+      "device": null,
+      "init_checkpoint": "outputs/tamper_resistant_p1b_v7.pt",
+      "train_scope": "all",
+      "layers": "all",
+      "demos": "results/p1b_v7_base_att_gen/generations.jsonl",
+      "n_demos": 8,
+      "inner_demos": 4,
+      "inner_epochs": 2,
+      "inner_lr": 0.0002,
+      "attack_ensemble": false,
+      "gen_prompts": 2,
+      "gen_tokens": 16,
+      "unlike_margin": 8.0,
+      "lambda_unlike": 2.0,
+      "lambda_refuse_pull": 1.0,
+      "lambda_safe": 1.0,
+      "lambda_reg": 0.05,
+      "n_task_train": 4000,
+      "n_task_eval": 400,
+      "n_harmful": 520,
+      "task_batch": 4,
+      "refusal_batch": 4,
+      "steps": 2,
+      "eval_every": 2,
+      "no_grad_checkpoint": false,
+      "smoke": true,
+      "lr": 1e-05,
+      "seed": 42
+    }
+  }
+}
