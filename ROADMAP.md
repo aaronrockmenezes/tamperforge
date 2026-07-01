@@ -179,10 +179,21 @@ All later numbers (and any re-run of P1/P2) use this harness.
 
 ## P4 — Fine-tuning resistance (T3) — characterize, don't promise
 
-Reproduce D8i cleanly with the P3 harness (how few examples bypass?). Then
-attempt adversarial-FT training (TAR-style meta-objective). Honest target:
-shift FT cost (e.g. 5 → N examples / more compute), not "solved." Report on the
-cost frontier. Position vs TAR + RepNoise.
+**Attack characterized (2026-07-01): NEGATIVE for v7.** FT of v7 on K=1 harmful
+demo restores coherent-harmful (judge ASR 0.013→0.740), tracking the base control
+(→0.800) at every K∈{1,5,10,25}. Abliteration-robust ≠ FT-robust: the MAD trap
+only fires on ablation, FT retrains around it. Table in
+`docs/results_2026_07_01.md` (P4 section).
+
+**Now the active thread (user priority): make the method FT-resistant.** Not
+tamper-proof — shift the frontier so it doesn't break at K=1. Plan in
+`docs/ft_resistance_plan.md`: TAR-style meta-training (simulate attacker FT in the
+inner loop, shape weights so the FT'd model stays useless-on-harm; reuse P1b-A
+functional_call plumbing + argmax-divergence collapse loss + ensemble-over-attackers),
+optionally + RepNoise-style harmful-rep scrambling. Metric = re-run the exact P4
+sweep; go/no-go K=1 ASR < 0.20 at ARC ≥ 0.30. Mandatory adaptive-attacker sweep
+(vary lr/epochs/held-out demos) to rule out gradient-masking. Position vs TAR +
+RepNoise. OBLITERATUS (P2) deferred behind this.
 
 ---
 
