@@ -29,10 +29,10 @@ pushgens(){
 
 # tag:checkpoint-path ("" path = base control, no --checkpoint)
 GROUPS=(
-  "v5:outputs/ft_resistant_p4_v5.pt"
-  "v3:outputs/ft_resistant_p4_v3.pt"
-  "base:"
-  "v2:outputs/ft_resistant_p4_v2.pt"      # tail: only if time
+  "v5:outputs/ft_resistant_p4_v5.pt"        # best FT-defense (all-scope, gen-obj)
+  "v7:outputs/tamper_resistant_p1b_v7.pt"   # abliteration PRODUCT -> honest FT-cost baseline
+  "base:"                                    # control (bare gemma)
+  "v3:outputs/ft_resistant_p4_v3.pt"        # tail: MLP-scope FT-defense, completeness
 )
 
 for spec in "${GROUPS[@]}"; do
