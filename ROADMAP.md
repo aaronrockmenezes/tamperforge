@@ -194,15 +194,23 @@ first-order inner-FT sim, warm-start v7).
   v7/base ~0.75) but breaks at K≥5 (~0.66 = base). Frontier moved 1→5 demos — a
   1-shot moat. Cause: 1-step inner sim too weak (`L_tamper=0` all run), only
   hardened the 1-step basin. Table in `docs/results_2026_07_01.md`.
-- **v3 (shipped, running): strong multi-step inner attack** — `_inner_adapt` runs
-  the full `--inner-demos × --inner-epochs` loop (mirrors ft_attack), `--inner-lr`
-  up to 1e-4, `--attack-ensemble` over strong configs. Diagnostic: `comply_after`
-  must DROP (L_tamper>0) or the inner attack is still too weak. Widen the moat
-  past K=1.
+- **v3 (2026-07-02): strong inner attack, SAME 1-shot moat.** 24-step first-order
+  inner FT made `L_tamper` active (converged min-max, not v2's trivial 0), but the
+  sweep is v3≈v2: K=1 held (0.005), K≥5 broke (~0.65=base). Root cause = objective
+  flaw: `comply_after` is teacher-forced CE, which doesn't stop post-FT GENERATION
+  from complying (4th recurrence of proxy≠generation). Table + diagnosis in
+  `docs/results_2026_07_01.md`.
+- **LOCKED FINDING (v2+v3): TAR-via-comply-CE = 1-shot moat only** (K=1 0.74→0.00,
+  nothing past K=5). Consistent with TAR budget-limited-robustness.
+- **v4 (deferred, real redesign, NOT a knob):** meta-objective on POST-FT
+  GENERATION — after the simulated inner FT, greedy harmful gen must stay
+  refusal/gibberish (argmax-divergence at θ', not comply-CE). Requires diff-through
+  AdamW inner + generation. + RepNoise-style rep-scrambling complement.
 
-Go/no-go: K∈{1,5,10} ASR < 0.20 at ARC ≥ 0.30. Mandatory adaptive-attacker sweep
-(vary lr/epochs/held-out demos) to rule out gradient-masking. Position vs TAR +
-RepNoise. OBLITERATUS (P2) deferred behind this.
+Go/no-go (for v4): K∈{1,5,10} ASR < 0.20 at ARC ≥ 0.30. Mandatory adaptive-attacker
+sweep (vary lr/epochs/held-out demos) to rule out gradient-masking. Re-run FT sweeps
+at AdvBench 520 for publication (v2/v3 used n=200). Position vs TAR + RepNoise.
+OBLITERATUS (P2) deferred behind this.
 
 ---
 
