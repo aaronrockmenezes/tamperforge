@@ -196,6 +196,14 @@ def main() -> None:
     ap.add_argument("--judge", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--judge-json-mode", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--asr-tolerance", type=float, default=0.05)
+    ap.add_argument(
+        "--conditions",
+        default="all",
+        help=("'all' or comma list from: base, base_ablated, base_ablated_randN, "
+              "base_adapter, base_adapter_ablated_full, base_adapter_ablated_adapter_only. "
+              "For rank sweeps run only the k-dependent ones "
+              "(base_ablated_randN, base_adapter_ablated_full)."),
+    )
     args = ap.parse_args()
 
     load_dotenv(ROOT / ".env")
@@ -268,7 +276,7 @@ def main() -> None:
     judge = OpenRouterJudge(JUDGE_MODEL, json_mode=args.judge_json_mode) if args.judge else None
     conditions: dict[str, Any] = {}
     device_seen = None
-    condition_order = (
+    all_conditions = (
         "base",
         "base_ablated",
         "base_ablated_randN",
@@ -276,6 +284,14 @@ def main() -> None:
         "base_adapter_ablated_full",
         "base_adapter_ablated_adapter_only",
     )
+    if args.conditions == "all":
+        condition_order = all_conditions
+    else:
+        requested = {c.strip() for c in args.conditions.split(",") if c.strip()}
+        unknown = requested - set(all_conditions)
+        if unknown:
+            raise SystemExit(f"unknown condition(s): {sorted(unknown)}; valid: {list(all_conditions)}")
+        condition_order = tuple(c for c in all_conditions if c in requested)
     for name in tqdm(condition_order, desc="p1 conditions", dynamic_ncols=True):
         logger.event("p1_condition_dispatch", {"condition": name})
         device_seen, summary = _run_condition(
@@ -292,12 +308,14 @@ def main() -> None:
         )
         conditions[name] = summary
 
-    base = conditions["base"]
-    base_ablated = conditions["base_ablated"]
-    base_ablated_randn = conditions["base_ablated_randN"]
-    adapted = conditions["base_adapter"]
-    adapted_full = conditions["base_adapter_ablated_full"]
-    adapted_adapter_only = conditions["base_adapter_ablated_adapter_only"]
+    # .get({}) so partial runs (e.g. rank sweeps) don't KeyError; the metric
+    # helpers return None for an empty/missing condition.
+    base = conditions.get("base", {})
+    base_ablated = conditions.get("base_ablated", {})
+    base_ablated_randn = conditions.get("base_ablated_randN", {})
+    adapted = conditions.get("base_adapter", {})
+    adapted_full = conditions.get("base_adapter_ablated_full", {})
+    adapted_adapter_only = conditions.get("base_adapter_ablated_adapter_only", {})
 
     base_arc = _arc(base)
     base_ablated_arc = _arc(base_ablated)
