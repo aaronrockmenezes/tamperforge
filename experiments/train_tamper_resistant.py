@@ -107,7 +107,10 @@ def _lm_loss(model, tok, texts, device, overrides=None, max_len: int = 256) -> t
     return total / max(len(texts), 1)
 
 
-def _refusal_loss(model, tok, pairs, device) -> torch.Tensor:
+def _refusal_loss(model, tok, pairs, device, overrides=None) -> torch.Tensor:
+    """Teacher-forced CE on (harmful prompt -> canned refusal). Low = model
+    refuses well. overrides -> functional_call (the ablated model), used to
+    check whether ablation REMOVES the refusal (we want it high there)."""
     total = torch.zeros((), device=device)
     for prompt, response in pairs:
         prefix = tok.apply_chat_template([{"role": "user", "content": prompt}],
@@ -116,7 +119,11 @@ def _refusal_loss(model, tok, pairs, device) -> torch.Tensor:
         pre = tok(prefix, return_tensors="pt")["input_ids"]
         labels = full["input_ids"].clone()
         labels[:, : pre.shape[1]] = -100
-        total = total + model(**full, labels=labels).loss
+        if overrides is None:
+            total = total + model(**full, labels=labels).loss
+        else:
+            total = total + functional_call(model, overrides, args=(),
+                                            kwargs={**full, "labels": labels}).loss
     return total / max(len(pairs), 1)
 
 
@@ -156,6 +163,10 @@ def main() -> None:
                          "absolute-badness collapses to killing the whole model.")
     ap.add_argument("--lambda-safe", type=float, default=1.0)
     ap.add_argument("--lambda-gib", type=float, default=1.0)
+    ap.add_argument("--lambda-uncensor", type=float, default=1.0,
+                    help="couple safety to d: the ABLATED model must FAIL to refuse.")
+    ap.add_argument("--uncensor-margin", type=float, default=4.0,
+                    help="push ablated refusal-loss >= this (ablation removes refusal).")
     ap.add_argument("--lambda-reg", type=float, default=0.05)
     # data scale
     ap.add_argument("--n-task-train", type=int, default=4000)
@@ -239,16 +250,20 @@ def main() -> None:
         opt.zero_grad(set_to_none=True)
         overrides = _ablated_overrides(model, d, layers, read_p, write_p)
         L_task = _lm_loss(model, tok, task_b, device)
-        L_safe = _refusal_loss(model, tok, ref_b, device)
+        L_safe = _refusal_loss(model, tok, ref_b, device)                       # clean refuses
+        ref_abl = _refusal_loss(model, tok, ref_b, device, overrides=overrides)  # ablated: should NOT refuse
         L_abl = _lm_loss(model, tok, task_b, device, overrides=overrides)
-        gap = L_abl - L_task                              # selectivity: ablated worse than clean
+        gap = L_abl - L_task                              # selectivity: ablated worse than clean at prose
         L_gib = torch.relu(args.gap_target - gap)         # want gap >= gap_target
+        L_uncensor = torch.relu(args.uncensor_margin - ref_abl)  # want ablated bad at refusing
         L_reg = sum((dict(model.named_parameters())[n] - W0[n]).pow(2).mean() for n in trainable)
-        loss = L_task + args.lambda_safe * L_safe + args.lambda_gib * L_gib + args.lambda_reg * L_reg
+        loss = (L_task + args.lambda_safe * L_safe + args.lambda_gib * L_gib
+                + args.lambda_uncensor * L_uncensor + args.lambda_reg * L_reg)
         loss.backward()
         opt.step()
         m = {k: v.item() for k, v in {"loss": loss, "L_task": L_task, "L_safe": L_safe,
-                                      "L_abl": L_abl, "L_gib": L_gib, "L_reg": L_reg}.items()}
+                                      "ref_abl": ref_abl, "L_abl": L_abl, "L_gib": L_gib,
+                                      "L_uncensor": L_uncensor, "L_reg": L_reg}.items()}
         logger.event("step", {"step": step, **m})
 
         if step % args.eval_every == 0 or step == args.steps:
@@ -262,8 +277,9 @@ def main() -> None:
                                              device, overrides)
             logger.event("eval", {"step": step, "L_task_eval": Lte, "L_abl_eval": Lae,
                                    "gap_eval": Lae - Lte})
-            print(f"\nstep {step}: train L_task={m['L_task']:.3f} L_abl={m['L_abl']:.3f} "
-                  f"gap={m['L_abl']-m['L_task']:+.3f} L_safe={m['L_safe']:.3f} | "
+            print(f"\nstep {step}: L_task={m['L_task']:.3f} L_abl={m['L_abl']:.3f} "
+                  f"gap={m['L_abl']-m['L_task']:+.3f} | refuse clean={m['L_safe']:.2f} "
+                  f"ablated={m['ref_abl']:.2f} (want ablated HIGH) | "
                   f"HELD-OUT L_task={Lte:.3f} L_abl={Lae:.3f} gap={Lae-Lte:+.3f}")
             print(f"  [ablated gen] {gen[:180]!r}")
 
