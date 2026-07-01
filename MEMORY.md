@@ -37,11 +37,17 @@ CE, not generation → we defend the WRONG θ'. Objectives never engage.
 | 1 | 0.695 | 0.805 | 0.005 | 0.000 | 0.740 | 0.800 |
 | 5 | 0.650 | 0.590 | 0.655 | 0.670 | 0.725 | 0.660 |
 
-## Next (fresh box)
-**FT-defense v6: inner sim must MATCH the attack on GENERATION** — real AdamW inner
-loop (momentum), more epochs, maybe all-params [the key change]; then θ'
-complies-in-gen → objectives engage. → re-sweep 520 → OBLITERATUS (P2, AGPL on v7)
-→ seeds + Qwen/Llama + MMLU-full/GSM8K.
+## Next (fresh box) — see `docs/research_directions_2026_07_02.md`
+Chosen program: **capability moat around the safe basin** (pure open-weight, target
+abliteration-resist + FT cost ≥ SOTA dozens–hundreds). Build order:
+1. **TAR done right (Patcher-style)** — real AdamW all-param inner + generation
+   objective [fixes our inner-sim≠attack crux]. Re-sweep K∈{1..100}.
+2. **MAD-on-the-gradient** — finite-diff: any comply-FT step must hurt capability.
+3. **Rep-rerouting + deepen safety** (circuit-breaker style), compose with v7.
+4. **Moonshot:** engineer loss landscape (sharpness asymmetry / mode-connectivity /
+   reachability regularizer) so AdamW can't crawl out of safe basin.
+Metrics: judge-ASR vs K to 100+, abliteration battery, adaptive-attacker sweep,
+MMLU/GSM8K. Then OBLITERATUS (P2), seeds, Qwen/Llama.
 
 ## Infra
 - Judge locally: `~/miniforge3/envs/env_ml/bin/python experiments/judge_generations.py
