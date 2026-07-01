@@ -31,7 +31,7 @@ MA="dtype=bfloat16,trust_remote_code=True,max_model_len=4096,gpu_memory_utilizat
 MMLU_SUBJ="mmlu_high_school_biology,mmlu_college_computer_science,mmlu_abstract_algebra,mmlu_philosophy,mmlu_world_religions,mmlu_high_school_us_history,mmlu_econometrics,mmlu_sociology,mmlu_professional_medicine,mmlu_business_ethics"
 capeval(){
   /venv/main/bin/lm_eval --model vllm --model_args "pretrained=$1,$MA" \
-    --tasks arc_challenge --num_fewshot 0 --batch_size auto --limit 400 \
+    --tasks arc_challenge --num_fewshot 0 --batch_size auto \
     --output_path "results/$2_arc" 2>&1 | tail -3
   /venv/main/bin/lm_eval --model vllm --model_args "pretrained=$1,$MA" \
     --tasks "$MMLU_SUBJ" --num_fewshot 0 --batch_size auto \
