@@ -23,7 +23,7 @@ import random
 
 def load_task_corpus(n_train: int = 4000, n_eval: int = 400, min_chars: int = 200,
                      max_chars: int = 1200, seed: int = 42,
-                     dataset: str = "wikitext", config: str = "wikitext-103-raw-v1"):
+                     dataset: str = "Salesforce/wikitext", config: str = "wikitext-103-raw-v1"):
     """Return (train_texts, eval_texts) of general-English paragraphs.
 
     Filters to paragraphs in [min_chars, max_chars]; disjoint train/eval by index.
