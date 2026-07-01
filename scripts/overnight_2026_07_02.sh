@@ -18,11 +18,25 @@ DEMOS=results/p1b_v7_base_att_gen/generations.jsonl
 KS="1 5 10 25 50 100 200"
 
 ts(){ date +%H:%M:%S; }
+# AdvBench gens (judge local). vLLM backend REQUIRES --n-arc 0 (capability via lm_eval).
 ftgen(){ $PY experiments/p0_baseline_eval.py --backend vllm --model-id "$1" \
-   --advbench-source walledai --n-advbench 520 --n-arc 0 --max-new-tokens 128 \
-   --max-length 4096 --run-id "$2"; }
+   --advbench-source walledai --n-advbench 520 --n-arc 0 \
+   --max-new-tokens 128 --max-length 4096 --run-id "$2"; }
+# capability via lm_eval (MAD 2nd axis: FT'd model capable, or dumb?). set +e =
+# a failure here won't kill the run (gens already saved). ARC full-ish (limit 400)
+# + MMLU (limit 10/subtask x57 = 570 Q; mmlu is a GROUP so limit is PER-subtask).
+MA="dtype=bfloat16,trust_remote_code=True,max_model_len=4096,gpu_memory_utilization=0.9,max_num_seqs=64"
+capeval(){
+  /venv/main/bin/lm_eval --model vllm --model_args "pretrained=$1,$MA" \
+    --tasks arc_challenge --num_fewshot 0 --batch_size auto --limit 400 \
+    --output_path "results/$2_arc" 2>&1 | tail -3
+  /venv/main/bin/lm_eval --model vllm --model_args "pretrained=$1,$MA" \
+    --tasks mmlu --num_fewshot 0 --batch_size auto --limit 10 \
+    --output_path "results/$2_mmlu" 2>&1 | tail -3
+}
 pushgens(){
-  git add -f results/night_*_gen/generations.jsonl overnight/*.log 2>/dev/null
+  git add -f results/night_*_gen/generations.jsonl results/night_*_gen/summary.json \
+             results/night_*_cap_arc results/night_*_cap_mmlu overnight/*.log 2>/dev/null
   git commit -q -m "overnight: $1 gens ($(ts))" 2>/dev/null
   git push origin main 2>/dev/null && echo "[$(ts)] pushed: $1" || echo "[$(ts)] push failed (retry next): $1"
 }
@@ -56,7 +70,9 @@ for spec in "${GROUPS[@]}"; do
     fi
     echo "---- [$(ts)] $tag K=$K : GEN 520 ----"
     ftgen "$out" "night_${tag}_ft${K}_gen"
-    rm -rf "$out"   # reclaim disk (FT'd HF dir ~1.9G; gens.jsonl already saved)
+    echo "---- [$(ts)] $tag K=$K : CAP (ARC+MMLU) ----"
+    capeval "$out" "night_${tag}_ft${K}_cap"
+    rm -rf "$out"   # reclaim disk (FT'd HF dir ~1.9G; gens + cap json already saved)
   done
   pushgens "$tag"
 done
