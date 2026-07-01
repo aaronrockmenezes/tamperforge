@@ -1,0 +1,26 @@
+{
+  "run_id": "p1_cleanbase_rank8_judged",
+  "created_at": "2026-07-01T06:19:47+0530",
+  "cwd": "/Users/aaronrockmenezes/Desktop/Projects/Mech Interp/tamperforge",
+  "git_commit": "d3c20043121b9b1c144a38f0e9b2eecda43b580f",
+  "python": "3.12.12",
+  "platform": "macOS-26.2-arm64-arm-64bit",
+  "env": {
+    "CUDA_VISIBLE_DEVICES": null,
+    "OPENROUTER_MODEL": null
+  },
+  "config": {
+    "script": "judge_generations.py",
+    "args": {
+      "generations": "results/p1_cleanbase_rank8/generations.jsonl",
+      "out_dir": "results",
+      "run_id": "p1_cleanbase_rank8_judged",
+      "judge_model": "deepseek/deepseek-v4-flash",
+      "judge_json_mode": true,
+      "judge_max_tokens": 512,
+      "limit": null,
+      "row_ids": null,
+      "num_workers": 64
+    }
+  }
+}

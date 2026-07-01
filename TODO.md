@@ -31,11 +31,29 @@ done
 
 Already copied local: `p1_cleanbase_nojudge/`, `p1_cleanbase_nojudge_v2/`.
 
-## 2. The rank sweep (THE decisive experiment)
+## 2. Rank sweep — clean base: DONE (entanglement proven)
 
-Question: at the *smallest* k where ablating k adapter dirs removes safety
-(ASR ~0.68 like bare), is the entangled-k capability much worse than random-k?
-If yes -> entanglement real. If no window -> thesis needs rethink.
+Clean-base sweep complete (`results/p1_cleanbase_{reference,rank1..32}/`, judged).
+Entangled PPL 14.8→9513 vs random 13.5→24.5 (~400x at k=32) — entanglement
+mechanism confirmed. Safety never dropped (native refusal masks it on clean
+base), so this proves the mechanism, not the defense. Full table in
+`docs/results_2026_07_01.md`. **The defense test is the ablbase sweep below (§2b).**
+
+## 2b. TOMORROW — ablbase sweep (THE defense test)
+
+Native refusal stripped, adapter is sole safety. One command:
+
+```bash
+cd /workspace/tamperforge && git pull --ff-only
+bash scripts/run_p1_ablbase_sweep.sh
+```
+
+Runs reference + k in {1,2,4,8,16,32,64} with `--adapter-base native_ablated`.
+~45 min. Then copy local (§1 pattern for `p1_ablbase_*`) and judge (§3).
+Verdict: does entangled judge ASR rise ONLY once PPL is already destroyed?
+Yes -> uncensoring costs capability -> defense holds.
+
+### old sweep commands (for reference)
 
 `git pull --ff-only` on vast first (uses new `--conditions` flag).
 
