@@ -1,0 +1,43 @@
+{
+  "run_id": "baseline_hf_davidau_heretic_uncensored_nojudge",
+  "created_at": "2026-06-30T21:39:51+0530",
+  "cwd": "/Users/aaronrockmenezes/Desktop/Projects/Mech Interp/tamperforge",
+  "git_commit": "a1851b9304428be342cf52f539d828e23b3a4af6",
+  "python": "3.12.12",
+  "platform": "macOS-26.2-arm64-arm-64bit",
+  "env": {
+    "CUDA_VISIBLE_DEVICES": null,
+    "OPENROUTER_MODEL": null
+  },
+  "config": {
+    "script": "p0_baseline_eval.py",
+    "args": {
+      "out_dir": "results",
+      "run_id": "baseline_hf_davidau_heretic_uncensored_nojudge",
+      "n_advbench": 100,
+      "n_arc": 100,
+      "n_mmlu_per_subject": 0,
+      "max_new_tokens": 128,
+      "judge": false,
+      "judge_model": "deepseek/deepseek-v4-flash",
+      "judge_json_mode": true,
+      "model_id": "DavidAU/gemma-3-1b-it-heretic-abliterated-uncensored",
+      "device": null
+    },
+    "eval_config": {
+      "n_advbench": 100,
+      "n_arc": 100,
+      "n_mmlu_per_subject": 1,
+      "seed": 42,
+      "max_new_tokens": 128,
+      "run_mmlu": false,
+      "run_judge": false,
+      "mmlu_subjects": [
+        "high_school_biology",
+        "college_computer_science",
+        "abstract_algebra",
+        "professional_law"
+      ]
+    }
+  }
+}

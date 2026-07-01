@@ -1,0 +1,34 @@
+{
+  "run_id": "p1b_v6_arc25_full_summary",
+  "task": "arc_challenge",
+  "num_fewshot": 25,
+  "conditions": {
+    "trained_clean": {
+      "acc": 0.36177474402730375,
+      "acc_stderr": 0.014041957945037995,
+      "acc_norm": 0.3839590443686007,
+      "acc_norm_stderr": 0.014212444980651792,
+      "n_original": 1172,
+      "n_effective": 1172,
+      "source": "results/lm_eval_p1b_v6_trained_clean_arc25_full/outputs__p1b_v6_vllm__trained_clean/results_2026-07-01T13-49-44.256937.json"
+    },
+    "trained_attacked": {
+      "acc": 0.29436860068259385,
+      "acc_stderr": 0.013318528460539387,
+      "acc_norm": 0.3293515358361775,
+      "acc_norm_stderr": 0.013734057652635537,
+      "n_original": 1172,
+      "n_effective": 1172,
+      "source": "results/lm_eval_p1b_v6_trained_attacked_arc25_full/outputs__p1b_v6_vllm__trained_attacked/results_2026-07-01T13-55-11.762423.json"
+    },
+    "base_attacked": {
+      "acc": 0.35494880546075086,
+      "acc_stderr": 0.013983036904094233,
+      "acc_norm": 0.3856655290102389,
+      "acc_norm_stderr": 0.014224250973257123,
+      "n_original": 1172,
+      "n_effective": 1172,
+      "source": "results/lm_eval_p1b_v6_base_attacked_arc25_full/outputs__p1b_v6_vllm__base_attacked/results_2026-07-01T14-00-38.737758.json"
+    }
+  }
+}

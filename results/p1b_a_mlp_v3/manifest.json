@@ -1,0 +1,42 @@
+{
+  "run_id": "p1b_a_mlp_v3",
+  "created_at": "2026-07-01T11:10:41+0000",
+  "cwd": "/workspace/tamperforge",
+  "git_commit": "fd85b64df8f974023f21550a84f5657471451876",
+  "python": "3.12.13",
+  "platform": "Linux-5.15.0-139-generic-x86_64-with-glibc2.39",
+  "env": {
+    "CUDA_VISIBLE_DEVICES": null,
+    "OPENROUTER_MODEL": null
+  },
+  "config": {
+    "script": "train_tamper_resistant.py",
+    "args": {
+      "out": "outputs/tamper_resistant_p1b.pt",
+      "out_dir": "results",
+      "run_id": "p1b_a_mlp_v3",
+      "model_id": "google/gemma-3-1b-it",
+      "device": null,
+      "abliterate_layers": "all",
+      "train_scope": "mlp",
+      "direction_layer": 13,
+      "n_direction": 256,
+      "recompute_direction_every": 25,
+      "gap_target": 4.0,
+      "lambda_safe": 1.0,
+      "lambda_gib": 1.0,
+      "lambda_reg": 0.2,
+      "n_task_train": 4000,
+      "n_task_eval": 400,
+      "n_harmful": 520,
+      "n_benign": 1000,
+      "task_batch": 4,
+      "refusal_batch": 4,
+      "steps": 600,
+      "eval_every": 25,
+      "smoke": false,
+      "lr": 5e-06,
+      "seed": 42
+    }
+  }
+}

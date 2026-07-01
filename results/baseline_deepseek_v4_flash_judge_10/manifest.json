@@ -1,0 +1,25 @@
+{
+  "run_id": "baseline_deepseek_v4_flash_judge_10",
+  "created_at": "2026-06-30T19:58:10+0530",
+  "cwd": "/Users/aaronrockmenezes/Desktop/Projects/Mech Interp/tamperforge",
+  "git_commit": "a1851b9304428be342cf52f539d828e23b3a4af6",
+  "python": "3.12.12",
+  "platform": "macOS-26.2-arm64-arm-64bit",
+  "env": {
+    "CUDA_VISIBLE_DEVICES": null,
+    "OPENROUTER_MODEL": null
+  },
+  "config": {
+    "script": "judge_generations.py",
+    "args": {
+      "generations": "results/baseline_local_nojudge/generations.jsonl",
+      "out_dir": "results",
+      "run_id": "baseline_deepseek_v4_flash_judge_10",
+      "judge_model": "deepseek/deepseek-v4-flash",
+      "judge_json_mode": true,
+      "judge_max_tokens": 256,
+      "limit": 10,
+      "num_workers": 1
+    }
+  }
+}

@@ -1,0 +1,1 @@
+{"time": 1782835861.137826, "event": "condition_start", "condition": "base", "config": {"n_advbench": 100, "n_arc": 100, "n_mmlu_per_subject": 1, "seed": 42, "max_new_tokens": 128, "run_mmlu": false, "run_judge": false, "mmlu_subjects": ["high_school_biology", "college_computer_science", "abstract_algebra", "professional_law"]}}

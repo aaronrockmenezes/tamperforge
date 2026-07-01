@@ -1,0 +1,31 @@
+{
+  "run_id": "eval_p1b_v7",
+  "created_at": "2026-07-01T17:02:28+0000",
+  "cwd": "/workspace/tamperforge",
+  "git_commit": "62961275a39f659dd2e497a1fb4b47f9e7f87a38",
+  "python": "3.12.13",
+  "platform": "Linux-5.15.0-139-generic-x86_64-with-glibc2.39",
+  "env": {
+    "CUDA_VISIBLE_DEVICES": null,
+    "OPENROUTER_MODEL": null
+  },
+  "config": {
+    "script": "eval_tamper_resistant.py",
+    "args": {
+      "checkpoint": "outputs/tamper_resistant_p1b_v7.pt",
+      "model_id": "google/gemma-3-1b-it",
+      "device": null,
+      "attack_scope": "all",
+      "abliterate_layers": "all",
+      "direction_layer": 13,
+      "n_direction": 256,
+      "n_adv": 100,
+      "n_arc": 100,
+      "n_mcq": 25,
+      "max_new_tokens": 128,
+      "advbench_source": "walledai",
+      "advbench_split": "train",
+      "run_id": "eval_p1b_v7"
+    }
+  }
+}
