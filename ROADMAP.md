@@ -22,7 +22,7 @@ Status: **done** — revise as understanding sharpens.
 
 ---
 
-## P1 — Empirical MAD crux  🔴 GO/NO-GO
+## P1 — Empirical MAD crux  🟡 POC PASS (mechanism), ceiling found
 
 **Question:** after training an adapter on clean Gemma to couple refusal behavior
 to language/capability directions, does ablating the adapted model's adapter
@@ -53,29 +53,66 @@ ASR. **Fail:** no gap → thesis dead → pivot to "costly-to-abliterate" framin
 **Output:** `results/<run_id>/summary.json`, `generations.jsonl`, `events.jsonl`,
 and optional `judgments.jsonl`.
 
-**Current script:** `experiments/p1_mad_crux.py` with
-`--abliterate-layers all` as the default.
+**Current script:** `experiments/p1_mad_crux.py` (6 conditions incl the
+`base_ablated_randN` direction-count control, `--conditions` subset flag,
+`--adapter-attack-rank` sweep, `--adapter-base native_ablated`).
 
-**Current blocker before P1:** finish P0 external baselines on Vast:
-
-- DeepSeek V4 Flash full judge for base, HF heretic, HF extreme.
-- `lm_eval --model vllm` ARC-Challenge 25-shot full for the same three models.
-- Update `docs/results_2026_07_01.md` from the resulting summaries.
+**RESULT (2026-07-01):** POC pass on the *mechanism*, ceiling on the *defense*.
+- P0 done: cheap uncensoring is ~free today (heretic judge ASR 0.886 at ARC ≥ base).
+- Clean-base rank sweep: entanglement PROVEN — ablating adapter W_out dirs drives
+  PPL 14.8→9513 vs random dirs 13.5→24.5 (~400× at k=32). Confound dead. Safety
+  never dropped (native refusal masks it on clean base) → mechanism, not defense.
+- Abliterated-base sweep (`--adapter-base native_ablated`, the product): crossover
+  at k=4 — ablating the entangled adapter uncensors (judge ASR 0.72) at capability
+  cost (PPL 13→23.5, ARC 0.43→0.34) while the bare attack uncensors free and
+  random-k is untouched. That is the MAD property.
+- **Ceiling:** the attacker's crack point (k=4) yields COHERENT, actionable
+  harmful output — a usable model. Prose-PPL rises but generations stay fluent
+  (prose-PPL ≠ generation coherence). So the adapter proves "uncensoring costs
+  capability" but does not yet yield "uncensoring gives a useless model." That
+  gap is P1b's job. Full curve + tables in `docs/results_2026_07_01.md`.
 
 ---
 
-## P1b — Block vs distributed entanglement
+## P1b — From removable adapter to un-excisable, gibberish-on-attack  🔵 IN PROGRESS
 
-Only if P1 passes. Compare:
-- **Block:** single SiLU-MLP adapter at L13 (excisable → T0 only).
-- **Distributed:** whole-model post-training pass entangling refusal↔capability
-  across layers (no discrete excision point → defends T1).
+Two prototype weaknesses to close (see `docs/p1b_plan.md`):
+1. adapter is a removable block (attacker deletes it) → fold into weights (B), or
+   train the base directly (A).
+2. attack yields coherent uncensored output → make ablation collapse GENERATION,
+   not just prose-PPL.
 
-**Metric:** excision-resistance (can attacker zero a block and keep capability?)
-+ capability cost of the procedure + ASR after T0 abliteration.
+**A — adversarial tamper-resistance (primary).** `experiments/train_tamper_resistant.py`.
+Differentiable ablated forward via `torch.func.functional_call` (validated on a
+toy: grads flow, clean-good/ablated-wrecked). Trains base MLP weights so ablating
+the EMPIRICAL refusal direction both removes safety and destroys capability.
+Loss = L_task(clean) + λ_safe·L_safe(clean refuses) + λ_gib·relu(gap_target −
+(L_abl − L_task)) [selectivity] + λ_uncensor·relu(margin − refusal_loss(ablated))
+[couple safety to d] + λ_reg·drift.
 
-**Goal:** establish the distributed variant as the real *product*; adapter stays
-the fast-iteration prototype.
+Iteration log (2026-07-01):
+- Absolute-badness gib loss → model self-destructs (both losses rise together).
+  Fixed with GAP-based loss (reward ablated worse than clean, not absolute).
+- Gap opens with a hard push (λ_gib 8: held-out gap +18, L_task healthy) but on a
+  SAFETY-IRRELEVANT direction — ablated model still refuses. Added L_uncensor to
+  force refusal onto d.
+- Open problems: (a) prose-PPL gap ≠ broken generations — still need a
+  generation-coherence signal for true gibberish; (b) whether MLP-only has the
+  capacity or attention scope is needed; (c) data scale (wikitext/advbench/alpaca
+  + held-out) is wired, memorization avoided.
+
+**B — fold adapter into FFN (cheap, un-block).** `tamperforge.GatedSafetyAdapter`
+(SwiGLU, foldable) + `fold_gated_adapter_into_ffn` + `verify_fold`. Ready; needs a
+gated-adapter retrain. Removes the discrete block but base stays coherent, so B
+alone won't give gibberish — pairs with A.
+
+**C — weight-space rotation (geometric sanity).** Rotate the empirical refusal
+direction into the top capability singular directions so ablating it deletes
+capability. Specced, not built.
+
+**Metric:** excision-resistance + capability cost of the procedure + (the new bar)
+does a successful abliteration produce an incoherent model, verified on
+GENERATIONS not prose-PPL, and does it survive OBLITERATUS (P2 attacker).
 
 ---
 
@@ -85,6 +122,13 @@ Attacker recomputes refusal dir as `mean(h|harmful) − mean(h|harmless)` on the
 **released entangled model**, abliterates that. Measure ASR + capability.
 Tests whether MAD survives a direction derived from our own model rather than
 the adapter `W_out` basis.
+
+**Attacker tool:** `elder-plinius/OBLITERATUS` (whitened-SVD, per-layer,
+cluster-aware layer selection, entanglement-gated skipping, Ouroboros self-repair
+detection) — purpose-built to dodge exactly this defense. Use it as a SEPARATE
+harness (AGPL-3.0: pip-install + run on our model; never vendor its code). If the
+entanglement survives an attacker that actively avoids entangled layers, the
+claim holds.
 
 **Output:** `results/p2_adaptive_abliteration.json`.
 
