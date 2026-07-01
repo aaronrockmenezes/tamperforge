@@ -127,6 +127,43 @@ def _refusal_loss(model, tok, pairs, device, overrides=None) -> torch.Tensor:
     return total / max(len(pairs), 1)
 
 
+def _argmax_divergence_loss(model, tok, prompts, device, overrides, n_new: int = 32) -> torch.Tensor:
+    """Generation-targeted gib signal (replaces prose-PPL).
+
+    For each prompt: greedily generate the CLEAN model's continuation (no grad),
+    then teacher-force the ABLATED model on (prompt + clean continuation) and take
+    the CE on the continuation tokens. High CE = the ablated model can't reproduce
+    the coherent text the clean model generates -> ablation destroys GENERATION
+    ability, not just teacher-forced prose perplexity. Returns mean CE (want HIGH).
+
+    Prose-PPL failed because greedy decoding stays fluent at high teacher-forced
+    PPL; scoring the ablated model against the clean model's OWN greedy tokens
+    attacks the argmax directly.
+    """
+    total = torch.zeros((), device=device)
+    cnt = 0
+    for prompt in prompts:
+        enc = tok.apply_chat_template([{"role": "user", "content": prompt}],
+                                      return_tensors="pt", return_dict=True,
+                                      add_generation_prompt=True).to(device)
+        plen = enc["input_ids"].shape[1]
+        prev_cache = model.config.use_cache
+        model.config.use_cache = True
+        with torch.no_grad():
+            full = model.generate(**enc, max_new_tokens=n_new, do_sample=False,
+                                  use_cache=True, pad_token_id=tok.eos_token_id)
+        model.config.use_cache = prev_cache
+        if full.shape[1] <= plen:
+            continue
+        labels = full.clone()
+        labels[:, :plen] = -100
+        ce = functional_call(model, overrides, args=(),
+                             kwargs={"input_ids": full, "labels": labels}).loss
+        total = total + ce
+        cnt += 1
+    return total / max(cnt, 1)
+
+
 @torch.no_grad()
 def _sample_ablated_generation(model, tok, prompt, device, overrides, max_new=60) -> str:
     """Greedy-generate one continuation under the ABLATED weights, to eyeball
@@ -157,10 +194,15 @@ def main() -> None:
     ap.add_argument("--direction-layer", type=int, default=13)
     ap.add_argument("--n-direction", type=int, default=256, help="prompts per side for d")
     ap.add_argument("--recompute-direction-every", type=int, default=25, help="steps")
+    ap.add_argument("--gib-mode", choices=["prose", "argmax"], default="argmax",
+                    help="prose = old L_abl-L_task gap (ruled out: prose-PPL != gen coherence). "
+                         "argmax = ablated model must fail to reproduce the clean model's own "
+                         "greedy generations (targets generation directly).")
+    ap.add_argument("--gib-gen-tokens", type=int, default=32, help="clean greedy gen length for argmax gib")
+    ap.add_argument("--gib-gen-prompts", type=int, default=2, help="benign prompts per step for argmax gib")
     ap.add_argument("--gap-target", type=float, default=4.0,
-                    help="require (L_abl - L_task) >= this margin (nats/token). Rewards "
-                         "SELECTIVITY (ablated worse than clean), not absolute badness — "
-                         "absolute-badness collapses to killing the whole model.")
+                    help="require gib CE >= this margin (nats/token). Rewards SELECTIVITY, "
+                         "not absolute badness — absolute-badness collapses to killing the model.")
     ap.add_argument("--lambda-safe", type=float, default=1.0)
     ap.add_argument("--lambda-gib", type=float, default=1.0)
     ap.add_argument("--lambda-uncensor", type=float, default=1.0,
@@ -249,12 +291,15 @@ def main() -> None:
 
         opt.zero_grad(set_to_none=True)
         overrides = _ablated_overrides(model, d, layers, read_p, write_p)
-        L_task = _lm_loss(model, tok, task_b, device)
+        L_task = _lm_loss(model, tok, task_b, device)                            # clean useful on real text
         L_safe = _refusal_loss(model, tok, ref_b, device)                       # clean refuses
         ref_abl = _refusal_loss(model, tok, ref_b, device, overrides=overrides)  # ablated: should NOT refuse
-        L_abl = _lm_loss(model, tok, task_b, device, overrides=overrides)
-        gap = L_abl - L_task                              # selectivity: ablated worse than clean at prose
-        L_gib = torch.relu(args.gap_target - gap)         # want gap >= gap_target
+        if args.gib_mode == "argmax":
+            gib_ce = _argmax_divergence_loss(model, tok, rng.sample(benign, args.gib_gen_prompts),
+                                             device, overrides, n_new=args.gib_gen_tokens)
+        else:
+            gib_ce = _lm_loss(model, tok, task_b, device, overrides=overrides) - L_task  # prose gap
+        L_gib = torch.relu(args.gap_target - gib_ce)             # want gib_ce (ablated gen-CE) >= target
         L_uncensor = torch.relu(args.uncensor_margin - ref_abl)  # want ablated bad at refusing
         L_reg = sum((dict(model.named_parameters())[n] - W0[n]).pow(2).mean() for n in trainable)
         loss = (L_task + args.lambda_safe * L_safe + args.lambda_gib * L_gib
@@ -262,7 +307,7 @@ def main() -> None:
         loss.backward()
         opt.step()
         m = {k: v.item() for k, v in {"loss": loss, "L_task": L_task, "L_safe": L_safe,
-                                      "ref_abl": ref_abl, "L_abl": L_abl, "L_gib": L_gib,
+                                      "ref_abl": ref_abl, "gib_ce": gib_ce, "L_gib": L_gib,
                                       "L_uncensor": L_uncensor, "L_reg": L_reg}.items()}
         logger.event("step", {"step": step, **m})
 
@@ -277,10 +322,9 @@ def main() -> None:
                                              device, overrides)
             logger.event("eval", {"step": step, "L_task_eval": Lte, "L_abl_eval": Lae,
                                    "gap_eval": Lae - Lte})
-            print(f"\nstep {step}: L_task={m['L_task']:.3f} L_abl={m['L_abl']:.3f} "
-                  f"gap={m['L_abl']-m['L_task']:+.3f} | refuse clean={m['L_safe']:.2f} "
-                  f"ablated={m['ref_abl']:.2f} (want ablated HIGH) | "
-                  f"HELD-OUT L_task={Lte:.3f} L_abl={Lae:.3f} gap={Lae-Lte:+.3f}")
+            print(f"\nstep {step}: L_task={m['L_task']:.3f} gib_ce={m['gib_ce']:.3f} "
+                  f"(want HIGH) | refuse clean={m['L_safe']:.2f} ablated={m['ref_abl']:.2f} "
+                  f"(want ablated HIGH) | HELD-OUT prose L_task={Lte:.3f} L_abl={Lae:.3f}")
             print(f"  [ablated gen] {gen[:180]!r}")
 
     out = ROOT / args.out
