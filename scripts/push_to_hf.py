@@ -34,6 +34,7 @@ ADAPTERS = [
     "outputs/tamper_resistant_p1b_v6_all_argmax.pt",  # v6 all-scope argmax variant
     "outputs/ft_resistant_p4_v2.pt",  # P4-defense v2: TAR FT-resistance, holds K=1 breaks K>=5
     "outputs/ft_resistant_p4_v3.pt",  # P4-defense v3: strong multi-step inner attack (if present)
+    "outputs/ft_resistant_p4_v4.pt",  # P4-defense v4: generation-level objective (if present)
 ]
 ABLATED_DIR = "outputs/abliterated_gemma3_1b_it_all_empirical"
 
