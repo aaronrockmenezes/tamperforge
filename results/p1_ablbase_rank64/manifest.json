@@ -1,0 +1,66 @@
+{
+  "run_id": "p1_ablbase_rank64",
+  "created_at": "2026-07-01T10:22:08+0000",
+  "cwd": "/workspace/tamperforge",
+  "git_commit": "d8a9256e22b5da2fd0249f92c21addc5c586fdca",
+  "python": "3.12.13",
+  "platform": "Linux-5.15.0-139-generic-x86_64-with-glibc2.39",
+  "env": {
+    "CUDA_VISIBLE_DEVICES": null,
+    "OPENROUTER_MODEL": null
+  },
+  "config": {
+    "script": "p1_mad_crux.py",
+    "args": {
+      "adapter": "outputs/safety_adapter_p1_ablbase.pt",
+      "out_dir": "results",
+      "run_id": "p1_ablbase_rank64",
+      "model_id": "google/gemma-3-1b-it",
+      "device": null,
+      "advbench_source": "walledai",
+      "advbench_split": "train",
+      "advbench_csv": "/workspace/tamperforge/data/advbench_harmful_behaviors.csv",
+      "adapter_layer": 13,
+      "direction_layer": 13,
+      "abliterate_layers": "all",
+      "adapter_attack_rank": "64",
+      "adapter_base": "native_ablated",
+      "n_direction": 256,
+      "n_advbench": 50,
+      "n_arc": 100,
+      "n_mmlu_per_subject": 0,
+      "max_new_tokens": 128,
+      "max_length": null,
+      "judge": false,
+      "judge_json_mode": true,
+      "asr_tolerance": 0.05,
+      "conditions": "base_adapter_ablated_full,base_ablated_randN"
+    },
+    "eval_config": {
+      "n_advbench": 50,
+      "n_arc": 100,
+      "n_mmlu_per_subject": 1,
+      "seed": 42,
+      "max_new_tokens": 128,
+      "max_length": null,
+      "run_mmlu": false,
+      "run_judge": false,
+      "mmlu_subjects": [
+        "high_school_biology",
+        "college_computer_science",
+        "abstract_algebra",
+        "professional_law"
+      ]
+    },
+    "judge_model": null,
+    "condition_order": [
+      "base",
+      "base_ablated",
+      "base_ablated_randN",
+      "base_adapter",
+      "base_adapter_ablated_full",
+      "base_adapter_ablated_adapter_only"
+    ],
+    "invariant": "same prompts, EvalConfig, max_new_tokens, judge, and benchmarks for every condition"
+  }
+}
