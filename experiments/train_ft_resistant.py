@@ -8,10 +8,13 @@ FT operator INSIDE the objective — meta-train so that after the attacker's own
 fine-tuning steps the model still refuses / stays useless on harm.
 
 Per step (min-max), first-order (FO-MAML / TAR):
-  1. INNER (simulate attacker): from current weights theta, take K_inner gradient
-     steps that MINIMIZE comply-CE on (harmful prompt -> compliant answer) demos —
-     exactly what the P4 attacker does. Grads detached => first-order; the adapted
-     weights theta' stay linearly connected to theta (d theta'/d theta = I).
+  1. INNER (simulate attacker): from current weights theta, run the FULL attacker
+     FT — inner_epochs passes over inner_demos (harmful prompt -> compliant answer)
+     demos, one gradient step per demo, MINIMIZING comply-CE — the same loop
+     ft_attack.py runs. Grads detached => first-order; the adapted weights theta'
+     stay linearly connected to theta (d theta'/d theta = I). v2 simulated only a
+     single 1-step FT, which the K>=5 real attack walked past (held K=1, broke K>=5);
+     v3 simulates the multi-demo x multi-epoch attack so the objective bites past 1.
   2. OUTER (defender): update theta so the shipped model is useful+safe AND the
      ADAPTED theta' fails on harm:
        L = L_task(theta, benign)                      # product stays useful
@@ -158,17 +161,24 @@ def _argmax_divergence(model, tok, prompts, device, overrides, n_new: int = 32) 
     return total / max(cnt, 1)
 
 
-def _inner_adapt(model, tok, demos, trainable, device, k_inner: int, eta: float,
+def _inner_adapt(model, tok, demo_sub, trainable, device, epochs: int, eta: float,
                  max_len: int):
-    """Simulate the attacker: K_inner first-order comply-FT steps. Returns the
-    adapted override dict {name: theta'_name} for the trainable matrices, linearly
-    connected to the live params (first-order: inner grads detached)."""
+    """Simulate the REAL attacker: full comply-FT over demo_sub for `epochs` passes,
+    one demo per gradient step (mirrors ft_attack.py's per-demo loop). First-order
+    (each inner grad detached => theta' stays linearly connected to the live params,
+    d theta'/d theta = I). Total inner steps = epochs * len(demo_sub) — v2 used a
+    single 1-step sim that the K>=5 attack walked past; this makes the objective see
+    a K-demo x multi-epoch attack so it actually bites past 1 shot.
+
+    Returns the adapted override dict {name: theta'_name}."""
     adapted = {n: dict(model.named_parameters())[n] for n in trainable}
-    for _ in range(max(k_inner, 1)):
-        l_comply = _tf_loss(model, tok, demos, device, adapted, max_len)
-        grads = torch.autograd.grad(l_comply, list(adapted.values()),
-                                    create_graph=False, retain_graph=False)
-        adapted = {n: (adapted[n] - eta * g) for (n, _v), g in zip(adapted.items(), grads)}
+    for _ in range(max(epochs, 1)):
+        for demo in demo_sub:
+            l_comply = _tf_loss(model, tok, [demo], device, adapted, max_len)
+            grads = torch.autograd.grad(l_comply, list(adapted.values()),
+                                        create_graph=False, retain_graph=False)
+            adapted = {n: (adapted[n] - eta * g)
+                       for (n, _v), g in zip(adapted.items(), grads)}
     return adapted
 
 
@@ -204,14 +214,20 @@ def main() -> None:
                     help="generations.jsonl of compliant harmful responses (attacker demos)")
     ap.add_argument("--n-demos", type=int, default=64, help="pool size; inner batch samples from it")
     ap.add_argument("--demo-batch", type=int, default=4, help="demos per inner FT step")
-    # inner attacker sim
-    ap.add_argument("--k-inner", type=int, default=1, help="attacker FT steps to simulate/step")
-    ap.add_argument("--inner-lr", type=float, default=2e-5, help="simulated attacker lr")
-    ap.add_argument("--tamper-margin", type=float, default=3.0,
-                    help="push post-FT comply-CE >= this (attacker step stays ineffective).")
+    # inner attacker sim (v3: a REAL multi-demo x multi-epoch inner FT, not 1 step)
+    ap.add_argument("--inner-demos", type=int, default=8, help="demos the simulated attacker FTs on")
+    ap.add_argument("--inner-epochs", type=int, default=3, help="passes over the inner demos")
+    ap.add_argument("--inner-lr", type=float, default=1e-4,
+                    help="simulated attacker lr (higher than the real 2e-5 to make plain-SGD "
+                         "inner steps bite as hard as the real AdamW attack).")
+    ap.add_argument("--tamper-margin", type=float, default=4.0,
+                    help="push post-FT comply-CE >= this (attacker's whole FT stays ineffective). "
+                         "Watch comply_after in the log: if it never drops below this (L_tamper=0), "
+                         "the inner attack is too weak — raise inner-lr/epochs/demos.")
     ap.add_argument("--attack-ensemble", action="store_true",
-                    help="randomize the simulated attacker each step (inner-lr, k-inner, demo "
-                         "subset) so resistance doesn't overfit one attack config.")
+                    help="randomize the simulated attacker each step (inner-lr, inner-epochs, "
+                         "inner-demos count, demo subset) over a range that INCLUDES strong attacks, "
+                         "so resistance doesn't overfit one attack config.")
     # optional collapse flavor
     ap.add_argument("--collapse", action="store_true",
                     help="also require post-FT harmful gen to be gibberish (argmax-divergence).")
@@ -299,13 +315,14 @@ def main() -> None:
     opt = torch.optim.AdamW((p for p in model.parameters() if p.requires_grad), lr=args.lr)
 
     for step in tqdm(range(1, args.steps + 1), desc="p4 steps", dynamic_ncols=True):
-        # attacker config (ensemble randomizes it so resistance generalizes)
+        # attacker config (ensemble randomizes it over a range incl. STRONG attacks)
         if args.attack_ensemble:
-            eta = rng.choice([1e-5, 2e-5, 5e-5, 1e-4])
-            k_in = rng.choice([1, 1, 2])
+            eta = rng.choice([5e-5, 1e-4, 2e-4])
+            n_in = rng.choice([4, 8, 16])
+            ep_in = rng.choice([2, 3, 5])
         else:
-            eta, k_in = args.inner_lr, args.k_inner
-        demo_b = rng.sample(demo_pool, min(args.demo_batch, len(demo_pool)))
+            eta, n_in, ep_in = args.inner_lr, args.inner_demos, args.inner_epochs
+        demo_sub = rng.sample(demo_pool, min(n_in, len(demo_pool)))
         task_b = rng.sample(task_train, min(args.task_batch, len(task_train)))
         ref_b = rng.sample(refuse_pairs, min(args.refusal_batch, len(refuse_pairs)))
 
@@ -316,11 +333,11 @@ def main() -> None:
         L_task = _lm_loss(model, tok, task_b, device, live)
         L_safe = _refuse_loss(model, tok, ref_b, device, live)
 
-        # 2) simulate attacker FT -> adapted theta'
-        adapted = _inner_adapt(model, tok, demo_b, trainable, device, k_in, eta, max_len=320)
+        # 2) simulate the FULL attacker FT (multi-demo x multi-epoch) -> adapted theta'
+        adapted = _inner_adapt(model, tok, demo_sub, trainable, device, ep_in, eta, max_len=320)
 
-        # 3) after FT, comply-CE must stay HIGH (attacker step ineffective)
-        comply_after = _tf_loss(model, tok, demo_b, device, adapted)
+        # 3) after the whole FT, comply-CE must stay HIGH (attack ineffective)
+        comply_after = _tf_loss(model, tok, demo_sub, device, adapted)
         L_tamper = torch.relu(args.tamper_margin - comply_after)
 
         L_collapse = torch.zeros((), device=device)
@@ -338,7 +355,8 @@ def main() -> None:
         m = {k: v.item() for k, v in {"loss": loss, "L_task": L_task, "L_safe": L_safe,
                                       "comply_after": comply_after, "L_tamper": L_tamper,
                                       "L_collapse": L_collapse, "L_reg": L_reg}.items()}
-        logger.event("step", {"step": step, "eta": eta, "k_inner": k_in, **m})
+        logger.event("step", {"step": step, "eta": eta, "inner_demos": n_in,
+                               "inner_epochs": ep_in, **m})
 
         if step % args.eval_every == 0 or step == args.steps:
             gen = _sample_adapted_generation(

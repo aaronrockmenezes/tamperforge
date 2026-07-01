@@ -187,11 +187,20 @@ only fires on ablation, FT retrains around it. Table in
 
 **Now the active thread (user priority): make the method FT-resistant.** Not
 tamper-proof — shift the frontier so it doesn't break at K=1. Plan in
-`docs/ft_resistance_plan.md`: TAR-style meta-training (simulate attacker FT in the
-inner loop, shape weights so the FT'd model stays useless-on-harm; reuse P1b-A
-functional_call plumbing + argmax-divergence collapse loss + ensemble-over-attackers),
-optionally + RepNoise-style harmful-rep scrambling. Metric = re-run the exact P4
-sweep; go/no-go K=1 ASR < 0.20 at ARC ≥ 0.30. Mandatory adaptive-attacker sweep
+`docs/ft_resistance_plan.md`. `experiments/train_ft_resistant.py` (TAR-style,
+first-order inner-FT sim, warm-start v7).
+
+- **v2 (2026-07-02): PARTIAL WIN.** Holds K=1 fully (ASR 0.000, coherent refusals;
+  v7/base ~0.75) but breaks at K≥5 (~0.66 = base). Frontier moved 1→5 demos — a
+  1-shot moat. Cause: 1-step inner sim too weak (`L_tamper=0` all run), only
+  hardened the 1-step basin. Table in `docs/results_2026_07_01.md`.
+- **v3 (shipped, running): strong multi-step inner attack** — `_inner_adapt` runs
+  the full `--inner-demos × --inner-epochs` loop (mirrors ft_attack), `--inner-lr`
+  up to 1e-4, `--attack-ensemble` over strong configs. Diagnostic: `comply_after`
+  must DROP (L_tamper>0) or the inner attack is still too weak. Widen the moat
+  past K=1.
+
+Go/no-go: K∈{1,5,10} ASR < 0.20 at ARC ≥ 0.30. Mandatory adaptive-attacker sweep
 (vary lr/epochs/held-out demos) to rule out gradient-masking. Position vs TAR +
 RepNoise. OBLITERATUS (P2) deferred behind this.
 
