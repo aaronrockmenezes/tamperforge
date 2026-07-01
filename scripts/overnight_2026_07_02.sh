@@ -24,14 +24,17 @@ ftgen(){ $PY experiments/p0_baseline_eval.py --backend vllm --model-id "$1" \
    --max-new-tokens 128 --max-length 4096 --run-id "$2"; }
 # capability via lm_eval (MAD 2nd axis: FT'd model capable, or dumb?). set +e =
 # a failure here won't kill the run (gens already saved). ARC full-ish (limit 400)
-# + MMLU (limit 10/subtask x57 = 570 Q; mmlu is a GROUP so limit is PER-subtask).
+# + MMLU on a 10-subject balanced subset (STEM/hum/social/professional), FULL
+# questions per subject (~1.9k total), 0-shot. num_fewshot 0 for speed + a clean
+# relative-degradation trend across K (absolute 5-shot numbers -> final paper).
 MA="dtype=bfloat16,trust_remote_code=True,max_model_len=4096,gpu_memory_utilization=0.9,max_num_seqs=64"
+MMLU_SUBJ="mmlu_high_school_biology,mmlu_college_computer_science,mmlu_abstract_algebra,mmlu_philosophy,mmlu_world_religions,mmlu_high_school_us_history,mmlu_econometrics,mmlu_sociology,mmlu_professional_medicine,mmlu_business_ethics"
 capeval(){
   /venv/main/bin/lm_eval --model vllm --model_args "pretrained=$1,$MA" \
     --tasks arc_challenge --num_fewshot 0 --batch_size auto --limit 400 \
     --output_path "results/$2_arc" 2>&1 | tail -3
   /venv/main/bin/lm_eval --model vllm --model_args "pretrained=$1,$MA" \
-    --tasks mmlu --num_fewshot 0 --batch_size auto --limit 10 \
+    --tasks "$MMLU_SUBJ" --num_fewshot 0 --batch_size auto \
     --output_path "results/$2_mmlu" 2>&1 | tail -3
 }
 pushgens(){
