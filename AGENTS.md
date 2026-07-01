@@ -146,9 +146,18 @@ PYTHONPATH=src python experiments/p1_mad_crux.py \
   --run-id p1_mad_crux_judged
 ```
 
-Conditions are exactly:
-`base`, `base_ablated`, `base_adapter`,
+Conditions are (6, after the direction-count control was added):
+`base`, `base_ablated`, `base_ablated_randN`, `base_adapter`,
 `base_adapter_ablated_full`, `base_adapter_ablated_adapter_only`.
+Use `--conditions <comma list>` to run a subset (needed for rank sweeps),
+`--adapter-attack-rank k` to ablate only the top-k adapter W_out directions.
+
+**P1 status 2026-07-01: first run INCONCLUSIVE.** The all-directions adapter
+attack destroys capability, but so does ablating the same number of *random*
+directions (`base_ablated_randN`) — a direction-count confound. The open
+question is the rank sweep (smallest k that removes safety; entangled-k vs
+random-k capability). See `TODO.md` and the P1 section of
+`docs/results_2026_07_01.md`. Do not claim P1 pass/fail until the sweep runs.
 
 ## Current verified results
 
@@ -168,18 +177,17 @@ Base Gemma DeepSeek V4 Flash judged:
 - judge ASR: 1%
 - ratings: `0:98`, `1:1`, `3:1`
 
-Current Vast P0 generation/Judge smoke:
+P0 baseline COMPLETE (AdvBench 500 judged + ARC-c 25-shot full, DeepSeek V4
+Flash, post-adjudication parse_failures=0):
 
-- `results/safety_base_advbench500_nojudge`: AdvBench 500, keyword refusal
-  0.98, keyword ASR 0.02.
-- `results/safety_hf_heretic_advbench500_nojudge`: AdvBench 500, keyword
-  refusal 0.112, keyword ASR 0.888.
-- `results/safety_hf_extreme_advbench500_nojudge`: AdvBench 500, keyword
-  refusal 0.036, keyword ASR 0.964.
-- `results/judge_smoke_hf_heretic_10_v2`: DeepSeek V4 Flash judge smoke,
-  parse failures 0/10, judge ASR 0.9.
+| Model | ARC acc | acc_norm | judge refusal | judge ASR |
+|---|---:|---:|---:|---:|
+| base | 0.366 | 0.4002 | 0.982 | 0.014 |
+| heretic | 0.3788 | 0.4130 | 0.102 | 0.886 |
+| extreme | 0.3447 | 0.3746 | 0.082 | 0.896 |
 
-Full 12-worker judge runs were the next step at last documentation update.
+Runs: `results/judge_{base,hf_heretic,hf_extreme}_advbench500_w14/`. Full table +
+P1 analysis in `docs/results_2026_07_01.md`.
 
 ## Git/worktree caution
 

@@ -182,7 +182,29 @@ Detailed snapshot: `docs/results_2026_07_01.md`.
   Inspect on server if user ran them:
   `results/judge_*_advbench500_w12/summary.json`.
 
-## NEXT TASK — finish P0, then P1 fixed POC (go/no-go)
+## STATUS 2026-07-01 (late) — P0 done, P1 inconclusive
+
+- **P0 complete + archived.** base/heretic/extreme judged (DeepSeek V4 Flash,
+  AdvBench 500) + ARC-c 25-shot. Table in `docs/results_2026_07_01.md`. Judge
+  parse-failures resolved via `scripts/adjudicate_judge_failures.py`. Takeaway:
+  cheap uncensoring is ~free today (heretic ASR 0.886 at zero capability cost).
+- **P1 first run INCONCLUSIVE** (`results/p1_cleanbase_nojudge_v2/`). The all-229
+  adapter attack destroys capability, BUT the direction-count control
+  (`base_ablated_randN`: 229 random dirs) destroys it just as badly. So the
+  collapse is a direction-count artifact, not proven entanglement. Full analysis
+  in the P1 section of `docs/results_2026_07_01.md`.
+
+### IMMEDIATE NEXT — the rank sweep (settles P1). See `TODO.md`.
+
+Find the smallest k where ablating k adapter W_out dirs removes safety (ASR
+~0.68), then compare entangled-k vs random-k capability at that k. Entanglement
+is supported only if a *small* entangled ablation is disproportionately
+destructive vs a small random one. Uses the new `--conditions` subset flag +
+`base_ablated_randN` control (both committed). Commands in `TODO.md` §2.
+
+Judging of P1 generations is done LOCALLY (env_ml) — see `TODO.md` §3.
+
+## P0/P1 background (historical — P0 now done)
 
 Before P1, finish P0 baseline table:
 

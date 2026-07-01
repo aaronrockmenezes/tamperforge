@@ -62,21 +62,29 @@ cat results/judge_hf_heretic_advbench500_w12/summary.json
 cat results/judge_hf_extreme_advbench500_w12/summary.json
 ```
 
-## Immediate next steps
+## Immediate next steps (2026-07-01 late — READ `TODO.md`)
 
-1. Run or verify the full DeepSeek V4 Flash judges for all three safety
-   generation dirs:
-   - `judge_base_advbench500_w12`
-   - `judge_hf_heretic_advbench500_w12`
-   - `judge_hf_extreme_advbench500_w12`
-2. Run ARC-Challenge 25-shot via `lm_eval --model vllm` for the same three
-   models using the 24GB-safe command in `docs/vast_runbook.md`.
-3. Copy or summarize final `summary.json` files into
-   `docs/results_2026_07_01.md`.
-4. Only after P0 HF baselines are archived:
-   - build `outputs/gemma3_1b_it_abliterated_all_empirical`
-   - train `outputs/safety_adapter_p1.pt`
-   - run the five-condition P1 script.
+**P0 is done and archived.** **P1 first run is inconclusive** (direction-count
+confound). The next concrete work is the rank sweep. Full commands live in
+`TODO.md`; summary:
+
+1. After the running `p1_ablbase_nojudge` proc finishes, copy its results local
+   (`TODO.md` §1). Box is being shut down for the night after that.
+2. Rank sweep on `outputs/safety_adapter_p1_cleanbase.pt` (`TODO.md` §2):
+   reference conditions once, then `--adapter-attack-rank` k in {1,2,4,8,16,32,64}
+   running only `base_adapter_ablated_full,base_ablated_randN` via `--conditions`.
+3. Judge P1 generations LOCALLY in env_ml (`TODO.md` §3) to confirm the keyword
+   "ASR 1.0" on ablated conditions is a garbage-output artifact.
+4. If no crossover window appears, retrain adapter with small `--d-hidden`
+   and/or higher `--lambda-entangle` (`TODO.md` §4).
+
+### Historical (P0, now complete)
+
+- Full DeepSeek judges for base/heretic/extreme: done
+  (`results/judge_*_advbench500_w14/`, post-adjudication parse_failures=0).
+- ARC-Challenge 25-shot full: done (base 0.366, heretic 0.379, extreme 0.345).
+- Local ablated checkpoint + both adapters (clean-base align 0.870 KL 0.0025;
+  abliterated-base align 0.865) built.
 
 ## Do not change
 
