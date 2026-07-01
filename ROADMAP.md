@@ -96,10 +96,17 @@ Iteration log (2026-07-01):
 - Gap opens with a hard push (λ_gib 8: held-out gap +18, L_task healthy) but on a
   SAFETY-IRRELEVANT direction — ablated model still refuses. Added L_uncensor to
   force refusal onto d.
-- Open problems: (a) prose-PPL gap ≠ broken generations — still need a
-  generation-coherence signal for true gibberish; (b) whether MLP-only has the
-  capacity or attention scope is needed; (c) data scale (wikitext/advbench/alpaca
-  + held-out) is wired, memorization avoided.
+- v5 (600 steps, MLP) trained to convergence, then attacked + judged: FAILED.
+  trained_attacked judge-ASR 0.60 ≈ base_attacked 0.54 — the 8× prose-PPL gap
+  (104 vs 13) did NOT reduce real harm. **The prose-PPL objective is ruled out**
+  (prose perplexity ≠ harmful-generation prevention; greedy gen stays coherent).
+- **NEXT: a generation-level gib objective.** Options, cheapest first:
+  (1) reference-mismatch proxy — ablated model must be bad at predicting the
+  CLEAN model's own generations (closer to gen quality than wikitext-PPL);
+  (2) Gumbel/straight-through soft-generation scored by a frozen coherence/harm
+  model; (3) RL (policy-gradient) over a frozen harm/coherence judge on ablated
+  generations — the honest but expensive way. Also open: MLP-only vs attention
+  scope. Data scale (wikitext/advbench/alpaca + held-out) is wired.
 
 **B — fold adapter into FFN (cheap, un-block).** `tamperforge.GatedSafetyAdapter`
 (SwiGLU, foldable) + `fold_gated_adapter_into_ffn` + `verify_fold`. Ready; needs a

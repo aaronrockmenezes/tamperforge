@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ADAPTERS = [
     "outputs/safety_adapter_p1_cleanbase.pt",
     "outputs/safety_adapter_p1_ablbase.pt",
+    "outputs/tamper_resistant_p1b.pt",  # P1b-A trained MLP weights (v5; prose-PPL objective, negative result)
 ]
 ABLATED_DIR = "outputs/gemma3_1b_it_abliterated_all_empirical"
 
@@ -64,6 +65,13 @@ Applied as a forward hook — NOT merged into weights.
 - `safety_adapter_p1_ablbase.pt` — trained on an all-layer refusal-abliterated
   base (adapter as sole safety). Alignment 0.865, KL 0.0026.
 
+- `tamper_resistant_p1b.pt` — P1b-A adversarial-training checkpoint (subset
+  state-dict: 78 MLP matrices, all layers). Trained so ablating the empirical
+  refusal direction removes safety and raises prose PPL. NEGATIVE RESULT: under a
+  real attack + judge, the uncensored trained model is as harmful as the
+  uncensored base (judge-ASR 0.60 vs 0.54) — the 8× prose-PPL gap doesn't reduce
+  real harm. Evidence that the prose-PPL objective fails.
+
 ### `abliterated_gemma3_1b_it_all_empirical/`
 **⚠️ Safety-removed model.** Full HF checkpoint of Gemma-3-1b-it with the
 empirical refusal direction projected out of all 26 layers (Arditi-style
@@ -73,10 +81,11 @@ only; do not deploy.
 
 ## Status
 
-P0 baselines complete. P1 (MAD crux) in progress — early rank-sweep evidence
-that ablating the entangled adapter's directions costs capability (PPL) that an
-equal number of random directions does not, while safety holds. Not yet a
-verified pass. See the (private) tamperforge repo for methodology and results.
+P0 complete. P1 (adapter MAD crux): PASS on the mechanism (ablating the entangled
+adapter costs capability random dirs do not, ~400× PPL at k=32; crossover at k=4
+on the product), ceiling = coherent usable uncensor (prose-PPL != generation
+coherence). P1b-A (weight-level defense): prose-PPL objective ruled out by v5.
+Next = a generation-level objective. See the (private) tamperforge repo.
 """
 
 
