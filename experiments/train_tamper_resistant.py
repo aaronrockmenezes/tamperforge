@@ -77,8 +77,8 @@ def _scope(train_scope: str):
 
 def _ablated_overrides(model, d: torch.Tensor, layers, read_p, write_p) -> dict:
     """Differentiable {param_name: ablated_weight}. d unit-norm, detached."""
-    dd = d.detach()
     params = dict(model.named_parameters())
+    dd = d.detach().to(next(iter(params.values())).device)
     ov: dict[str, torch.Tensor] = {}
     for li in layers:
         base = f"model.layers.{li}."
