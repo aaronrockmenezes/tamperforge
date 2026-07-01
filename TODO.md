@@ -93,23 +93,39 @@ field. `judge_generations.py` scores every row and reports one overall summary;
 split by `condition` afterwards for per-condition ASR. Repeat for
 `p1_ablbase_nojudge/generations.jsonl` once copied.
 
-## 3b. FIX p1 for the abliterated-base (product) variant
+## 3b. Abliterated-base (product) variant — p1 FIX DONE, needs rerun
 
-The `p1_ablbase_nojudge` run is **invalid for hole #1**: `p1_mad_crux.py` loads
-the clean `--model-id` for every condition, so the ablbase adapter sat on a base
-that still had native refusal → `adapter_only` stayed at ASR 0 (native refusal
-carried safety), not because the adapter held. Same direction-count confound as
-cleanbase otherwise.
+The old `p1_ablbase_nojudge` run was invalid for hole #1: p1 loaded the clean
+base for every condition, so the ablbase adapter sat on a base with native
+refusal intact → `adapter_only` was a no-op (ASR 0 from native refusal).
 
-To test the product properly, p1 must strip the base's native refusal first for
-the adapter conditions (matching how the ablbase adapter was trained). Options:
-- add `--base-native-ablate` that runs `abliterate_model_inplace(model,
-  empirical_refusal_dir, layers)` on the loaded base before applying the adapter,
-  for `base_adapter*` conditions; or
-- accept a `--base-checkpoint` pointing at
-  `outputs/gemma3_1b_it_abliterated_all_empirical` and load that as the base for
-  adapter conditions.
-Then re-run the ablbase adapter through the (fixed) sweep.
+**Fixed**: `--adapter-base native_ablated` strips the empirical refusal direction
+from the base before applying the adapter in adapter conditions (matches how the
+`--abliterate-base` adapter was trained). Default `clean` unchanged.
+
+Rerun the ablbase adapter correctly (do the rank sweep on it too, same as §2):
+
+```bash
+# reference + sweep, ablated-base adapter
+python experiments/p1_mad_crux.py \
+  --adapter outputs/safety_adapter_p1_ablbase.pt --adapter-base native_ablated \
+  --model-id google/gemma-3-1b-it --advbench-source walledai \
+  --adapter-layer 13 --direction-layer 13 --abliterate-layers all \
+  --n-direction 256 --n-advbench 50 --n-arc 100 --max-new-tokens 128 --no-judge \
+  --conditions base,base_ablated,base_adapter --run-id p1_ablbase_reference
+for k in 1 2 4 8 16 32 64; do
+python experiments/p1_mad_crux.py \
+  --adapter outputs/safety_adapter_p1_ablbase.pt --adapter-base native_ablated \
+  --model-id google/gemma-3-1b-it --advbench-source walledai \
+  --adapter-layer 13 --direction-layer 13 --abliterate-layers all \
+  --adapter-attack-rank $k \
+  --n-direction 256 --n-advbench 50 --n-arc 100 --max-new-tokens 128 --no-judge \
+  --conditions base_adapter_ablated_full,base_ablated_randN \
+  --run-id p1_ablbase_rank$k ; done
+```
+
+Now `base_adapter` = ablated base + adapter (native refusal gone, adapter is sole
+safety). `adapter_only` should finally remove safety (ASR↑) if the adapter holds.
 
 ## 4. Design levers if the sweep shows no window
 
