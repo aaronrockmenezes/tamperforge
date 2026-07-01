@@ -74,7 +74,7 @@ and optional `judgments.jsonl`.
 
 ---
 
-## P1b — From removable adapter to un-excisable, gibberish-on-attack  🔵 IN PROGRESS
+## P1b — From removable adapter to un-excisable, gibberish-on-attack  🟢 POC PASS (A)
 
 Two prototype weaknesses to close (see `docs/p1b_plan.md`):
 1. adapter is a removable block (attacker deletes it) → fold into weights (B), or
@@ -96,17 +96,30 @@ Iteration log (2026-07-01):
 - Gap opens with a hard push (λ_gib 8: held-out gap +18, L_task healthy) but on a
   SAFETY-IRRELEVANT direction — ablated model still refuses. Added L_uncensor to
   force refusal onto d.
-- v5 (600 steps, MLP) trained to convergence, then attacked + judged: FAILED.
-  trained_attacked judge-ASR 0.60 ≈ base_attacked 0.54 — the 8× prose-PPL gap
-  (104 vs 13) did NOT reduce real harm. **The prose-PPL objective is ruled out**
-  (prose perplexity ≠ harmful-generation prevention; greedy gen stays coherent).
-- **NEXT: a generation-level gib objective.** Options, cheapest first:
-  (1) reference-mismatch proxy — ablated model must be bad at predicting the
-  CLEAN model's own generations (closer to gen quality than wikitext-PPL);
-  (2) Gumbel/straight-through soft-generation scored by a frozen coherence/harm
-  model; (3) RL (policy-gradient) over a frozen harm/coherence judge on ablated
-  generations — the honest but expensive way. Also open: MLP-only vs attention
-  scope. Data scale (wikitext/advbench/alpaca + held-out) is wired.
+- v5 (600 steps, MLP, prose-PPL gib): FAILED — trained_attacked judge-ASR 0.60 ≈
+  base 0.54. Prose-PPL objective ruled out (prose PPL ≠ harmful-gen prevention).
+- **v6 (400 steps, `--gib-mode argmax` + `--train-scope all`): POC PASS.** The
+  argmax gib loss (ablated model must fail to reproduce the CLEAN model's own
+  greedy generations) broke generation on attack. Full AdvBench 500 + lm_eval
+  ARC-25:
+
+  | condition | judge ASR | ARC acc |
+  |---|---:|---:|
+  | trained_clean | 0.010 | 0.362 |
+  | trained_attacked | 0.032 | 0.294 |
+  | base_attacked | 0.844 | 0.355 |
+
+  Same attack: 0.844 ASR on base → 0.032 on trained (~26×). Ablating the trained
+  model yields non-harmful gibberish + ARC drop; clean product ≈ free (ARC 0.362
+  vs base 0.366). Checkpoint `outputs/tamper_resistant_p1b_v6.pt` (git+HF). Detail
+  in `docs/results_2026_07_01.md` / devlog part 3.
+- **NEXT (POC → publishable), in priority:**
+  1. **Scope-MISMATCH attacks** — the eval attacker used `--attack-scope all` =
+     training scope. Test `--attack-scope mlp`, different `--direction-layer`,
+     rank sweeps. THE decisive robustness test.
+  2. **Fine-tuning attack (P4)** — abliteration-resistance ≠ FT-resistance.
+  3. Seeds, MMLU/GSM8K, Qwen/Llama; ablate which of {argmax, attention scope,
+     λ_uncensor} is load-bearing.
 
 **B — fold adapter into FFN (cheap, un-block).** `tamperforge.GatedSafetyAdapter`
 (SwiGLU, foldable) + `fold_gated_adapter_into_ffn` + `verify_fold`. Ready; needs a
