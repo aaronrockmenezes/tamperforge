@@ -22,3 +22,5 @@ results/**/*.npz
 .env
 .DS_Store
 .venv/
+
+README_hf.md
