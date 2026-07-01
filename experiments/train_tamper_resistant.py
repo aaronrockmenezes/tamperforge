@@ -52,6 +52,33 @@ READ_PROJ = ("self_attn.q_proj", "self_attn.k_proj", "self_attn.v_proj",
 WRITE_PROJ = ("self_attn.o_proj", "mlp.down_proj")
 MLP_READ = ("mlp.gate_proj", "mlp.up_proj")
 MLP_WRITE = ("mlp.down_proj",)
+ATTN_READ = ("self_attn.q_proj", "self_attn.k_proj", "self_attn.v_proj")
+ATTN_WRITE = ("self_attn.o_proj",)
+SCOPES = {"all": (READ_PROJ, WRITE_PROJ), "mlp": (MLP_READ, MLP_WRITE),
+          "attn": (ATTN_READ, ATTN_WRITE)}
+
+
+def _sample_attack(rng, n_layers: int):
+    """Random (read_proj, write_proj, layers) for ensemble-attack training.
+
+    Tier-1 showed the gibberish-collapse is localized: sub-scope / sub-layer
+    ablations under-trigger it (L13-25 leaked at full capability). Randomizing the
+    simulated attack each step trains the collapse to fire under ANY of them.
+    """
+    scope = rng.choice(["all", "mlp", "attn"])
+    rp, wp = SCOPES[scope]
+    kind = rng.choice(["all", "lower", "upper", "rand"])
+    h = n_layers // 2
+    if kind == "all":
+        layers = list(range(n_layers))
+    elif kind == "lower":
+        layers = list(range(h))
+    elif kind == "upper":
+        layers = list(range(h, n_layers))
+    else:  # random contiguous window of >= half the layers
+        lo = rng.randint(0, h)
+        layers = list(range(lo, rng.randint(lo + h, n_layers) + 1))
+    return rp, wp, layers, f"{scope}:{kind}"
 
 
 def _parse_layers(spec: str, n: int) -> list[int]:
@@ -191,6 +218,10 @@ def main() -> None:
     ap.add_argument("--device", default=None)
     ap.add_argument("--abliterate-layers", default="all")
     ap.add_argument("--train-scope", choices=["mlp", "all", "last_half"], default="mlp")
+    ap.add_argument("--attack-ensemble", action="store_true",
+                    help="randomize the simulated attack each step (scope in {all,mlp,attn} x "
+                         "layer-subset {all,lower,upper,rand}) so the gibberish-collapse triggers "
+                         "under sub-scope/sub-layer attacks (v7 — fixes the tier-1 leaks).")
     ap.add_argument("--direction-layer", type=int, default=13)
     ap.add_argument("--n-direction", type=int, default=256, help="prompts per side for d")
     ap.add_argument("--recompute-direction-every", type=int, default=25, help="steps")
@@ -290,7 +321,11 @@ def main() -> None:
         ref_b = rng.sample(pairs, min(args.refusal_batch, len(pairs)))
 
         opt.zero_grad(set_to_none=True)
-        overrides = _ablated_overrides(model, d, layers, read_p, write_p)
+        if args.attack_ensemble:
+            rp_a, wp_a, layers_a, _atag = _sample_attack(rng, len(model.model.layers))
+            overrides = _ablated_overrides(model, d, layers_a, rp_a, wp_a)
+        else:
+            overrides = _ablated_overrides(model, d, layers, read_p, write_p)
         L_task = _lm_loss(model, tok, task_b, device)                            # clean useful on real text
         L_safe = _refusal_loss(model, tok, ref_b, device)                       # clean refuses
         ref_abl = _refusal_loss(model, tok, ref_b, device, overrides=overrides)  # ablated: should NOT refuse
