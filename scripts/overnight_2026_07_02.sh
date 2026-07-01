@@ -15,7 +15,7 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 mkdir -p overnight outputs/night
 PY=/venv/main/bin/python
 DEMOS=results/p1b_v7_base_att_gen/generations.jsonl
-KS="1 5 10 25 50 100 200"
+KS="0 1 5 10 25 50 100 200"   # K=0 = raw model, no FT (the un-attacked baseline)
 
 ts(){ date +%H:%M:%S; }
 # AdvBench gens (judge local). vLLM backend REQUIRES --n-arc 0 (capability via lm_eval).
@@ -61,13 +61,15 @@ for i in "${!TAGS[@]}"; do
   echo "############ [$(ts)] GROUP $tag (ckpt='${ck:-BASE}') ############"
   for K in $KS; do
     out="outputs/night/${tag}_ft${K}"
-    echo "---- [$(ts)] $tag K=$K : FT ----"
+    ep=5; ns="$K"
+    if [ "$K" = "0" ]; then ep=0; ns=1; fi   # K=0 = raw model, 0 FT epochs (baseline)
+    echo "---- [$(ts)] $tag K=$K : FT (epochs=$ep) ----"
     if [ -n "$ck" ]; then
       $PY experiments/ft_attack.py --checkpoint "$ck" --demos "$DEMOS" \
-        --n-shots "$K" --ft-epochs 5 --out "$out"
+        --n-shots "$ns" --ft-epochs "$ep" --out "$out"
     else
       $PY experiments/ft_attack.py --demos "$DEMOS" \
-        --n-shots "$K" --ft-epochs 5 --out "$out"
+        --n-shots "$ns" --ft-epochs "$ep" --out "$out"
     fi
     echo "---- [$(ts)] $tag K=$K : GEN 520 ----"
     ftgen "$out" "night_${tag}_ft${K}_gen"
