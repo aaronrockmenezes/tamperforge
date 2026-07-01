@@ -312,11 +312,19 @@ def main() -> None:
     d = None
     for step in tqdm(range(1, args.steps + 1), desc="p1b-A steps", dynamic_ncols=True):
         if d is None or (step - 1) % args.recompute_direction_every == 0:
+            # ensemble: resample the direction PROMPTS (and jitter the layer) each
+            # recompute, so the collapse is robust to direction variation — the
+            # tier-1 seed7 leak (same estimator, different prompt sample -> 0.11).
+            if args.attack_ensemble:
+                hs = rng.sample(harmful, min(args.n_direction, len(harmful)))
+                bs = rng.sample(benign, min(args.n_direction, len(benign)))
+                dlayer = rng.choice([args.direction_layer - 4, args.direction_layer,
+                                     args.direction_layer + 4])
+                dlayer = max(0, min(dlayer, len(model.model.layers) - 1))
+            else:
+                hs, bs, dlayer = harmful[: args.n_direction], benign[: args.n_direction], args.direction_layer
             with torch.no_grad():
-                d = empirical_refusal_direction(
-                    model, tok, harmful[: args.n_direction],
-                    benign[: args.n_direction], args.direction_layer, device,
-                )
+                d = empirical_refusal_direction(model, tok, hs, bs, dlayer, device)
         task_b = rng.sample(task_train, min(args.task_batch, len(task_train)))
         ref_b = rng.sample(pairs, min(args.refusal_batch, len(pairs)))
 

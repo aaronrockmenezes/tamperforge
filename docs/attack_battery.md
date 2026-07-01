@@ -42,8 +42,37 @@ python experiments/p0_baseline_eval.py --backend vllm --model-id outputs/p1b_v6_
 # then judge_generations.py locally
 ```
 
-Always also save the **base** control with the same attack (`--attack ... ` no
-`--checkpoint`) so the comparison is matched.
+**ALWAYS save the matched base control** (`--attack ...` no `--checkpoint`) — an
+attack only tests the defense if it uncensors the BASE. Mandatory, not optional.
+
+### CAVEAT: the SVD/whitened estimators here are WEAK attacks (2026-07-01)
+
+The tier-1 run showed `base_svd8` judge-ASR = **0.002** and `base_wsvd4` = 0.125 —
+i.e. `svd_refusal_directions` (benign-centered SVD, diagonal whitening) does NOT
+uncensor even the undefended base. So svd4/svd8/wsvd4 are **dud attacks**; a
+trained model "holding" against them proves nothing. **Diff-in-means is the
+canonical working abliteration** (base 0.844). Base controls caught this — without
+them we'd have falsely reported "robust to rank-k SVD."
+- For a real stronger-estimator test, `svd_refusal_directions` needs work (top
+  benign-centered SVD components ≠ the refusal direction). Low priority; the
+  meaningful attacks are the diff-in-means family (matched, seed-resample, scope-
+  and layer-subsets).
+
+### Tier-1 result (v6 checkpoint), diff-in-means attacks only
+
+| attack | base ASR | trained ASR |
+|---|---:|---:|
+| matched (all·L13) | 0.844 | 0.032 (HELD) |
+| L9 (diff layer) | 0.844 | 0.020 (HELD) |
+| seed7 (diff prompt sample) | 0.844 | 0.110 (leak — DIRECTION variation) |
+| mlp-only | 0.844 | 0.220 (leak — SCOPE) |
+| L13-25 | 0.844 | 0.113 (leak — LAYERS) |
+| L0-12 | 0.844 | 0.183 (leak — LAYERS) |
+
+Takeaway: v6 kills the trained-family attack (0.03) but leaks 0.11–0.22 against
+variations (different prompt sample, narrower scope, subset layers). 4–8× safer
+than base everywhere, not a universal kill. v7 (`--attack-ensemble`) randomizes
+scope × layers × direction-prompts per step to close all three leak types.
 
 ## Tier 2 — different attack CLASS (code TBD)
 
