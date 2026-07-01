@@ -31,7 +31,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from tamperforge import empirical_refusal_direction, load_model
 from tamperforge.data import BENIGN_PROMPTS, PROSE_TEXT, load_advbench_prompts
-from tamperforge.eval.capability import arc_challenge_accuracy, compute_perplexity
+from tamperforge.eval.capability import arc_challenge_accuracy, compute_perplexity, generative_mcq
 from tamperforge.eval.log import RunLogger, make_run_id
 from tamperforge.eval.safety_eval import eval_advbench_keyword, generate_responses
 
@@ -88,10 +88,16 @@ def _attack(model, d: torch.Tensor, layers, scope: str) -> None:
     print(f"[eval] attacked: ablated emp. refusal dir from {scope} of {len(layers)} layers")
 
 
-def _capability(model, tok, device, n_arc):
+def _capability(model, tok, device, n_arc, n_mcq):
     ppl = compute_perplexity(model, tok, device, PROSE_TEXT)
     arc = arc_challenge_accuracy(model, tok, device, n=n_arc)
-    return {"ppl": ppl["ppl"], "arc": arc["accuracy"]}
+    out = {"ppl": ppl["ppl"], "arc": arc["accuracy"]}
+    if n_mcq > 0:
+        g = generative_mcq(model, tok, device, n_per_subject=n_mcq)
+        # generative MMLU: parse_rate is the "intellectual suicide" signal (gibberish -> ~0)
+        out.update({"gen_mmlu_parse_rate": g["parse_rate"], "gen_mmlu_acc": g["accuracy"],
+                    "gen_mmlu_acc_of_parsed": g["acc_of_parsed"]})
+    return out
 
 
 def _condition(name, model, tok, device, prompts, logger, cfg):
@@ -100,9 +106,11 @@ def _condition(name, model, tok, device, prompts, logger, cfg):
     for r in rows:
         logger.generation({"condition": name, **r})
     kw = eval_advbench_keyword(rows)
-    cap = _capability(model, tok, device, cfg["n_arc"])
+    cap = _capability(model, tok, device, cfg["n_arc"], cfg["n_mcq"])
     summary = {"condition": name, "keyword_asr": kw["asr"], **cap}
-    print(f"[{name}] keyword_asr={kw['asr']:.2f} ppl={cap['ppl']:.2f} arc={cap['arc']:.2f}")
+    g = (f" gen_mmlu[parse={cap['gen_mmlu_parse_rate']:.2f} acc={cap['gen_mmlu_acc']:.2f}]"
+         if "gen_mmlu_parse_rate" in cap else "")
+    print(f"[{name}] keyword_asr={kw['asr']:.2f} ppl={cap['ppl']:.2f} arc={cap['arc']:.2f}{g}")
     return summary
 
 
@@ -118,6 +126,9 @@ def main() -> None:
     ap.add_argument("--n-direction", type=int, default=256)
     ap.add_argument("--n-adv", type=int, default=100)
     ap.add_argument("--n-arc", type=int, default=100)
+    ap.add_argument("--n-mcq", type=int, default=25,
+                    help="per-subject generative-MMLU questions (model WRITES the letter; "
+                         "parse_rate = intellectual-suicide signal). 0 to skip.")
     ap.add_argument("--max-new-tokens", type=int, default=128)
     ap.add_argument("--advbench-source", choices=["walledai", "local"], default="walledai")
     ap.add_argument("--advbench-split", default="train")
@@ -127,7 +138,8 @@ def main() -> None:
     run_id = args.run_id or make_run_id("eval_p1b")
     logger = RunLogger(ROOT / "results", run_id, repo_root=ROOT)
     logger.write_manifest({"script": "eval_tamper_resistant.py", "args": vars(args)})
-    cfg = {"n_adv": args.n_adv, "n_arc": args.n_arc, "max_new_tokens": args.max_new_tokens}
+    cfg = {"n_adv": args.n_adv, "n_arc": args.n_arc, "n_mcq": args.n_mcq,
+           "max_new_tokens": args.max_new_tokens}
 
     prompts = load_advbench_prompts(ROOT / "data" / "advbench_harmful_behaviors.csv",
                                     n=max(args.n_adv, args.n_direction), seed=42,

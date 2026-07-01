@@ -171,6 +171,61 @@ def mmlu_accuracy(model, tok, device: str, subjects: list[str] | None = None,
     return summary
 
 
+def generative_mcq(model, tok, device: str, subjects: list[str] | None = None,
+                   n_per_subject: int = 40, seed: int = 42, split: str = "test",
+                   max_new: int = 8) -> dict[str, Any]:
+    """MMLU where the model GENERATES the answer letter (not log-likelihood).
+
+    Log-likelihood MCQ ranks option logprobs, so a GIBBERISH model still averages
+    ~0.25 (random) — blind to collapse. Here the model must WRITE 'A'/'B'/'C'/'D';
+    a broken model emits garbage with no parseable letter -> parse_rate ~0 and
+    accuracy ~0 (floor 0, not 0.25). `parse_rate` is the intellectual-suicide
+    signal; `acc_of_parsed` is accuracy among coherent answers (~0.25 if coherent
+    but wrong).
+    """
+    import re
+    from datasets import load_dataset
+
+    if subjects is None:
+        subjects = ["high_school_biology", "college_computer_science",
+                    "abstract_algebra", "professional_law"]
+    labels = ["A", "B", "C", "D"]
+    rows = []
+    correct = parsed = total = 0
+    for subject in subjects:
+        ds = load_dataset("cais/mmlu", subject, split=split)
+        ds = _shuffle_take(ds, n_per_subject, seed)
+        for ex in ds:
+            choices = list(ex["choices"])
+            ans = int(ex["answer"])
+            prompt = f"Question: {ex['question'].strip()}\n"
+            for lab, ch in zip(labels, choices):
+                prompt += f"{lab}. {ch}\n"
+            prompt += "Answer with a single letter (A, B, C, or D):"
+            enc = tok.apply_chat_template([{"role": "user", "content": prompt}],
+                                          return_tensors="pt", return_dict=True,
+                                          add_generation_prompt=True).to(device)
+            with torch.no_grad():
+                out = model.generate(**enc, max_new_tokens=max_new, do_sample=False,
+                                     pad_token_id=tok.eos_token_id)
+            gen = tok.decode(out[0, enc["input_ids"].shape[1]:], skip_special_tokens=True)
+            m = re.search(r"[ABCD]", gen.upper())
+            total += 1
+            ok = False
+            if m:
+                parsed += 1
+                ok = labels.index(m.group()) == ans
+                correct += int(ok)
+            rows.append({"task": "mmlu_generative", "subject": subject,
+                         "answer": labels[ans], "gen": gen[:40],
+                         "parsed": bool(m), "correct": ok})
+    return {"task": "mmlu_generative", "n": total,
+            "parse_rate": parsed / max(total, 1),
+            "accuracy": correct / max(total, 1),
+            "acc_of_parsed": correct / max(parsed, 1),
+            "rows": rows}
+
+
 def compute_perplexity(
     model,
     tok,
