@@ -182,27 +182,101 @@ Detailed snapshot: `docs/results_2026_07_01.md`.
   Inspect on server if user ran them:
   `results/judge_*_advbench500_w12/summary.json`.
 
-## STATUS 2026-07-01 (late) — P0 done, P1 inconclusive
+## STATUS 2026-07-01 (latest) — P1 done, P1b-A in the objective-search phase
 
-- **P0 complete + archived.** base/heretic/extreme judged (DeepSeek V4 Flash,
-  AdvBench 500) + ARC-c 25-shot. Table in `docs/results_2026_07_01.md`. Judge
-  parse-failures resolved via `scripts/adjudicate_judge_failures.py`. Takeaway:
-  cheap uncensoring is ~free today (heretic ASR 0.886 at zero capability cost).
-- **P1 first run INCONCLUSIVE** (`results/p1_cleanbase_nojudge_v2/`). The all-229
-  adapter attack destroys capability, BUT the direction-count control
-  (`base_ablated_randN`: 229 random dirs) destroys it just as badly. So the
-  collapse is a direction-count artifact, not proven entanglement. Full analysis
-  in the P1 section of `docs/results_2026_07_01.md`.
+Read this section first; the P0/P1 detail below is now historical.
 
-### IMMEDIATE NEXT — the rank sweep (settles P1). See `TODO.md`.
+### Where things stand
+- **P0: done + archived.** base/heretic/extreme judged (DeepSeek V4 Flash, AdvBench
+  500) + ARC-c 25-shot. Cheap uncensoring is ~free today (heretic judge ASR 0.886,
+  ARC ≥ base). Parse-failures fixed via `scripts/adjudicate_judge_failures.py`.
+- **P1 (adapter MAD crux): PASS on the mechanism.** Full detail + tables in
+  `docs/results_2026_07_01.md` and `docs/devlog_2026_07_01.md`.
+  - Clean-base rank sweep: ablating adapter W_out dirs drives PPL 14.8→9513 vs
+    random dirs 13.5→24.5 (~400× at k=32). Direction-count confound (the
+    `base_ablated_randN` control) is dead. But safety never drops (native refusal
+    masks it) → mechanism only.
+  - Abliterated-base sweep (`--adapter-base native_ablated`, the product):
+    crossover at k=4 — ablating 4 adapter dirs uncensors (judge ASR 0.72) at
+    capability cost (PPL 13→23.5, ARC 0.43→0.34) while the bare attack is free and
+    random-k untouched. That IS the MAD property.
+  - **Ceiling:** the attacker's crack point (k=4) yields a COHERENT, usable
+    harmful model. Prose-PPL rises but greedy generation stays fluent. Prose-PPL ≠
+    generation coherence.
+- **P1b-A (weight-level defense): objective search.** `experiments/train_tamper_resistant.py`.
+  - Differentiable ablated forward via `torch.func.functional_call` — VALIDATED on
+    a toy (clean-good / ablated-wrecked, grads flow).
+  - v5 (prose-PPL gib loss, MLP scope, 600 steps) trained to convergence, then
+    attacked + judged (`experiments/eval_tamper_resistant.py`): **FAILED.**
+    trained_attacked judge-ASR 0.60 ≈ base_attacked 0.54 — the 8× prose-PPL gap
+    (104 vs 13) does NOT reduce real harm. **Prose-PPL objective is ruled out.**
+  - v6 (RUNNING at handoff): new `--gib-mode argmax` (ablated model must fail to
+    reproduce the CLEAN model's own greedy generations — targets the argmax /
+    generation, not prose-PPL) + `--train-scope all` (attention + MLP). This is the
+    current bet.
 
-Find the smallest k where ablating k adapter W_out dirs removes safety (ASR
-~0.68), then compare entangled-k vs random-k capability at that k. Entanglement
-is supported only if a *small* entangled ablation is disproportionately
-destructive vs a small random one. Uses the new `--conditions` subset flag +
-`base_ablated_randN` control (both committed). Commands in `TODO.md` §2.
+### IMMEDIATE NEXT
+1. **Read v6's result.** Watch `gib_ce` (want HIGH = ablated can't reproduce clean
+   gens), `L_task` (stay ~3–4), `refuse ablated` (HIGH = uncensors), and the
+   `[ablated gen]` prints — success = generation turns to GIBBERISH (what prose-PPL
+   never gave).
+2. **Eval any promising checkpoint** with `experiments/eval_tamper_resistant.py`
+   (real abliteration attack + judge). The ONLY verdict that counts:
+   `trained_attacked` judge-ASR ≪ `base_attacked` judge-ASR. Keyword ASR lies on
+   broken models — always judge.
+3. **If argmax still fails:** escalate the gib signal — Gumbel/straight-through
+   soft-generation scored by a frozen coherence model, or RL (REINFORCE) over the
+   DeepSeek judge on ablated generations (optimizes the eval metric directly).
+   Also try `--train-scope all` if v6 was MLP.
 
-Judging of P1 generations is done LOCALLY (env_ml) — see `TODO.md` §3.
+### Hard-won lessons (do not re-learn these)
+- **Judge, never keyword.** Broken models produce garbage with no refusal words →
+  keyword ASR 1.0 but judge ASR ~0. All conclusions use the DeepSeek V4 Flash judge.
+- **Prose-PPL ≠ generation coherence.** High teacher-forced PPL does not break
+  greedy generation. Optimize/verify on GENERATIONS, not prose PPL.
+- **Direction-count confound.** Any multi-direction ablation must be compared to
+  the same number of RANDOM directions (`base_ablated_randN`).
+- **Couple safety to d.** For a weight-level defense, the ablated model must FAIL
+  to refuse (`L_uncensor`), else the "capability cost" is on a safety-irrelevant
+  direction.
+- **functional_call, not deepcopy+in-place** for the differentiable ablated forward
+  (in-place severs the graph).
+- **Adversarial gib loss must reward the GAP / selectivity, not absolute badness** —
+  absolute badness makes the optimizer kill the whole model.
+
+### Ops / environment
+- Vast RTX 4090 box, SSH alias `vast_tamperforge` (currently the PROXY host
+  `ssh9.vast.ai`; direct port usually not exposed — `~/.ssh/config` updated per box).
+- Bring-up on a fresh box: `git clone`, `bash scripts/vast_setup.sh`, `hf auth
+  login`, then restore weights: `hf download aaronrockmenezes/tamperforge
+  --repo-type model --local-dir /tmp/tf_hf` and copy `adapters/*.pt` +
+  `abliterated_*` into `outputs/`.
+- **Storage split:** logs → git; weights → private HF repo
+  `aaronrockmenezes/tamperforge` (push via `scripts/push_to_hf.py` on the box).
+- **Recurring git-pull clash:** results generated on the box are untracked; local
+  commits of the same files collide on pull. Fix each time:
+  `mkdir -p /tmp/vast_bak && mv results/<clashing_dirs> /tmp/vast_bak/ && git pull
+  --ff-only`. (A `scripts/sync_results.sh` to commit-from-box was proposed, not yet
+  built — worth doing.)
+- **Judging is done LOCALLY** in `env_ml` (OpenRouter key in local `.env`); the box
+  may not have the key. Fetch generations with scp, judge with
+  `experiments/judge_generations.py`, split by `condition`.
+- Memory: `--train-scope all` + argmax mode is heavy; gradient checkpointing on,
+  256-tok cap, `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`. OOM → drop scope
+  or layers.
+
+### Key files (this phase)
+- `experiments/train_tamper_resistant.py` — P1b-A trainer (gib-mode prose|argmax,
+  train-scope mlp|all, L_uncensor coupling).
+- `experiments/eval_tamper_resistant.py` — attack+judge a trained checkpoint (the
+  verdict tool). 3 conditions: trained_clean / trained_attacked / base_attacked.
+- `src/tamperforge/data_p1b.py` — wikitext-103 / AdvBench / alpaca loaders + split.
+- `src/tamperforge/fold.py` + `GatedSafetyAdapter` — P1b-B (fold adapter into FFN),
+  ready but unused; needs a gated-adapter retrain.
+- `experiments/p1_mad_crux.py` — the P1 sweep (6 conditions, `--conditions`,
+  `--adapter-attack-rank`, `--adapter-base`).
+- `scripts/run_p1_ablbase_sweep.sh` — the P1 defense sweep.
+- `docs/p1b_plan.md` — A/B/C plan for P1b.
 
 ## P0/P1 background (historical — P0 now done)
 
