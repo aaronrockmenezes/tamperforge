@@ -298,7 +298,7 @@ def main() -> None:
 
     for step in tqdm(range(1, args.steps + 1), desc="p4v4 steps", dynamic_ncols=True):
         if args.attack_ensemble:
-            eta = rng.choice([5e-5, 1e-4, 2e-4]); n_in = rng.choice([4, 8, 16]); ep_in = rng.choice([2, 3])
+            eta = rng.choice([1e-4, 2e-4, 3e-4]); n_in = rng.choice([8, 16, 32]); ep_in = rng.choice([3, 4, 5])
         else:
             eta, n_in, ep_in = args.inner_lr, args.inner_demos, args.inner_epochs
         demo_sub = rng.sample(demo_pool, min(n_in, len(demo_pool)))
