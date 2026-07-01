@@ -21,14 +21,39 @@ Core idea (min-max, per step):
 Loss:
   L = L_task(clean)                                   # useful
     + lambda_safe   * L_refusal(clean)               # safe
-    + lambda_gib    * relu(C_target - PPL(ablated))  # ablation -> gibberish
+    + lambda_gib    * L_incoherence(ablated)         # ablation -> GENERATION gibberish
     + lambda_reg    * ||W - W0||^2                    # stay near base (optional)
+
+TARGET GENERATION COHERENCE, NOT PROSE PPL. The P1 ablbase sweep showed prose
+perplexity is a MISLEADING proxy: at k=16/32 the entangled model hit PPL 113/809
+(teacher-forced on held-out prose) yet its greedy GENERATIONS stayed fluent
+English (just vaguer/hedged, which is why judge-ASR fell). Greedy decoding picks
+locally high-prob tokens, so high prose-PPL does not imply broken generations.
+An attacker who uncensors at k=4 (PPL 23) still gets coherent, actionable harmful
+output — a usable model. So the defense objective must make the ABLATED model's
+own GENERATIONS incoherent, not just raise a teacher-forced PPL number.
+
+L_incoherence(ablated) should score the ablated model's *self-generated*
+continuations for gibberish, e.g. (any/combination):
+  - self-perplexity: PPL the ablated model assigns to its OWN greedy generation
+    (a coherent model is confident on its own text; a broken one is not), or the
+    generation's mean token entropy;
+  - degeneracy signals: n-gram repetition rate, unique-token ratio, non-language
+    / non-ASCII fraction;
+  - a small frozen coherence/fluency classifier or reference-LM PPL over the
+    generation.
+Verify success on ACTUAL generations reading as gibberish — never on prose PPL
+alone (this session's lesson).
 
 The hard/expensive piece is step 2+3: the ablated forward must be DIFFERENTIABLE
 in the base weights so lambda_gib pushes them. Use torch.func.functional_call
 with weights derived differentiably from the live parameters (do NOT deepcopy +
 in-place ablate — that severs the graph). d is detached each step (attacker
-recomputes; we don't backprop through direction estimation).
+recomputes; we don't backprop through direction estimation). NOTE: generation is
+non-differentiable (argmax), so L_incoherence needs a differentiable surrogate —
+e.g. score coherence via teacher-forcing the ablated model on continuations
+sampled/greedy-decoded under stop-grad, or use a soft/Gumbel relaxation. This is
+the crux to solve before scaling.
 
 STATUS: skeleton. The marked TODOs are the real work. Do not run until the P1
 POC is banked and the differentiable-ablation path is verified on a tiny model.
