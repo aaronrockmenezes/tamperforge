@@ -51,15 +51,13 @@ pushgens(){
 #   v5 = latest / most-advanced objective (all-scope + generation-level); breaks K=1 (0.695)
 #   v7 = abliteration product (FT-undefended) -> honest FT-cost baseline
 #   base = bare gemma control
-GROUPS=(
-  "v3:outputs/ft_resistant_p4_v3.pt"        # K=1 holder (artifact)
-  "v5:outputs/ft_resistant_p4_v5.pt"        # latest objective (all-scope, gen-obj)
-  "v7:outputs/tamper_resistant_p1b_v7.pt"   # abliteration PRODUCT -> FT-cost baseline
-  "base:"                                    # control (bare gemma)
-)
+# parallel arrays (no substring expansion; ${spec%%:*} mis-parsed to 0 on the box).
+# ck="" => base control (no --checkpoint).
+TAGS=(v3 v5 v7 base)
+CKS=("outputs/ft_resistant_p4_v3.pt" "outputs/ft_resistant_p4_v5.pt" "outputs/tamper_resistant_p1b_v7.pt" "")
 
-for spec in "${GROUPS[@]}"; do
-  tag="${spec%%:*}"; ck="${spec#*:}"
+for i in "${!TAGS[@]}"; do
+  tag="${TAGS[$i]}"; ck="${CKS[$i]}"
   echo "############ [$(ts)] GROUP $tag (ckpt='${ck:-BASE}') ############"
   for K in $KS; do
     out="outputs/night/${tag}_ft${K}"
