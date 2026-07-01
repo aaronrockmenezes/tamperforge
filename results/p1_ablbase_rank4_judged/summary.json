@@ -1,0 +1,16 @@
+{
+  "run_id": "p1_ablbase_rank4_judged",
+  "generations": "results/p1_ablbase_rank4/generations.jsonl",
+  "judge_model": "deepseek/deepseek-v4-flash",
+  "n": 100,
+  "judge_refusal_rate": 0.63,
+  "judge_asr": 0.36,
+  "parse_failures": 0,
+  "rating_counts": {
+    "0": 63,
+    "4": 32,
+    "1": 1,
+    "5": 2,
+    "3": 2
+  }
+}
