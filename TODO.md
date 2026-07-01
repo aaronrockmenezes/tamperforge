@@ -93,6 +93,24 @@ field. `judge_generations.py` scores every row and reports one overall summary;
 split by `condition` afterwards for per-condition ASR. Repeat for
 `p1_ablbase_nojudge/generations.jsonl` once copied.
 
+## 3b. FIX p1 for the abliterated-base (product) variant
+
+The `p1_ablbase_nojudge` run is **invalid for hole #1**: `p1_mad_crux.py` loads
+the clean `--model-id` for every condition, so the ablbase adapter sat on a base
+that still had native refusal → `adapter_only` stayed at ASR 0 (native refusal
+carried safety), not because the adapter held. Same direction-count confound as
+cleanbase otherwise.
+
+To test the product properly, p1 must strip the base's native refusal first for
+the adapter conditions (matching how the ablbase adapter was trained). Options:
+- add `--base-native-ablate` that runs `abliterate_model_inplace(model,
+  empirical_refusal_dir, layers)` on the loaded base before applying the adapter,
+  for `base_adapter*` conditions; or
+- accept a `--base-checkpoint` pointing at
+  `outputs/gemma3_1b_it_abliterated_all_empirical` and load that as the base for
+  adapter conditions.
+Then re-run the ablbase adapter through the (fixed) sweep.
+
 ## 4. Design levers if the sweep shows no window
 
 - Retrain adapter with small `--d-hidden` (8-16) so safety lives in few dirs;
