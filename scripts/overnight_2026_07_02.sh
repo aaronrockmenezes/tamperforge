@@ -28,11 +28,17 @@ pushgens(){
 }
 
 # tag:checkpoint-path ("" path = base control, no --checkpoint)
+# NOTE: no FT-defense actually works (all ~= base by K=5). Spread chosen to
+# CHARACTERIZE the frontier, not because one is "best":
+#   v3 = holds K=1 (0.005) but it's an artifact of a weak inner (breaks K>=5)
+#   v5 = latest / most-advanced objective (all-scope + generation-level); breaks K=1 (0.695)
+#   v7 = abliteration product (FT-undefended) -> honest FT-cost baseline
+#   base = bare gemma control
 GROUPS=(
-  "v5:outputs/ft_resistant_p4_v5.pt"        # best FT-defense (all-scope, gen-obj)
-  "v7:outputs/tamper_resistant_p1b_v7.pt"   # abliteration PRODUCT -> honest FT-cost baseline
+  "v3:outputs/ft_resistant_p4_v3.pt"        # K=1 holder (artifact)
+  "v5:outputs/ft_resistant_p4_v5.pt"        # latest objective (all-scope, gen-obj)
+  "v7:outputs/tamper_resistant_p1b_v7.pt"   # abliteration PRODUCT -> FT-cost baseline
   "base:"                                    # control (bare gemma)
-  "v3:outputs/ft_resistant_p4_v3.pt"        # tail: MLP-scope FT-defense, completeness
 )
 
 for spec in "${GROUPS[@]}"; do
