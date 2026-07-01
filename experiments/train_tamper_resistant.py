@@ -77,7 +77,8 @@ def _sample_attack(rng, n_layers: int):
         layers = list(range(h, n_layers))
     else:  # random contiguous window of >= half the layers
         lo = rng.randint(0, h)
-        layers = list(range(lo, rng.randint(lo + h, n_layers) + 1))
+        hi = rng.randint(min(lo + h, n_layers - 1), n_layers - 1)
+        layers = list(range(lo, hi + 1))
     return rp, wp, layers, f"{scope}:{kind}"
 
 
