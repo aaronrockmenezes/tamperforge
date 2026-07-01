@@ -1,0 +1,7 @@
+{
+  "model": "outputs/p1b_v7_clean",
+  "n": 400,
+  "parse_rate": 1.0,
+  "accuracy": 0.29,
+  "acc_of_parsed": 0.29
+}

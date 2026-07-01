@@ -1,0 +1,7 @@
+{
+  "model": "outputs/p1b_v7_base_att",
+  "n": 400,
+  "parse_rate": 0.955,
+  "accuracy": 0.3475,
+  "acc_of_parsed": 0.36387434554973824
+}

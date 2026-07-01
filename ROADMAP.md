@@ -74,7 +74,7 @@ and optional `judgments.jsonl`.
 
 ---
 
-## P1b — From removable adapter to un-excisable, gibberish-on-attack  🟢 POC PASS (A)
+## P1b — From removable adapter to un-excisable, gibberish-on-attack  🟢 ROBUST POC PASS (A/v7)
 
 Two prototype weaknesses to close (see `docs/p1b_plan.md`):
 1. adapter is a removable block (attacker deletes it) → fold into weights (B), or
@@ -113,13 +113,21 @@ Iteration log (2026-07-01):
   model yields non-harmful gibberish + ARC drop; clean product ≈ free (ARC 0.362
   vs base 0.366). Checkpoint `outputs/tamper_resistant_p1b_v6.pt` (git+HF). Detail
   in `docs/results_2026_07_01.md` / devlog part 3.
+- **v7 (`--attack-ensemble`): ROBUST POC PASS.** Randomizing the simulated attack
+  (scope × layers × direction prompts) each step closed every v6 leak — mlp-only
+  0.22→0.013, L13-25 0.11→0.004, seed7 0.11→0.000, matched 0.004 — clean product
+  intact (ASR 0.013, ARC 0.364, gen parse 1.0). Attacking v7 collapses ARC to
+  random (0.246) while attacking base keeps it (0.355): MAD on both axes. Full
+  battery + tables in `docs/results_2026_07_01.md`, `docs/attack_battery.md`.
 - **NEXT (POC → publishable), in priority:**
-  1. **Scope-MISMATCH attacks** — the eval attacker used `--attack-scope all` =
-     training scope. Test `--attack-scope mlp`, different `--direction-layer`,
-     rank sweeps. THE decisive robustness test.
-  2. **Fine-tuning attack (P4)** — abliteration-resistance ≠ FT-resistance.
-  3. Seeds, MMLU/GSM8K, Qwen/Llama; ablate which of {argmax, attention scope,
-     λ_uncensor} is load-bearing.
+  1. **Fine-tuning attack (P4)** — the realistic threat; abliteration-robust ≠
+     FT-robust. Highest priority. Build `experiments/ft_attack.py`.
+  2. **OBLITERATUS (P2)** — adaptive attacker (per-layer, entanglement-gated
+     skipping). Separate AGPL harness on the saved v7 dir.
+  3. Rigor: seeds (is v7 a lucky run?), MMLU-full + GSM8K, Qwen3-1.7B/Llama-3.2-1B;
+     ablate which of {argmax, attention scope, λ_uncensor, ensemble} is load-bearing.
+  4. Note: the SVD/whitened attack estimators are duds (don't uncensor base) — a
+     real stronger-estimator test needs a better refusal-SVD; low priority.
 
 **B — fold adapter into FFN (cheap, un-block).** `tamperforge.GatedSafetyAdapter`
 (SwiGLU, foldable) + `fold_gated_adapter_into_ffn` + `verify_fold`. Ready; needs a

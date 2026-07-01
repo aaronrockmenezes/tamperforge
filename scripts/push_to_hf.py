@@ -29,6 +29,8 @@ ADAPTERS = [
     "outputs/safety_adapter_p1_cleanbase.pt",
     "outputs/safety_adapter_p1_ablbase.pt",
     "outputs/tamper_resistant_p1b.pt",  # P1b-A trained MLP weights (v5; prose-PPL objective, negative result)
+    "outputs/tamper_resistant_p1b_v6.pt",  # v6: argmax objective, matched-attack PASS
+    "outputs/tamper_resistant_p1b_v7.pt",  # v7: ensemble attack, ROBUST across the battery
 ]
 ABLATED_DIR = "outputs/gemma3_1b_it_abliterated_all_empirical"
 
