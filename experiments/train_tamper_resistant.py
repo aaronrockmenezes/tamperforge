@@ -93,11 +93,11 @@ def _ablated_overrides(model, d: torch.Tensor, layers, read_p, write_p) -> dict:
     return ov
 
 
-def _lm_loss(model, tok, texts, device, overrides=None) -> torch.Tensor:
+def _lm_loss(model, tok, texts, device, overrides=None, max_len: int = 256) -> torch.Tensor:
     """Mean next-token CE over *texts*. overrides -> functional_call (ablated)."""
     total = torch.zeros((), device=device)
     for t in texts:
-        enc = tok(t, return_tensors="pt").to(device)
+        enc = tok(t, return_tensors="pt", truncation=True, max_length=max_len).to(device)
         labels = enc["input_ids"]
         if overrides is None:
             out = model(**enc, labels=labels)
@@ -112,7 +112,7 @@ def _refusal_loss(model, tok, pairs, device) -> torch.Tensor:
     for prompt, response in pairs:
         prefix = tok.apply_chat_template([{"role": "user", "content": prompt}],
                                          tokenize=False, add_generation_prompt=True)
-        full = tok(prefix + response, return_tensors="pt").to(device)
+        full = tok(prefix + response, return_tensors="pt", truncation=True, max_length=320).to(device)
         pre = tok(prefix, return_tensors="pt")["input_ids"]
         labels = full["input_ids"].clone()
         labels[:, : pre.shape[1]] = -100
@@ -160,8 +160,8 @@ def main() -> None:
     ap.add_argument("--n-task-eval", type=int, default=400)
     ap.add_argument("--n-harmful", type=int, default=520)
     ap.add_argument("--n-benign", type=int, default=1000)
-    ap.add_argument("--task-batch", type=int, default=8, help="corpus texts per step")
-    ap.add_argument("--refusal-batch", type=int, default=8, help="harmful prompts per step")
+    ap.add_argument("--task-batch", type=int, default=4, help="corpus texts per step")
+    ap.add_argument("--refusal-batch", type=int, default=4, help="harmful prompts per step")
     ap.add_argument("--steps", type=int, default=400)
     ap.add_argument("--eval-every", type=int, default=25, help="held-out eval + gen every N steps")
     ap.add_argument("--smoke", action="store_true", help="use tiny in-repo data (no downloads)")
@@ -195,6 +195,14 @@ def main() -> None:
             p.requires_grad_(False)
     print(f"[p1b-A] trainable matrices: {len(trainable)} across {len(layers)} layers "
           f"(scope={args.train_scope})")
+    # memory: checkpoint activations (the functional_call double-forward is the
+    # peak); no KV cache during training.
+    model.config.use_cache = False
+    try:
+        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+        print("[p1b-A] gradient checkpointing on")
+    except Exception as e:  # noqa: BLE001
+        print(f"[p1b-A] gradient checkpointing unavailable: {e}")
 
     # --- data: real corpora with a held-out eval split (or --smoke for tiny) ---
     if args.smoke:
