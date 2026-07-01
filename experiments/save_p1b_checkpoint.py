@@ -38,7 +38,8 @@ import torch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from tamperforge import empirical_refusal_direction, load_model
+from tamperforge import (empirical_refusal_direction, load_model,
+                         orthonormalize_directions, svd_refusal_directions)
 from tamperforge.data import BENIGN_PROMPTS, load_advbench_prompts
 
 READ = {"mlp": ("mlp.gate_proj", "mlp.up_proj"),
@@ -46,6 +47,20 @@ READ = {"mlp": ("mlp.gate_proj", "mlp.up_proj"),
                 "mlp.gate_proj", "mlp.up_proj")}
 WRITE = {"mlp": ("mlp.down_proj",),
          "all": ("self_attn.o_proj", "mlp.down_proj")}
+
+
+def _parse_layers(spec: str, n: int) -> list[int]:
+    if spec == "all":
+        return list(range(n))
+    out: list[int] = []
+    for c in spec.split(","):
+        c = c.strip()
+        if "-" in c:
+            lo, hi = c.split("-", 1)
+            out.extend(range(int(lo), int(hi) + 1))
+        elif c:
+            out.append(int(c))
+    return list(dict.fromkeys(out))
 
 
 def _load_trained(model, ckpt_path: str) -> dict:
@@ -64,20 +79,27 @@ def _load_trained(model, ckpt_path: str) -> dict:
 
 
 @torch.no_grad()
-def _attack(model, d, layers, scope) -> None:
+def _attack(model, dirs, layers, scope) -> None:
+    """Ablate a set of (orthonormal) directions from the scoped matrices."""
     dev = next(model.parameters()).device
-    dd = (d / d.norm().clamp(min=1e-8)).to(dev)
+    if dirs.dim() == 1:
+        dirs = dirs.unsqueeze(0)
+    dirs = [d.to(dev) for d in orthonormalize_directions(dirs)]
     for li in layers:
         layer = model.model.layers[li]
         for name in READ[scope]:
             mod = layer.get_submodule(name)
             W = mod.weight.data.float()
-            mod.weight.data = (W - torch.outer(W @ dd, dd)).to(mod.weight.dtype)
+            for dd in dirs:
+                W = W - torch.outer(W @ dd, dd)
+            mod.weight.data = W.to(mod.weight.dtype)
         for name in WRITE[scope]:
             mod = layer.get_submodule(name)
             W = mod.weight.data.float()
-            mod.weight.data = (W - torch.outer(dd, dd @ W)).to(mod.weight.dtype)
-    print(f"[save] attacked: ablated emp. refusal dir from {scope} of {len(layers)} layers")
+            for dd in dirs:
+                W = W - torch.outer(dd, dd @ W)
+            mod.weight.data = W.to(mod.weight.dtype)
+    print(f"[save] attacked: ablated {len(dirs)} dir(s) from {scope} of {len(layers)} layers")
 
 
 def main() -> None:
@@ -88,8 +110,15 @@ def main() -> None:
     ap.add_argument("--device", default=None)
     ap.add_argument("--attack", choices=["none", "mlp", "all"], default="none",
                     help="post-attack abliteration scope; 'none' saves the model as-is")
-    ap.add_argument("--abliterate-layers", default="all")
+    ap.add_argument("--abliterate-layers", default="all",
+                    help="all, or comma/range e.g. '13-25' (layer-subset attack, battery 1.2)")
     ap.add_argument("--direction-layer", type=int, default=13)
+    ap.add_argument("--attack-estimator", choices=["diffmeans", "svd", "whitened_svd"],
+                    default="diffmeans", help="refusal-direction estimator (battery 1.4)")
+    ap.add_argument("--attack-rank", type=int, default=1,
+                    help="number of directions to ablate (rank-k subspace, battery 1.3)")
+    ap.add_argument("--direction-seed", type=int, default=42,
+                    help="seed for the harmful/benign prompt sample used to estimate d")
     ap.add_argument("--n-direction", type=int, default=256)
     args = ap.parse_args()
 
@@ -99,15 +128,23 @@ def main() -> None:
                       else args.checkpoint)
 
     if args.attack != "none":
-        n_layers = len(model.model.layers)
-        layers = list(range(n_layers)) if args.abliterate_layers == "all" \
-            else [int(x) for x in args.abliterate_layers.split(",")]
-        prompts = load_advbench_prompts(None, n=args.n_direction, seed=42, source="walledai")
+        layers = _parse_layers(args.abliterate_layers, len(model.model.layers))
+        prompts = load_advbench_prompts(None, n=args.n_direction, seed=args.direction_seed,
+                                        source="walledai")
+        harmful = prompts[: args.n_direction]
+        harmless = BENIGN_PROMPTS[: args.n_direction]
         with torch.no_grad():
-            d = empirical_refusal_direction(model, tok, prompts[: args.n_direction],
-                                            BENIGN_PROMPTS[: args.n_direction],
-                                            args.direction_layer, device)
-        _attack(model, d, layers, args.attack)
+            if args.attack_estimator == "diffmeans":
+                dirs = empirical_refusal_direction(model, tok, harmful, harmless,
+                                                   args.direction_layer, device)
+                if args.attack_rank > 1:
+                    print(f"[save] WARN: diffmeans is rank-1; --attack-rank {args.attack_rank} "
+                          "ignored (use --attack-estimator svd for a rank-k subspace)")
+            else:
+                dirs = svd_refusal_directions(
+                    model, tok, harmful, harmless, args.direction_layer, device,
+                    k=args.attack_rank, whiten=(args.attack_estimator == "whitened_svd"))
+        _attack(model, dirs, layers, args.attack)
 
     out = ROOT / args.out if not Path(args.out).is_absolute() else Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -116,6 +153,8 @@ def main() -> None:
     (out / "p1b_meta.json").write_text(json.dumps({
         "checkpoint": args.checkpoint, "attack": args.attack,
         "attack_layers": args.abliterate_layers, "direction_layer": args.direction_layer,
+        "attack_estimator": args.attack_estimator, "attack_rank": args.attack_rank,
+        "direction_seed": args.direction_seed,
     }, indent=2))
     print(f"[save] wrote HF model dir -> {out}  (eval with p0_baseline_eval.py --backend vllm)")
 
