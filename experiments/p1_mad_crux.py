@@ -143,6 +143,11 @@ def _run_condition(
     adapter = None
     try:
         if "adapter" in name:
+            # Match the adapter's training base. For an --abliterate-base adapter
+            # the native refusal direction must be stripped first, else the
+            # clean base's own refusal masks the adapter-only attack.
+            if args.adapter_base == "native_ablated":
+                abliterate_model_inplace(model, base_direction, layers)
             adapter, _ = load_adapter(ROOT / args.adapter, device=device)
 
         if name == "base_ablated":
@@ -186,6 +191,13 @@ def main() -> None:
     ap.add_argument("--direction-layer", type=int, default=13)
     ap.add_argument("--abliterate-layers", default="all", help="all, 13, or comma/range like 13,17,22")
     ap.add_argument("--adapter-attack-rank", default="all", help="'all' or top-k W_out columns by norm")
+    ap.add_argument(
+        "--adapter-base", choices=["clean", "native_ablated"], default="clean",
+        help=("Base the adapter conditions run on. 'clean' = stock Gemma (default, "
+              "for a clean-base adapter). 'native_ablated' = strip the empirical "
+              "refusal direction from the base first, so the adapter is the sole "
+              "safety mechanism. Use with an adapter trained via --abliterate-base."),
+    )
     ap.add_argument("--n-direction", type=int, default=64)
     ap.add_argument("--n-advbench", type=int, default=100)
     ap.add_argument("--n-arc", type=int, default=100)
@@ -338,6 +350,7 @@ def main() -> None:
         "attack": {
             "base_ablated_direction": "empirical_refusal",
             "adapted_attack_direction": "adapter_W_out",
+            "adapter_base": args.adapter_base,
             "abliterate_layers": layers,
             "adapter_attack_rank": args.adapter_attack_rank,
             "adapter_attack_direction_count": int(adapter_attack_dirs.shape[0]),
