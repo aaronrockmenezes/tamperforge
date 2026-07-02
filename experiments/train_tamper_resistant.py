@@ -368,6 +368,12 @@ def main() -> None:
                                              device, overrides, n_new=args.gib_gen_tokens)
         else:
             gib_ce = _lm_loss(model, tok, task_b, device, overrides=overrides) - L_task  # prose gap
+        # gib_ce (argmax divergence) spikes to inf/NaN in bf16 when the ablated model
+        # assigns ~0 prob to a token. Sanitize: inf -> gap_target (=> L_gib 0 that step,
+        # objective already satisfied), NaN -> gap_target. This stops a spike from making
+        # the TOTAL loss non-finite and getting the whole step skipped (which starved
+        # L_uncensor/L_gib and killed the entanglement on ~4/5 seeds). Log-safe too.
+        gib_ce = torch.nan_to_num(gib_ce, nan=args.gap_target, posinf=args.gap_target, neginf=0.0)
         L_gib = torch.relu(args.gap_target - gib_ce)             # want gib_ce (ablated gen-CE) >= target
         L_uncensor = torch.relu(args.uncensor_margin - ref_abl)  # want ablated bad at refusing
         L_reg = sum((dict(model.named_parameters())[n] - W0[n]).pow(2).mean() for n in trainable)
