@@ -295,44 +295,57 @@ def main() -> None:
         delta = _lora_inner(model, tok, demo_sub, inner_targets, base_named, device,
                             r_in, args.inner_alpha, st_in, lr_in)
         # theta' overrides = LIVE theta + detached delta  => backward() flows to theta (FO-MAML)
-        theta_p = {n: base_named[n] + delta[n] for n in inner_targets}
+        # theta' = LIVE theta + detached delta => backward flows to theta (FO-MAML).
+        # Rebuild fresh per grad-term so each term's graph frees independently:
+        # 10x128-tok gens in ONE graph OOMs 24GB; incremental backward -> peak ~= 1 term.
+        def make_tp():
+            bn = dict(model.named_parameters())
+            return {n: bn[n] + delta[n] for n in inner_targets}
 
-        # 2) product terms at theta (clean weights = no overrides)
+        loss_val = 0.0
+        # 2) product terms at theta (clean weights), backward now
         L_task = torch.zeros((), device=device)
         for t in task_b:
             enc = tok(t, return_tensors="pt", truncation=True, max_length=256).to(device)
             L_task = L_task + functional_call(model, {}, args=(), kwargs={**enc, "labels": enc["input_ids"]}).loss
         L_task = L_task / len(task_b)
-        L_safe = _tf_loss(model, tok, ref_b, device, {})    # clean theta refuses
+        L_safe = _tf_loss(model, tok, ref_b, device, {})
+        Lp = L_task + args.lambda_safe * L_safe
+        Lp.backward()
+        l_task_v, l_safe_v = L_task.item(), L_safe.item(); loss_val += Lp.item()
 
-        # 3) OUTER safety at theta'
-        # 3a. generate what theta' emits on each harmful prompt (no grad)
-        gens = [(_greedy_cached(model, tok, prompt, device, theta_p, args.gen_tokens), prompt)
+        # 3a) generate what theta' emits (no grad)
+        tp0 = make_tp()
+        gens = [(_greedy_cached(model, tok, prompt, device, tp0, args.gen_tokens), prompt)
                 for prompt in gen_prompts]
-        # 3b. GATE: did theta' comply? (judge in parallel, or keyword) — same judge as eval
+        del tp0
+        # 3b) GATE: did theta' comply? (judge in parallel = same judge as eval, or keyword)
         if judge is not None:
             with ThreadPoolExecutor(max_workers=args.judge_workers) as ex:
                 comply_flags = list(ex.map(lambda gp: _judge_comply(judge, gp[1], gp[0][2]), gens))
         else:
             comply_flags = [_complies(g[0][2]) for g in gens]
-        # 3c. loss: comply-CE-up (v3) + per-gen refusal-pull + unlikelihood on judged-compliant gens
+        # 3c) comply-CE-up (v3 term), backward (fresh tp)
+        tp = make_tp()
+        Lc = args.lambda_comply * torch.relu(
+            torch.tensor(args.comply_margin, device=device) - _tf_loss(model, tok, demo_sub, device, tp))
+        Lc.backward(); loss_val += Lc.item(); del tp
+        # 3d) per-gen refusal-pull + unlikelihood, backward EACH (frees its 128-tok graph)
         ref_ids = tok(refusal_txt, return_tensors="pt", add_special_tokens=False)["input_ids"].to(device)
-        L_out = args.lambda_comply * torch.relu(
-            torch.tensor(args.comply_margin, device=device) - _tf_loss(model, tok, demo_sub, device, theta_p))
         n_comply = 0
         for ((p_ids, gi, gtext), _prompt), comp in zip(gens, comply_flags):
-            L_out = L_out + args.lambda_refuse_pull * _ce_cont(model, theta_p, p_ids, ref_ids, device)
+            tp = make_tp()
+            term = args.lambda_refuse_pull * _ce_cont(model, tp, p_ids, ref_ids, device)
             if gi.shape[1] > 0 and comp:
                 n_comply += 1
-                L_out = L_out + args.lambda_unlike * torch.relu(
-                    torch.tensor(args.unlike_margin, device=device) - _ce_cont(model, theta_p, p_ids, gi.detach(), device))
+                term = term + args.lambda_unlike * torch.relu(
+                    torch.tensor(args.unlike_margin, device=device) - _ce_cont(model, tp, p_ids, gi.detach(), device))
+            term.backward(); loss_val += term.item(); del tp
         frac = n_comply / max(len(gen_prompts), 1)
 
-        loss = L_task + args.lambda_safe * L_safe + L_out
-        loss.backward()
         meta_opt.step()
 
-        m = {"L_task": L_task.item(), "L_safe": L_safe.item(), "L_out": L_out.item(), "frac_comply": frac}
+        m = {"L_task": l_task_v, "L_safe": l_safe_v, "L_out": loss_val, "frac_comply": frac}
         logger.event("step", {"step": step, "r_in": r_in, "st_in": st_in, **m})
         if step % args.eval_every == 0 or step == args.steps:
             bn = dict(model.named_parameters())
