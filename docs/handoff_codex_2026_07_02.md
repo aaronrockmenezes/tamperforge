@@ -29,34 +29,23 @@ current attempt, running now.
 - **FTR-v6 = FAILED lobotomy:** clean ARC 0.217 / MMLU 0.246 (~chance); harmAct 0.000 at
   all K only because it's broken. Both v6 ckpts DISCARD.
 
-## RUNNING NOW (as of this handoff)
-- **5090x2** `tamperforge_5090x2` (ssh5.vast.ai:24813), `/venv/main`, torch2.11+cu130 vLLM0.24:
-  - cuda0: `ftr_tar_ret4` — FTR-TAR, λ_retain 4.0 → `outputs/ft_resistant_p4_tar_r4.pt`(+`.best.pt`)
-  - cuda1: `ftr_tar_ret8` — FTR-TAR, λ_retain 8.0 → `outputs/ft_resistant_p4_tar_r8.pt`(+`.best.pt`)
-  - 200 steps, eval-every 25, gen-tokens 512 (matches AdvBench eval), 24 held-out gen-prompts,
-    LLM-judge val gate, warm-start + retain-ref = ABL-v7.
-  - **WATCH:** `retain_KL` must stay small (<~0.5 = close to ABL-v7 = capable). If it climbs
-    past ~1–2 and keeps rising → drifting to lobotomy (v6 repeat) → kill, raise λ_retain.
-    `frac_comply` should fall from 1.0 = θ hardening. Win = frac_comply↓ WHILE retain_KL low.
-- **4090** `vast_tamperforge` (ssh9.vast.ai:33059): free (frontier refs + HF backup done).
+## FT THREAD CLOSED (2026-07-02)
+FTR-TAR (2 runs, λ_retain 4 & 8) killed ~step 75/200. **L_tr pinned at ceiling ~7.99
+throughout = θ cannot reduce the rank-16 LoRA attack at all** (frac_comply flat ~0.9,
+post-attack gen fully compliant every step). retain_KL drifting up (0.5→0.8/1.3). Better
+than v6 (no full lobotomy, KL bounded) but same wall: a meta-lr-1e-5 defender can't
+out-harden a realistic FT attack. STOP RULE hit (≫5 runs). **DECISION: paper anchors on
+abliteration; FT = honest characterized-cost negative.** The saved "best" ckpts are
+step-25 ≈ unmodified ABL-v7 — not worth validating. Do NOT reopen FT with another TAR
+knob; only a fundamentally different lever (loss-landscape basin-trap moonshot) would
+justify it.
 
-## NEXT STEPS (in order)
+## RUNNING NOW
+- **5090x2** (ssh5.vast.ai:24813): FTR-TAR runs being KILLED (see above) → will be free.
+- **4090** (ssh9.vast.ai:33059): free (frontier refs + GSM8K + HF backup done). Sleep or
+  use for the abliteration rigor runs below.
 
-### 1. FTR-TAR verdict (when the two runs finish) — the STOP-RULE gate
-For EACH of the 4 ckpts (`tar_r4.pt`, `tar_r4.best.pt`, `tar_r8.pt`, `tar_r8.best.pt`):
-- **ft_attack K-sweep @ full 520 / 512-tok**, K∈{0,25,50,100,200}. Pattern:
-  `ft_attack.py --checkpoint <ckpt> --demos results/p1b_v7_base_att_gen/generations.jsonl
-  --n-shots K --ft-epochs 5 --out <dir>` then `p0_baseline_eval.py --backend vllm
-  --model-id <dir> --prompt-source advbench --n-prompts 520 --max-new-tokens 512 --n-arc 0
-  --run-id ...`. Judge locally.
-- **Capability (the make-or-break):** materialize clean ckpt (`ft_attack.py --n-shots 0
-  --ft-epochs 0 --out <dir>`) then `lm_eval --model vllm --tasks arc_challenge` and MMLU.
-- **WIN = clean ARC/MMLU ≈ ABL-v7 (0.344/0.393) AND post-attack harmful_actionable ≈ 0.**
-  If harmAct low but ARC/MMLU at chance → another lobotomy → FTR-TAR fails.
-- **STOP RULE:** FTR was budgeted 3–5 runs (Phase A). v2–v6 + TAR(2) already spent it. If
-  FTR-TAR doesn't clearly win → **KILL FT, anchor paper on abliteration.**
-
-### 2. If FT killed → lock abliteration for publication. Gaps, priority order:
+## NEXT STEPS — lock abliteration for publication (FT is done). Priority order:
 1. **Multi-seed (3×)** ABL-v7: retrain 2 more seeds (`train_tamper_resistant.py
    --attack-ensemble`), re-run the full battery. Is it a lucky run?
 2. **Adaptive attacker (P2, OBLITERATUS)** — mandatory gradient-masking check. AGPL harness,

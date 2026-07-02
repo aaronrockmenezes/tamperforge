@@ -43,11 +43,14 @@ FULL-DATA 2x2x3 judge battery + lm_eval capability, done 2026-07-02
 - **Lesson (methodological win for paper):** appearing FT-resistant via capability
   collapse is indistinguishable from real resistance WITHOUT a capability eval;
   ASR-alone called this a win. `usefulness_label` + MC-capability check caught it.
-- **FTR-TAR = the fix, built, not yet run.** `train_ft_resistant_tar.py`: faithful TAR.
-  RETAIN = KL(frozen-ABL-v7 || current) on benign = HARD capability anchor v6 lacked;
-  BOUNDED tamper-resistance relu(cap − post-attack forget CE). LoRA inner + FO-MAML.
-  gen-tokens=eval(512), 32 held-out prompts, saves best+latest. Warm-start+ref=ABL-v7.
-  Win = clean ARC/MMLU ~= ABL-v7 AND post-attack harmAct ~= 0. Run cmds in devlog.
+- **FTR-TAR = FAILED (2026-07-02). FT THREAD CLOSED.** `train_ft_resistant_tar.py`,
+  faithful TAR (KL-to-ABL-v7 retain anchor + bounded TR). 2 runs (λ_retain 4 & 8),
+  killed ~step 75/200: **L_tr pinned at ceiling ~7.99 the whole time = θ cannot reduce
+  the attack's success at all** (frac_comply flat ~0.9). retain_KL climbing (0.5→0.8
+  @ret4, 0.5→1.3 @ret8) = drifting, not stabilizing. Preserves capability better than
+  v6's lobotomy but STILL can't out-harden a rank-16 LoRA FT attack at meta-lr 1e-5.
+  STOP RULE hit (≫5 runs across v2-v6+TAR). **Decision: anchor paper on abliteration;
+  FT = honest characterized-cost negative.**
 
 ## FT frontier — harmful_actionable at FULL 520/512 (judged, coherent harm)
 | K | base OG | ABL-v7 | FTR-v6 (LOBOTOMY) |

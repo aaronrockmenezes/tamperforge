@@ -33,9 +33,12 @@ Model: `google/gemma-3-1b-it`.
   ARC 0.217 / MMLU 0.246 ~= chance = broken model; full-520/512 attacked sweep harmAct
   0.000 at every K. Both v6 ckpts DISCARD. Lesson: capability eval is REQUIRED to tell
   real resistance from a broken model — ASR-alone called this a win.
-- **FTR-TAR = the fix (built, not yet run).** Faithful TAR: KL-to-ABL-v7 retain anchor
-  (the piece v6 lacked) + bounded tamper-resistance. `train_ft_resistant_tar.py`.
-  Win = clean ARC/MMLU ~= ABL-v7 AND post-attack harmAct ~= 0. Cmds: `docs/devlog_2026_07_02.md`.
+- **FTR-TAR = FAILED. FT THREAD CLOSED.** Faithful TAR (KL-to-ABL-v7 retain anchor +
+  bounded TR). 2 runs killed ~step75: L_tr pinned at ceiling = θ can't out-harden the
+  rank-16 LoRA attack (frac_comply flat ~0.9); retain_KL drifting up. Better than v6
+  (no lobotomy) but same wall. STOP RULE hit. **Paper anchors on abliteration; FT =
+  honest characterized-cost negative.** Don't reopen FT without a fundamentally
+  different lever (loss-landscape moonshot), not another TAR knob.
 
 ## Hard conventions (do not violate)
 - **Judge, not keyword.** `judge_generations.py` (DeepSeek V4 Flash via OpenRouter).
