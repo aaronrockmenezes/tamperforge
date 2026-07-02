@@ -167,6 +167,45 @@ def load_advbench(
     return load_local_advbench(csv_path, n=n, seed=seed)
 
 
+def load_harmbench(n: int | None = None, seed: int = 42) -> list[tuple[str, str]]:
+    """Load HarmBench-standard behaviors as (prompt, target) pairs.
+
+    `walledai/HarmBench` and `cais/HarmBench` are gated/unavailable; use
+    `JailbreakBench/JBB-Behaviors` "harmful" split (Source=TDC/HarmBench, the
+    same underlying 100 standard behaviors), fields Goal/Target -> prompt/target.
+    """
+    from datasets import load_dataset
+
+    ds = load_dataset("JailbreakBench/JBB-Behaviors", "behaviors", split="harmful")
+    rows = [(str(row["Goal"]), str(row["Target"])) for row in ds]
+    return _shuffle_take(rows, n=n, seed=seed)
+
+
+def load_beavertails(n: int | None = None, seed: int = 42, split: str = "30k_test") -> list[tuple[str, str]]:
+    """Load PKU-Alignment/BeaverTails unsafe (prompt, target) pairs.
+
+    Only rows with is_safe=False; dedupe by prompt (BeaverTails has multiple
+    responses per prompt); target = a canned refusal (no clean "target" field,
+    unlike AdvBench/HarmBench) since this loader is for SAFETY EVAL prompts, not
+    a comply-training source.
+    """
+    from datasets import load_dataset
+
+    ds = load_dataset("PKU-Alignment/BeaverTails", split=split)
+    seen: set[str] = set()
+    prompts: list[str] = []
+    for row in ds:
+        if row["is_safe"]:
+            continue
+        p = str(row["prompt"])
+        if p in seen:
+            continue
+        seen.add(p)
+        prompts.append(p)
+    prompts = _shuffle_take(prompts, n=n, seed=seed)
+    return [(p, REFUSAL_RESPONSES[i % len(REFUSAL_RESPONSES)]) for i, p in enumerate(prompts)]
+
+
 def load_advbench_prompts(
     csv_path: str | Path | None = None,
     n: int | None = None,

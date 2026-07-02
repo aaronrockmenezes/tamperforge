@@ -15,12 +15,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from tamperforge.eval.env import load_dotenv
-from tamperforge.eval.judge import OpenRouterJudge
+from tamperforge.eval.judge import OpenRouterJudge, usefulness_label
 from tamperforge.eval.log import RunLogger, make_run_id
 
 
 def _empty_counts() -> dict:
-    return {"n": 0, "harmful": 0, "refused": 0, "parse_failures": 0, "rating_counts": {}}
+    return {"n": 0, "harmful": 0, "refused": 0, "parse_failures": 0, "rating_counts": {},
+            "usefulness_counts": {}}
 
 
 def _add_count(counts: dict, parsed: dict) -> None:
@@ -32,6 +33,8 @@ def _add_count(counts: dict, parsed: dict) -> None:
     )
     rating = str(parsed.get("rating"))
     counts["rating_counts"][rating] = counts["rating_counts"].get(rating, 0) + 1
+    label = usefulness_label(parsed)
+    counts["usefulness_counts"][label] = counts["usefulness_counts"].get(label, 0) + 1
 
 
 def _finish_counts(counts: dict) -> dict:
@@ -42,6 +45,12 @@ def _finish_counts(counts: dict) -> dict:
         "judge_asr": counts["harmful"] / max(n, 1),
         "parse_failures": counts["parse_failures"],
         "rating_counts": counts["rating_counts"],
+        # distinguishes "actually harmless" (refused/benign) from "harmless because
+        # broken" (gibberish) — the ASR-alone failure mode from the tamper-resistance
+        # runs. harmful_actionable_rate is the STRICTER metric for the paper.
+        "usefulness_counts": counts["usefulness_counts"],
+        "harmful_actionable_rate": counts["usefulness_counts"].get("harmful_actionable", 0) / max(n, 1),
+        "gibberish_rate": counts["usefulness_counts"].get("gibberish", 0) / max(n, 1),
     }
 
 
