@@ -120,6 +120,11 @@ def main() -> None:
     ap.add_argument("--direction-seed", type=int, default=42,
                     help="seed for the harmful/benign prompt sample used to estimate d")
     ap.add_argument("--n-direction", type=int, default=256)
+    ap.add_argument("--per-layer", action="store_true",
+                    help="ADAPTIVE attack: independent diffmeans refusal direction computed "
+                         "at EACH layer and ablated from that layer (per-layer adaptive "
+                         "abliteration; far stronger than one direction removed everywhere). "
+                         "Ignores --attack-rank/estimator.")
     args = ap.parse_args()
 
     model, tok, device = load_model(args.model_id, args.device)
@@ -134,17 +139,26 @@ def main() -> None:
         harmful = prompts[: args.n_direction]
         harmless = BENIGN_PROMPTS[: args.n_direction]
         with torch.no_grad():
-            if args.attack_estimator == "diffmeans":
+            if args.per_layer:
+                # ADAPTIVE: compute each layer's own refusal direction on the CLEAN weights
+                # first (dict built before any ablation), then ablate each layer with its own.
+                dir_by_layer = {li: empirical_refusal_direction(model, tok, harmful, harmless,
+                                                                li, device) for li in layers}
+                print(f"[save] per-layer adaptive attack: {len(layers)} independent directions")
+                for li in layers:
+                    _attack(model, dir_by_layer[li], [li], args.attack)
+            elif args.attack_estimator == "diffmeans":
                 dirs = empirical_refusal_direction(model, tok, harmful, harmless,
                                                    args.direction_layer, device)
                 if args.attack_rank > 1:
                     print(f"[save] WARN: diffmeans is rank-1; --attack-rank {args.attack_rank} "
                           "ignored (use --attack-estimator svd for a rank-k subspace)")
+                _attack(model, dirs, layers, args.attack)
             else:
                 dirs = svd_refusal_directions(
                     model, tok, harmful, harmless, args.direction_layer, device,
                     k=args.attack_rank, whiten=(args.attack_estimator == "whitened_svd"))
-        _attack(model, dirs, layers, args.attack)
+                _attack(model, dirs, layers, args.attack)
 
     out = ROOT / args.out if not Path(args.out).is_absolute() else Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
