@@ -11,10 +11,12 @@ dumb-and-dangerous"). Two threads: **ABL** (abliteration-resistance — the stro
 working result) and **FTR** (fine-tune-resistance — iterating, not yet won).
 Model: `google/gemma-3-1b-it`.
 
-## Naming (USE THIS — two version lines collided on v5/v6/v7)
+## Naming (USE THIS — version lines collided on v5/v6/v7)
 - **ABL-v{n}** = abliteration line, `outputs/tamper_resistant_p1b_v{n}.pt`. ABL-v7 =
   product. Materialized dirs: `outputs/abl_v7_hf`, `outputs/abl_v7_hf_attacked`.
-- **FTR-v{n}** = fine-tune-resistance line, `outputs/ft_resistant_p4_v{n}.pt`.
+- **FTR-v{n}** = fine-tune-resistance line, `outputs/ft_resistant_p4_v{n}.pt` (v2–v6).
+- **FTR-TAR** = faithful-TAR FT attempt (successor to FTR-v6; "v7" retired to avoid
+  ABL-v7 collision). `experiments/train_ft_resistant_tar.py`, stem `ft_resistant_p4_tar`.
 
 ## Headline results (as of 2026-07-02, FULL datasets + lm_eval capability)
 - **ABL-v7 works, generalizes, AND craters attacker capability:** abliterating it ->
@@ -29,9 +31,11 @@ Model: `google/gemma-3-1b-it`.
 - **FTR: NO WIN. FTR-v6 = lobotomy (confirmed).** v2-v5 = 1-shot moat (artifact, broke
   by K=5). FTR-v6 lr2e4 looked promising on a 128tok subset but GATE killed it: clean
   ARC 0.217 / MMLU 0.246 ~= chance = broken model; full-520/512 attacked sweep harmAct
-  0.000 at every K. Both v6 ckpts DISCARD. Genuine FT-resistance without capability
-  collapse remains open. Lesson: capability eval is REQUIRED to tell real resistance
-  from a broken model — ASR-alone called this a win.
+  0.000 at every K. Both v6 ckpts DISCARD. Lesson: capability eval is REQUIRED to tell
+  real resistance from a broken model — ASR-alone called this a win.
+- **FTR-TAR = the fix (built, not yet run).** Faithful TAR: KL-to-ABL-v7 retain anchor
+  (the piece v6 lacked) + bounded tamper-resistance. `train_ft_resistant_tar.py`.
+  Win = clean ARC/MMLU ~= ABL-v7 AND post-attack harmAct ~= 0. Cmds: `docs/devlog_2026_07_02.md`.
 
 ## Hard conventions (do not violate)
 - **Judge, not keyword.** `judge_generations.py` (DeepSeek V4 Flash via OpenRouter).

@@ -3,10 +3,12 @@
 > Repo-local state index. Updated 2026-07-02 (pm). Read `docs/handoff_2026_07_02_v2.md`
 > for the full current state, `CLAUDE.md` for conventions.
 
-## Naming (two version lines; DON'T conflate)
+## Naming (version lines; DON'T conflate)
 - **ABL-v{n}** = abliteration line, `outputs/tamper_resistant_p1b_v{n}.pt`. ABL-v7 =
   product. Dirs: `outputs/abl_v7_hf` (clean), `outputs/abl_v7_hf_attacked` (attacked).
-- **FTR-v{n}** = fine-tune-resistance line, `outputs/ft_resistant_p4_v{n}.pt`.
+- **FTR-v{n}** = fine-tune-resistance line, `outputs/ft_resistant_p4_v{n}.pt` (v2–v6).
+- **FTR-TAR** = faithful-TAR FT-resistance attempt (successor to FTR-v6; dropped "v7" to
+  avoid ABL-v7 collision). `train_ft_resistant_tar.py`, stem `ft_resistant_p4_tar`.
 
 ## Thread 1 — Abliteration (ABL-v7): WORKS + generalizes + craters attacker capability
 FULL-DATA 2x2x3 judge battery + lm_eval capability, done 2026-07-02
@@ -37,6 +39,11 @@ FULL-DATA 2x2x3 judge battery + lm_eval capability, done 2026-07-02
 - **Lesson (methodological win for paper):** appearing FT-resistant via capability
   collapse is indistinguishable from real resistance WITHOUT a capability eval;
   ASR-alone called this a win. `usefulness_label` + MC-capability check caught it.
+- **FTR-TAR = the fix, built, not yet run.** `train_ft_resistant_tar.py`: faithful TAR.
+  RETAIN = KL(frozen-ABL-v7 || current) on benign = HARD capability anchor v6 lacked;
+  BOUNDED tamper-resistance relu(cap − post-attack forget CE). LoRA inner + FO-MAML.
+  gen-tokens=eval(512), 32 held-out prompts, saves best+latest. Warm-start+ref=ABL-v7.
+  Win = clean ARC/MMLU ~= ABL-v7 AND post-attack harmAct ~= 0. Run cmds in devlog.
 
 ## FT frontier — FTR-v6 lr2e4 harmful_actionable at FULL 520/512 (judged)
 | K | harmAct | gibberish | note |

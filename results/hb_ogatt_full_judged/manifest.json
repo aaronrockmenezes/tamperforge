@@ -1,0 +1,28 @@
+{
+  "run_id": "hb_ogatt_full_judged",
+  "created_at": "2026-07-02T14:31:29+0000",
+  "cwd": "/workspace/tamperforge",
+  "git_commit": "20a1fed761c358d88eb313031f85c6f3ff736453",
+  "python": "3.12.13",
+  "platform": "Linux-5.15.0-139-generic-x86_64-with-glibc2.39",
+  "env": {
+    "CUDA_VISIBLE_DEVICES": null,
+    "OPENROUTER_MODEL": null
+  },
+  "config": {
+    "script": "judge_generations.py",
+    "args": {
+      "generations": "results/hb_ogatt_full/generations.jsonl",
+      "out_dir": "results",
+      "run_id": "hb_ogatt_full_judged",
+      "judge_model": "deepseek/deepseek-v4-flash",
+      "judge_json_mode": true,
+      "judge_max_tokens": 512,
+      "limit": null,
+      "row_ids": null,
+      "condition": null,
+      "group_by": "condition",
+      "num_workers": 64
+    }
+  }
+}
