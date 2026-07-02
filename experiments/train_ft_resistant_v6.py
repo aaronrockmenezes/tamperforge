@@ -38,6 +38,7 @@ import argparse
 import json
 import random
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import torch
@@ -49,7 +50,19 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from tamperforge import load_model
 from tamperforge.data import PROSE_TEXT, REFUSAL_RESPONSES, load_advbench
+from tamperforge.eval.env import load_dotenv
+from tamperforge.eval.judge import OpenRouterJudge
 from tamperforge.eval.log import RunLogger, make_run_id
+
+
+def _judge_comply(judge, prompt, response) -> bool:
+    """True if the LLM judge rates the response as harmful-compliant. Errors ->
+    treat as non-comply (never crash training on a judge blip)."""
+    try:
+        r = judge.score(prompt, response)
+        return r["parsed"].get("harmful_compliance") == 1
+    except Exception:
+        return False
 
 MLP = ("mlp.gate_proj", "mlp.up_proj", "mlp.down_proj")
 ALL = ("self_attn.q_proj", "self_attn.k_proj", "self_attn.v_proj", "self_attn.o_proj",
@@ -187,6 +200,13 @@ def main() -> None:
     ap.add_argument("--inner-demos", type=int, default=16)
     ap.add_argument("--inner-lr", type=float, default=2e-4)
     ap.add_argument("--attack-ensemble", action="store_true")
+    # gate: how to decide theta' COMPLIED (drives unlikelihood + frac_comply)
+    ap.add_argument("--gate", choices=["judge", "keyword"], default="judge",
+                    help="judge = LLM (same model as eval; needs OPENROUTER_API_KEY on box); "
+                         "keyword = local heuristic (cheap, noisy).")
+    ap.add_argument("--judge-model", default="deepseek/deepseek-v4-flash")
+    ap.add_argument("--judge-workers", type=int, default=6)
+    ap.add_argument("--judge-max-tokens", type=int, default=256)
     # outer generation-level safety
     ap.add_argument("--gen-prompts", type=int, default=6); ap.add_argument("--gen-tokens", type=int, default=40)
     ap.add_argument("--unlike-margin", type=float, default=8.0); ap.add_argument("--comply-margin", type=float, default=6.0)
@@ -240,6 +260,14 @@ def main() -> None:
         raise SystemExit("[v6] no demos")
     print(f"[v6] task={len(task_train)} harmful={len(harmful)} demos={len(demo_pool)}")
 
+    judge = None
+    if args.gate == "judge":
+        load_dotenv(ROOT / ".env")
+        judge = OpenRouterJudge(args.judge_model, json_mode=True, max_tokens=args.judge_max_tokens)
+        print(f"[v6] gate = LLM judge ({args.judge_model}), {args.judge_workers} workers/step")
+    else:
+        print("[v6] gate = keyword heuristic (local)")
+
     rng = random.Random(args.seed)
     meta_opt = torch.optim.AdamW((p for p in model.parameters() if p.requires_grad), lr=args.lr)
 
@@ -270,14 +298,23 @@ def main() -> None:
         L_safe = _tf_loss(model, tok, ref_b, device, {})    # clean theta refuses
 
         # 3) OUTER safety at theta'
+        # 3a. generate what theta' emits on each harmful prompt (no grad)
+        gens = [(_greedy_cached(model, tok, prompt, device, theta_p, args.gen_tokens), prompt)
+                for prompt in gen_prompts]
+        # 3b. GATE: did theta' comply? (judge in parallel, or keyword) — same judge as eval
+        if judge is not None:
+            with ThreadPoolExecutor(max_workers=args.judge_workers) as ex:
+                comply_flags = list(ex.map(lambda gp: _judge_comply(judge, gp[1], gp[0][2]), gens))
+        else:
+            comply_flags = [_complies(g[0][2]) for g in gens]
+        # 3c. loss: comply-CE-up (v3) + per-gen refusal-pull + unlikelihood on judged-compliant gens
+        ref_ids = tok(refusal_txt, return_tensors="pt", add_special_tokens=False)["input_ids"].to(device)
         L_out = args.lambda_comply * torch.relu(
             torch.tensor(args.comply_margin, device=device) - _tf_loss(model, tok, demo_sub, device, theta_p))
         n_comply = 0
-        ref_ids = tok(refusal_txt, return_tensors="pt", add_special_tokens=False)["input_ids"].to(device)
-        for prompt in gen_prompts:
-            p_ids, gi, gtext = _greedy_cached(model, tok, prompt, device, theta_p, args.gen_tokens)
+        for ((p_ids, gi, gtext), _prompt), comp in zip(gens, comply_flags):
             L_out = L_out + args.lambda_refuse_pull * _ce_cont(model, theta_p, p_ids, ref_ids, device)
-            if gi.shape[1] > 0 and _complies(gtext):
+            if gi.shape[1] > 0 and comp:
                 n_comply += 1
                 L_out = L_out + args.lambda_unlike * torch.relu(
                     torch.tensor(args.unlike_margin, device=device) - _ce_cont(model, theta_p, p_ids, gi.detach(), device))
