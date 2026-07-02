@@ -10,6 +10,20 @@
 - **FTR-TAR** = faithful-TAR FT-resistance attempt (successor to FTR-v6; dropped "v7" to
   avoid ABL-v7 collision). `train_ft_resistant_tar.py`, stem `ft_resistant_p4_tar`.
 
+## Thread 1b — Multi-model + ADAPTIVE attack (2026-07-02, `docs/findings_multimodel_adaptive_2026_07_02.md`)
+- **Generalizes to 3 architectures** (per-model refusal layer): gemma FULL WIN (gibberish +
+  capability crater, reproduced seed42+seed2); Qwen3-0.6b CLEAN DEFENSE (gibberish wall, no
+  crater); Llama-3.2-1b@L13 PARTIAL (leaky ~13%, no crater; diffuse safety).
+- **FLAGSHIP: survives a PER-LAYER ADAPTIVE attack.** `save_p1b_checkpoint --per-layer` (indep
+  diffmeans dir per layer, our infra, no AGPL). OG gemma: base → 0.712 coherent harm / v7 →
+  **0.000 harm, 100% gibberish, ARC 0.34→0.27 MMLU 0.39→0.24**. No better than rank-1 → robust
+  to adaptive abliteration, not just the cheap attack. Qwen/Llama per-layer attacks running.
+- **DL bug:** codex's 50%-depth guess was WRONG for Llama (real refusal L13, not L8) — cost
+  harmAct 0.65→0.13 when fixed. Per-model layer selection essential. Full sweeps = HIGH-PRI TODO.
+- **keyword ASR unreliable BOTH ways** (Qwen v7 kw0.99/judge0.01; Llama base kw0.89/judge0.60).
+- **seed fragility** ~half seeds fail (fp32 gib-CE fix killed NaN crashes but not the basin
+  issue); n=2 gemma final.
+
 ## Thread 1 — Abliteration (ABL-v7): WORKS + generalizes + craters attacker capability
 FULL-DATA 2x2x3 judge battery + lm_eval capability, done 2026-07-02
 (`docs/findings_prefill_harmbench_beavertails_2026_07_02.md`):
