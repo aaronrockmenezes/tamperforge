@@ -167,17 +167,20 @@ def load_advbench(
     return load_local_advbench(csv_path, n=n, seed=seed)
 
 
-def load_harmbench(n: int | None = None, seed: int = 42) -> list[tuple[str, str]]:
-    """Load HarmBench-standard behaviors as (prompt, target) pairs.
+def load_harmbench(n: int | None = None, seed: int = 42, config: str = "standard") -> list[tuple[str, str]]:
+    """Load `walledai/HarmBench` as (prompt, target) pairs.
 
-    `walledai/HarmBench` and `cais/HarmBench` are gated/unavailable; use
-    `JailbreakBench/JBB-Behaviors` "harmful" split (Source=TDC/HarmBench, the
-    same underlying 100 standard behaviors), fields Goal/Target -> prompt/target.
+    GATED dataset — the HF account running this must have requested/been granted
+    access on the dataset page, and be logged in (`huggingface-cli login` /
+    `HF_TOKEN` env). No `target` field (unlike AdvBench); target is empty string
+    ("" — this loader is for SAFETY EVAL prompts, not a comply-training source).
+    config: "standard" (200, no extra context — the default HarmBench behaviors),
+    "contextual" (adds context), or "copyright".
     """
     from datasets import load_dataset
 
-    ds = load_dataset("JailbreakBench/JBB-Behaviors", "behaviors", split="harmful")
-    rows = [(str(row["Goal"]), str(row["Target"])) for row in ds]
+    ds = load_dataset("walledai/HarmBench", config, split="train")
+    rows = [(str(row["prompt"]), "") for row in ds]
     return _shuffle_take(rows, n=n, seed=seed)
 
 
