@@ -265,6 +265,9 @@ def main() -> None:
     ap.add_argument("--eval-every", type=int, default=25, help="held-out eval + gen every N steps")
     ap.add_argument("--smoke", action="store_true", help="use tiny in-repo data (no downloads)")
     ap.add_argument("--lr", type=float, default=1e-5)
+    ap.add_argument("--optim", choices=["adamw", "adamw8bit"], default="adamw",
+                    help="adamw8bit (bitsandbytes) for ~4x smaller optimizer state; "
+                         "needed to fit 1.7B all-scope on 24GB (TODO: Qwen-1.7B on 5090).")
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
@@ -321,7 +324,13 @@ def main() -> None:
           f"harmful={len(harmful)} benign={len(benign)}")
 
     rng = random.Random(args.seed)
-    opt = torch.optim.AdamW((p for p in model.parameters() if p.requires_grad), lr=args.lr)
+    _params = [p for p in model.parameters() if p.requires_grad]
+    if args.optim == "adamw8bit":
+        import bitsandbytes as bnb  # 8-bit optimizer states: ~4x smaller (fits 1.7B all-scope on 24GB)
+        opt = bnb.optim.AdamW8bit(_params, lr=args.lr)
+        print("[p1b-A] optimizer = AdamW8bit (bitsandbytes)")
+    else:
+        opt = torch.optim.AdamW(_params, lr=args.lr)
     d = None
     for step in tqdm(range(1, args.steps + 1), desc="p1b-A steps", dynamic_ncols=True):
         if d is None or (step - 1) % args.recompute_direction_every == 0:
