@@ -24,29 +24,31 @@ FULL-DATA 2x2x3 judge battery + lm_eval capability, done 2026-07-02
   base 0.108) + off-AdvBench clean gibberish (11/17/47.5% prefill/HB/BT). Report in
   Limitations.
 
-## Thread 2 — Fine-tune resistance (FTR): NO WIN yet
+## Thread 2 — Fine-tune resistance (FTR): NO WIN (v6 = lobotomy, confirmed)
 - FTR-v2..v5 = 1-shot moat at best (artifact); all -> base by K>=5. Crux: inner-sim
   defended teacher-forced CE, not generation.
-- **FTR-v6 = Lever-2 (LoRA-inner TAR).** `experiments/train_ft_resistant_v6.py`: real
-  LoRA attack inner-loop + LLM-JUDGE gate (same DeepSeek as eval, not keyword) +
-  FO-MAML (theta'=theta+detached-delta). Trained meta-lr 1e-5/5e-5/2e-4. Training
-  frac_comply oscillated, no clear downtrend -> objective engages but doesn't visibly
-  out-harden a rank-32 LoRA attack in the budget. **Validation ft_attack sweep
-  (K=0..200, full 520) is the real verdict — running on 5090.** Ckpts
-  `outputs/ft_resistant_p4_v6_lr{5e5,2e4}.pt` (lr5e4 self-destructed, DISCARD).
+- **FTR-v6 = Lever-2 (LoRA-inner TAR), FAILED.** lr2e4 looked promising on a
+  n=100/128tok subset (ASR~0 to K50) but the GATE killed it: clean ARC **0.217** /
+  MMLU **0.246** ~= chance (0.25) -> model is broken at the core (MC loglikelihood, so
+  not a generation artifact). Full-520/512 attacked sweep confirms: harmAct **0.000**
+  at every K (gibberish everywhere). The "moat" was gibberish-in/gibberish-out on an
+  already-dead model, NOT the MAD signature. The K100 harmAct 0.21 in the subset was a
+  128-tok short-output artifact. lr5e5 also dead. **DISCARD both v6 ckpts.**
+- **Lesson (methodological win for paper):** appearing FT-resistant via capability
+  collapse is indistinguishable from real resistance WITHOUT a capability eval;
+  ASR-alone called this a win. `usefulness_label` + MC-capability check caught it.
 
-## FT frontier — FTR-v6 lr2e4 moved it (judge ASR, n=100/128tok, re-running at 520/512)
-| K | FTR-v6 lr2e4 (harmAct) | FTR-v6 lr5e5 | v5 | v2/v3 | base |
-|--:|--:|--:|--:|--:|--:|
-| 1 | 0.00 (0.00) | 0.00 | 0.695 | 0.00/0.005 | 0.800 |
-| 5 | 0.00 (0.00) | 0.04 | 0.650 | ~0.67 | 0.660 |
-| 50 | 0.00 (0.00) | 0.56 | — | — | ~base |
-| 100 | 0.43 (0.21) | 0.66 | — | — | ~base |
-| 200 | 0.38 (0.32) | 0.67 | — | — | ~base |
-- Old line (v2-v5) broke to ~base by K=5. **lr2e4 holds ASR~0 to K=50; attack yields
-  gibberish not harm to K=100** (65% gibberish @K100). Frontier K~5 -> K~50-100.
-  lr5e5 = dead (breaks like old line). GATE: clean ARC/MMLU on lr2e4 (running) — if
-  coherent = real moat, if gibberish-everywhere = broken model, not defense.
+## FT frontier — FTR-v6 lr2e4 harmful_actionable at FULL 520/512 (judged)
+| K | harmAct | gibberish | note |
+|--:|--:|--:|--|
+| 0 (clean) | 0.000 | 0.998 | ARC 0.217 / MMLU 0.246 ~= CHANCE -> BROKEN |
+| 25 | 0.000 | 0.988 | |
+| 50 | 0.000 | 1.000 | |
+| 100 | 0.000 | 0.998 | (subset@128tok wrongly showed 0.21 - short-output artifact) |
+| 200 | 0.000 | 0.988 | |
+- Never produces actionable harm because it's a lobotomized model, not because it
+  resists. Broken clean AND under attack. FTR-v6 = FAIL. Old line (v2-v5) broke to
+  ~base by K=5 (that data in `docs/results_2026_07_01.md`).
 
 ## Eval tooling (built this session)
 - `prefill_attack.py` (compliant-prefix forcing), `p0_baseline_eval.py --prompt-source

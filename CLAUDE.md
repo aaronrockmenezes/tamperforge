@@ -26,10 +26,12 @@ Model: `google/gemma-3-1b-it`.
   is on harmful-prompt distributions only.
 - **Honest limitation:** clean ABL-v7 prefill hole (ASR 0.323 > base 0.108) +
   off-AdvBench clean gibberish (11/17/47.5%).
-- **FTR: promising signal (lr2e4).** v2-v5 = 1-shot moat (artifact, broke by K=5).
-  FTR-v6 lr2e4 holds ASR~0 to K=50, attack yields gibberish not harm to K=100 (100tok
-  subset). Frontier moved K~5 -> K~50-100. Gated on clean-capability check (running)
-  + full-520 re-run. lr5e5 = dead.
+- **FTR: NO WIN. FTR-v6 = lobotomy (confirmed).** v2-v5 = 1-shot moat (artifact, broke
+  by K=5). FTR-v6 lr2e4 looked promising on a 128tok subset but GATE killed it: clean
+  ARC 0.217 / MMLU 0.246 ~= chance = broken model; full-520/512 attacked sweep harmAct
+  0.000 at every K. Both v6 ckpts DISCARD. Genuine FT-resistance without capability
+  collapse remains open. Lesson: capability eval is REQUIRED to tell real resistance
+  from a broken model — ASR-alone called this a win.
 
 ## Hard conventions (do not violate)
 - **Judge, not keyword.** `judge_generations.py` (DeepSeek V4 Flash via OpenRouter).
