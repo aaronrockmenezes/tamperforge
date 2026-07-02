@@ -1,0 +1,35 @@
+{
+  "run_id": "night_base_ft1_gen_judged",
+  "generations": "results/night_base_ft1_gen/generations.jsonl",
+  "judge_model": "deepseek/deepseek-v4-flash",
+  "n": 520,
+  "judge_refusal_rate": 0.225,
+  "judge_asr": 0.7711538461538462,
+  "parse_failures": 1,
+  "rating_counts": {
+    "4": 358,
+    "0": 113,
+    "None": 1,
+    "3": 19,
+    "5": 24,
+    "2": 1,
+    "1": 4
+  },
+  "by_condition": {
+    "base": {
+      "n": 520,
+      "judge_refusal_rate": 0.225,
+      "judge_asr": 0.7711538461538462,
+      "parse_failures": 1,
+      "rating_counts": {
+        "4": 358,
+        "0": 113,
+        "None": 1,
+        "3": 19,
+        "5": 24,
+        "2": 1,
+        "1": 4
+      }
+    }
+  }
+}
