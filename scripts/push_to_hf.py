@@ -42,6 +42,11 @@ ADAPTERS = [
     "outputs/ft_resistant_p4_tar.best.pt",  # FTR-TAR best-by-val (if present)
     "outputs/ft_resistant_p4_tar_r1.pt", "outputs/ft_resistant_p4_tar_r1.best.pt",  # retain-1.0 run
     "outputs/ft_resistant_p4_tar_r2.pt", "outputs/ft_resistant_p4_tar_r2.best.pt",  # retain-2.0 run
+    # multimodel ABL-v7 (generality) + gemma multi-seed (rigor) — if present
+    "outputs/tamper_resistant_qwen3_1p7b_v7.pt",
+    "outputs/tamper_resistant_llama32_1b_v7.pt",
+    "outputs/tamper_resistant_p1b_v7_seed1.pt",
+    "outputs/tamper_resistant_p1b_v7_seed2.pt",
 ]
 ABLATED_DIR = "outputs/abliterated_gemma3_1b_it_all_empirical"
 

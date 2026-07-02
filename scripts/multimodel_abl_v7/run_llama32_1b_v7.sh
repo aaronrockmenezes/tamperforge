@@ -29,8 +29,8 @@ exec "$PY" experiments/train_tamper_resistant.py \
   --lambda-gib 4 \
   --lambda-uncensor 4 \
   --lambda-safe 1 \
-  --lambda-reg 0.05 \
-  --steps 400 \
+  --lambda-reg 0.1 \
+  --steps 500 \
   --eval-every 25 \
   --lr 1e-5 \
   --seed 42
