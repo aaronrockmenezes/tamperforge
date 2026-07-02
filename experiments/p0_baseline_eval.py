@@ -18,7 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from tamperforge.data import load_advbench_prompts
+from tamperforge.data import load_advbench_prompts, load_beavertails, load_harmbench
 from tamperforge.eval.env import load_dotenv
 from tamperforge.eval.judge import OpenRouterJudge
 from tamperforge.eval.log import RunLogger, make_run_id
@@ -47,6 +47,10 @@ def main() -> None:
     ap.add_argument("--advbench-source", choices=["walledai", "local"], default="walledai")
     ap.add_argument("--advbench-split", default="train")
     ap.add_argument("--advbench-csv", default=str(ROOT / "data" / "advbench_harmful_behaviors.csv"))
+    ap.add_argument("--prompt-source", choices=["advbench", "harmbench", "beavertails"], default="advbench",
+                    help="harmbench = walledai/HarmBench (gated, needs HF login); "
+                         "beavertails = PKU-Alignment/BeaverTails unsafe prompts")
+    ap.add_argument("--harmbench-config", choices=["standard", "contextual", "copyright"], default="standard")
     ap.add_argument("--backend", choices=["transformers", "vllm"], default="transformers")
     ap.add_argument("--vllm-batch-size", type=int, default=64)
     ap.add_argument("--vllm-dtype", default="bfloat16")
@@ -69,13 +73,18 @@ def main() -> None:
     manifest = {"script": "p0_baseline_eval.py", "args": vars(args), "eval_config": cfg}
     logger.write_manifest(manifest)
 
-    prompts = load_advbench_prompts(
-        args.advbench_csv,
-        n=args.n_advbench,
-        seed=cfg.seed,
-        source=args.advbench_source,
-        split=args.advbench_split,
-    )
+    if args.prompt_source == "harmbench":
+        prompts = [p for p, _ in load_harmbench(n=args.n_advbench, seed=cfg.seed, config=args.harmbench_config)]
+    elif args.prompt_source == "beavertails":
+        prompts = [p for p, _ in load_beavertails(n=args.n_advbench, seed=cfg.seed)]
+    else:
+        prompts = load_advbench_prompts(
+            args.advbench_csv,
+            n=args.n_advbench,
+            seed=cfg.seed,
+            source=args.advbench_source,
+            split=args.advbench_split,
+        )
 
     if args.backend == "vllm":
         if args.judge:
