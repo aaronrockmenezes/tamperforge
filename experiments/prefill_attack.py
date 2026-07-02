@@ -47,7 +47,8 @@ def main() -> None:
     ap.add_argument("--out-dir", default="results")
     ap.add_argument("--run-id", default=None)
     ap.add_argument("--model-id", default="google/gemma-3-1b-it")
-    ap.add_argument("--n-advbench", type=int, default=200)
+    ap.add_argument("--n-prompts", "--n-advbench", dest="n_prompts", type=int, default=-1,
+                    help="AdvBench harmful prompts; -1 or 0 = full (520)")
     ap.add_argument("--advbench-source", choices=["walledai", "local"], default="walledai")
     ap.add_argument("--max-new-tokens", type=int, default=128)
     ap.add_argument("--max-length", type=int, default=4096)
@@ -64,7 +65,8 @@ def main() -> None:
     logger = RunLogger(ROOT / args.out_dir, run_id, repo_root=ROOT)
     logger.write_manifest({"script": "prefill_attack.py", "args": vars(args)})
 
-    prompts = load_advbench_prompts(n=args.n_advbench, source=args.advbench_source, seed=args.seed)
+    n_prompts = None if args.n_prompts in (-1, 0) else args.n_prompts  # None = full 520
+    prompts = load_advbench_prompts(n=n_prompts, source=args.advbench_source, seed=args.seed)
     tok = AutoTokenizer.from_pretrained(args.model_id, trust_remote_code=True)
     llm = LLM(model=args.model_id, dtype=args.dtype, gpu_memory_utilization=args.gpu_memory_utilization,
              max_model_len=args.max_length, trust_remote_code=True)

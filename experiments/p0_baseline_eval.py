@@ -32,7 +32,10 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out-dir", default="results")
     ap.add_argument("--run-id", default=None)
-    ap.add_argument("--n-advbench", type=int, default=100)
+    # generic prompt-count for whatever --prompt-source is chosen. -1 (or 0) = FULL
+    # dataset (no subset). --n-advbench kept as a deprecated alias for old scripts.
+    ap.add_argument("--n-prompts", "--n-advbench", dest="n_prompts", type=int, default=-1,
+                    help="number of harmful prompts to eval; -1 or 0 = full dataset")
     ap.add_argument("--n-arc", type=int, default=100)
     ap.add_argument("--n-mmlu-per-subject", type=int, default=0)
     ap.add_argument("--max-new-tokens", type=int, default=128)
@@ -61,8 +64,9 @@ def main() -> None:
     load_dotenv(ROOT / ".env")
     run_id = args.run_id or make_run_id("p0_baseline")
     logger = RunLogger(ROOT / args.out_dir, run_id, repo_root=ROOT)
+    n_prompts = None if args.n_prompts in (-1, 0) else args.n_prompts  # None = full dataset
     cfg = EvalConfig(
-        n_advbench=args.n_advbench,
+        n_advbench=n_prompts if n_prompts is not None else 100000,  # cfg field is int; big = "all"
         n_arc=args.n_arc,
         n_mmlu_per_subject=max(args.n_mmlu_per_subject, 1),
         run_mmlu=args.n_mmlu_per_subject > 0,
@@ -74,13 +78,13 @@ def main() -> None:
     logger.write_manifest(manifest)
 
     if args.prompt_source == "harmbench":
-        prompts = [p for p, _ in load_harmbench(n=args.n_advbench, seed=cfg.seed, config=args.harmbench_config)]
+        prompts = [p for p, _ in load_harmbench(n=n_prompts, seed=cfg.seed, config=args.harmbench_config)]
     elif args.prompt_source == "beavertails":
-        prompts = [p for p, _ in load_beavertails(n=args.n_advbench, seed=cfg.seed)]
+        prompts = [p for p, _ in load_beavertails(n=n_prompts, seed=cfg.seed)]
     else:
         prompts = load_advbench_prompts(
             args.advbench_csv,
-            n=args.n_advbench,
+            n=n_prompts,
             seed=cfg.seed,
             source=args.advbench_source,
             split=args.advbench_split,
