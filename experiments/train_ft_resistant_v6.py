@@ -218,6 +218,8 @@ def main() -> None:
     ap.add_argument("--demos", default="results/p1b_v7_base_att_gen/generations.jsonl"); ap.add_argument("--n-demos", type=int, default=256)
     ap.add_argument("--steps", type=int, default=150); ap.add_argument("--eval-every", type=int, default=15)
     ap.add_argument("--lr", type=float, default=1e-5, help="META (defender) lr")
+    ap.add_argument("--grad-checkpoint", action="store_true",
+                    help="gradient checkpointing on the base (cuts activation memory; ~fit all-scope on 24GB).")
     ap.add_argument("--smoke", action="store_true"); ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
@@ -242,6 +244,12 @@ def main() -> None:
     inner_targets = _names(model, args.inner_scope)
     print(f"[v6] meta-trainable={len(trainable)} | LoRA-inner targets={len(inner_targets)} "
           f"(rank {args.inner_rank})")
+    if args.grad_checkpoint:
+        try:
+            model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+            print("[v6] gradient checkpointing ON (gen still uses explicit use_cache=True under no_grad)")
+        except Exception as e:  # noqa: BLE001
+            print(f"[v6] grad-checkpoint unavailable: {e}")
     model.config.use_cache = True
 
     if args.smoke:
