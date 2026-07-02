@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import torch
 
 MODEL_ID = "google/gemma-3-1b-it"
@@ -34,7 +36,13 @@ def load_model(model_id: str = MODEL_ID, device: str | None = None):
 
     device = pick_device(device)
     tok = AutoTokenizer.from_pretrained(model_id)
-    model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+    kwargs = {"torch_dtype": torch.bfloat16}
+    # gemma-3 NaNs in bf16 training under sdpa/flash (attention soft-capping);
+    # eager is the stable path. TF_ATTN_IMPL env overrides for any model.
+    attn = os.environ.get("TF_ATTN_IMPL") or ("eager" if "gemma" in model_id.lower() else None)
+    if attn:
+        kwargs["attn_implementation"] = attn
+    model = AutoModelForCausalLM.from_pretrained(model_id, **kwargs)
     model = model.to(device).eval()
     return model, tok, device
 
