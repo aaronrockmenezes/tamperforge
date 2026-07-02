@@ -36,6 +36,12 @@ ADAPTERS = [
     "outputs/ft_resistant_p4_v3.pt",  # P4-defense v3: strong multi-step inner attack (if present)
     "outputs/ft_resistant_p4_v4.pt",  # P4-defense v4: generation-level objective (if present)
     "outputs/ft_resistant_p4_v5.pt",  # P4-defense v5: comply-CE-up + gen-unlikelihood (if present)
+    "outputs/ft_resistant_p4_v6_lr2e4.pt",  # FTR-v6 LoRA-inner TAR — FAILED (lobotomy: clean ARC/MMLU ~chance). Archive.
+    "outputs/ft_resistant_p4_v6_lr5e5.pt",  # FTR-v6 lr5e5 — FAILED (breaks like old line). Archive.
+    "outputs/ft_resistant_p4_tar.pt",  # FTR-TAR latest (if present)
+    "outputs/ft_resistant_p4_tar.best.pt",  # FTR-TAR best-by-val (if present)
+    "outputs/ft_resistant_p4_tar_r1.pt", "outputs/ft_resistant_p4_tar_r1.best.pt",  # retain-1.0 run
+    "outputs/ft_resistant_p4_tar_r2.pt", "outputs/ft_resistant_p4_tar_r2.best.pt",  # retain-2.0 run
 ]
 ABLATED_DIR = "outputs/abliterated_gemma3_1b_it_all_empirical"
 
