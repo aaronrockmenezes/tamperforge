@@ -13,20 +13,30 @@ research repo (which holds the blog drafts + exploratory experiments).
 
 ## What it does / does not claim
 
-- ✅ **Kill cheap attacks** — stock abliteration notebooks degrade the model.
-- ✅ **Raise cost** — surgical removal requires skill, not copy-paste.
-- ❌ **Not** un-finetunable. With open weights, fine-tuning can re-learn removal.
-  That tier is characterized, not solved. See `THREAT_MODEL.md`.
+- ✅ **Kill cheap abliteration** — abliterating the tamper-resistant model (ABL-v7)
+  yields ~0% ASR / ~100% gibberish AND craters capability (ARC −25%, MMLU −32%),
+  while abliterating the base model gives coherent harm with capability intact.
+  Generalizes off-distribution (prefill, HarmBench, BeaverTails). MAD verified.
+- ✅ **Clean product ~free on reasoning** — ABL-v7 ≈ base on ARC/MMLU.
+- ⚠️ **One hole (reported):** a non-gradient *prefill* attack extracts harm from the
+  *clean* ABL-v7 (~28%). Limitation, not defeat.
+- ❌ **Not** fine-tune-proof. FT of ~25 harmful examples restores coherent harm on
+  base AND ABL-v7 (abliteration-resist ≠ FT-resist). FT-resistance is an OPEN thread
+  (FTR-v2..v6 failed; FTR-TAR in progress). Characterized, not solved.
 
-Read **`AGENTS.md`**, **`HANDOFF.md`**, and **`CLAUDE.md`** first. Then read
-**`THREAT_MODEL.md`** (attacker tiers, success metric), **`ROADMAP.md`**
-(phased experiments), and **`docs/common_issues.md`** (server/eval fixes).
+Read **`CLAUDE.md`** + the live handoff **`docs/handoff_2026_07_02_v2.md`** first,
+then **`MEMORY.md`**, **`THREAT_MODEL.md`**, **`ROADMAP.md`**, and the results docs
+under `docs/` (latest: `findings_prefill_harmbench_beavertails_2026_07_02.md`,
+`devlog_2026_07_02.md`).
 
 ## Status
 
-Early. The MAD thesis is **unverified** — experiment P1 is go/no-go. The eval
-harness now exists, Vast/vLLM P0 safety generation works, and current numbers
-are tracked in `docs/results_2026_07_01.md`.
+**MAD thesis VERIFIED on gemma-3-1b (single seed).** Abliteration-resistance (ABL-v7)
+is the strong, working result; the paper anchors here. FT-resistance is unsolved
+(active). Eval harness (LLM judge + `usefulness_label`, prefill/HarmBench/BeaverTails,
+lm_eval ARC/MMLU) all built and run at full datasets. Open for publication: multi-seed,
+multi-model, adaptive attacker (OBLITERATUS), GSM8K, TamperBench/ART baselines.
+Latest numbers: `docs/findings_prefill_harmbench_beavertails_2026_07_02.md`.
 
 ## Install
 

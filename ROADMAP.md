@@ -1,8 +1,16 @@
 # tamperforge — Roadmap
 
-> Living doc. Reorder/rewrite as results land. Last updated: 2026-07-01.
+> Living doc. Reorder/rewrite as results land. Last updated: 2026-07-02.
 > Read `THREAT_MODEL.md` first — it defines the attacker tiers (T0–T3) and the
 > success metric (attacker cost to reach X% ASR at ≤Y% capability loss).
+
+> **CURRENT STATE (2026-07-02).** Abliteration thread (P1b/ABL-v7) = STRONG, leaning
+> toward it as the paper anchor: full-data battery + capability show abliterating
+> ABL-v7 → ~0 ASR/~100% gibberish AND ARC −25%/MMLU −32%, generalizes off-distribution.
+> FT thread (P4) = FTR-v6 FAILED (lobotomy, caught by capability eval); **FTR-TAR
+> running now** (2 configs on 5090). Publication gaps: multi-seed, multi-model,
+> adaptive attacker (OBLITERATUS/P2), GSM8K, TamperBench/ART. Live detail:
+> `docs/handoff_2026_07_02_v2.md`, `docs/handoff_codex_2026_07_02.md`, `docs/devlog_2026_07_02.md`.
 
 ## Sequence
 
@@ -119,15 +127,20 @@ Iteration log (2026-07-01):
   intact (ASR 0.013, ARC 0.364, gen parse 1.0). Attacking v7 collapses ARC to
   random (0.246) while attacking base keeps it (0.355): MAD on both axes. Full
   battery + tables in `docs/results_2026_07_01.md`, `docs/attack_battery.md`.
-- **NEXT (POC → publishable), in priority:**
-  1. **Fine-tuning attack (P4)** — the realistic threat; abliteration-robust ≠
-     FT-robust. Highest priority. Build `experiments/ft_attack.py`.
-  2. **OBLITERATUS (P2)** — adaptive attacker (per-layer, entanglement-gated
-     skipping). Separate AGPL harness on the saved v7 dir.
-  3. Rigor: seeds (is v7 a lucky run?), MMLU-full + GSM8K, Qwen3-1.7B/Llama-3.2-1B;
-     ablate which of {argmax, attention scope, λ_uncensor, ensemble} is load-bearing.
-  4. Note: the SVD/whitened attack estimators are duds (don't uncensor base) — a
-     real stronger-estimator test needs a better refusal-SVD; low priority.
+- **FULL-DATA BATTERY + CAPABILITY (2026-07-02): ABL-v7 confirmed strong & general.**
+  4 conditions × {prefill 520, HarmBench 200, BeaverTails 1483} judged + lm_eval
+  ARC(full)/MMLU(12-topic). Abliterating ABL-v7 → ~0 ASR / ~100% gibberish across all
+  three (incl. non-gradient prefill, never trained on) AND ARC 0.352→0.265 (−25%),
+  MMLU 0.395→0.268 (−32%); abliterating base → coherent harm 0.39–0.73, capability
+  intact. Clean ABL-v7 ≈ base on ARC/MMLU. Limitation: clean prefill hole (ASR 0.323).
+  Full detail `docs/findings_prefill_harmbench_beavertails_2026_07_02.md`.
+- **NEXT (to make ABL-v7 publishable), in priority:**
+  1. **Multi-seed (3×)** — is ABL-v7 a lucky run? Retrain 2 more seeds, re-battery.
+  2. **Adaptive attacker (P2, OBLITERATUS)** — mandatory gradient-masking check.
+     Separate AGPL harness on the saved v7 dir. Also: stronger/adaptive abliteration.
+  3. Capability completeness: **GSM8K** (have ARC + MMLU) clean AND post-attack.
+  4. **Multi-model** (Qwen3-1.7B, Llama-3.2-1B, gemma-3-4b) — the generality claim.
+  5. Ablate which of {argmax, attention scope, λ_uncensor, ensemble} is load-bearing.
 
 **B — fold adapter into FFN (cheap, un-block).** `tamperforge.GatedSafetyAdapter`
 (SwiGLU, foldable) + `fold_gated_adapter_into_ffn` + `verify_fold`. Ready; needs a
@@ -211,6 +224,22 @@ Go/no-go (for v4): K∈{1,5,10} ASR < 0.20 at ARC ≥ 0.30. Mandatory adaptive-a
 sweep (vary lr/epochs/held-out demos) to rule out gradient-masking. Re-run FT sweeps
 at AdvBench 520 for publication (v2/v3 used n=200). Position vs TAR + RepNoise.
 OBLITERATUS (P2) deferred behind this.
+
+**UPDATE (2026-07-02):**
+- **v4/v5:** generation-level objective, NO WIN (crux = inner sim breaks teacher-forced
+  CE not generation). **FTR-v6** (LoRA-inner TAR + judge gate + FO-MAML): **FAILED =
+  LOBOTOMY.** Looked good on a 128-tok subset but clean ARC 0.217 / MMLU 0.246 (~chance)
+  + full-520/512 attacked harmAct 0.000 at every K = a broken model, not resistance.
+  Both v6 ckpts DISCARD. Method lesson: **capability eval is REQUIRED** to tell real
+  resistance from a lobotomy (harmAct-alone ranks the broken model as "best defense").
+- **FT frontier references (full 520/512, judged):** base ≈ ABL-v7 both break to ~0.83
+  harmful_actionable by K=25, COHERENT (gibberish ~0). ABL-v7 gives zero FT-resistance.
+- **FTR-TAR (`experiments/train_ft_resistant_tar.py`), RUNNING NOW.** Faithful TAR fixing
+  v6: RETAIN = KL(frozen-ABL-v7 || current) on benign (hard capability anchor v6 lacked)
+  + BOUNDED tamper-resistance. 2 configs (λ_retain 4 & 8). **STOP RULE (from Phase A): if
+  it doesn't hold to K in the dozens at ARC/MMLU ≥ 0.30 within 3–5 runs → KILL FT, anchor
+  the paper on abliteration.** Verdict gate = ft_attack K-sweep + lm_eval ARC/MMLU on both
+  ckpts (the same gate that killed v6).
 
 ---
 
