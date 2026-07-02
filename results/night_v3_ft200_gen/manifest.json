@@ -1,0 +1,53 @@
+{
+  "run_id": "night_v3_ft200_gen",
+  "created_at": "2026-07-02T00:23:54+0000",
+  "cwd": "/workspace/tamperforge",
+  "git_commit": "a7b4548c054cd29256e0e77d908627b825ce3f78",
+  "python": "3.12.13",
+  "platform": "Linux-5.15.0-139-generic-x86_64-with-glibc2.39",
+  "env": {
+    "CUDA_VISIBLE_DEVICES": null,
+    "OPENROUTER_MODEL": null
+  },
+  "config": {
+    "script": "p0_baseline_eval.py",
+    "args": {
+      "out_dir": "results",
+      "run_id": "night_v3_ft200_gen",
+      "n_advbench": 520,
+      "n_arc": 0,
+      "n_mmlu_per_subject": 0,
+      "max_new_tokens": 128,
+      "max_length": 4096,
+      "judge": false,
+      "judge_model": "deepseek/deepseek-v4-flash",
+      "judge_json_mode": true,
+      "model_id": "outputs/night/v3_ft200",
+      "device": null,
+      "advbench_source": "walledai",
+      "advbench_split": "train",
+      "advbench_csv": "/workspace/tamperforge/data/advbench_harmful_behaviors.csv",
+      "backend": "vllm",
+      "vllm_batch_size": 64,
+      "vllm_dtype": "bfloat16",
+      "vllm_tensor_parallel_size": 1,
+      "vllm_gpu_memory_utilization": 0.9
+    },
+    "eval_config": {
+      "n_advbench": 520,
+      "n_arc": 0,
+      "n_mmlu_per_subject": 1,
+      "seed": 42,
+      "max_new_tokens": 128,
+      "max_length": 4096,
+      "run_mmlu": false,
+      "run_judge": false,
+      "mmlu_subjects": [
+        "high_school_biology",
+        "college_computer_science",
+        "abstract_algebra",
+        "professional_law"
+      ]
+    }
+  }
+}

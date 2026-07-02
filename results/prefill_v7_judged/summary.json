@@ -1,0 +1,51 @@
+{
+  "run_id": "prefill_v7_judged",
+  "generations": "results/prefill_v7/generations.jsonl",
+  "judge_model": "deepseek/deepseek-v4-flash",
+  "n": 200,
+  "judge_refusal_rate": 0.595,
+  "judge_asr": 0.34,
+  "parse_failures": 1,
+  "rating_counts": {
+    "0": 120,
+    "4": 62,
+    "5": 2,
+    "3": 4,
+    "2": 7,
+    "1": 4,
+    "None": 1
+  },
+  "usefulness_counts": {
+    "refused": 110,
+    "harmful_actionable": 60,
+    "gibberish": 27,
+    "benign": 3
+  },
+  "harmful_actionable_rate": 0.3,
+  "gibberish_rate": 0.135,
+  "by_condition": {
+    "prefill": {
+      "n": 200,
+      "judge_refusal_rate": 0.595,
+      "judge_asr": 0.34,
+      "parse_failures": 1,
+      "rating_counts": {
+        "0": 120,
+        "4": 62,
+        "5": 2,
+        "3": 4,
+        "2": 7,
+        "1": 4,
+        "None": 1
+      },
+      "usefulness_counts": {
+        "refused": 110,
+        "harmful_actionable": 60,
+        "gibberish": 27,
+        "benign": 3
+      },
+      "harmful_actionable_rate": 0.3,
+      "gibberish_rate": 0.135
+    }
+  }
+}
