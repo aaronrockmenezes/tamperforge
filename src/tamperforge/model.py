@@ -9,6 +9,14 @@ SAE_RELEASE = "gemma-scope-2-1b-it-res"
 SAE_ID = "layer_13_width_16k_l0_medium"
 
 
+def apply_chat_template_no_think(tok, messages, **kwargs):
+    """Apply chat template with Qwen3 thinking disabled when supported."""
+    try:
+        return tok.apply_chat_template(messages, enable_thinking=False, **kwargs)
+    except TypeError:
+        return tok.apply_chat_template(messages, **kwargs)
+
+
 def pick_device(prefer: str | None = None) -> str:
     """Return the best available device: cuda > mps > cpu (or *prefer* if valid)."""
     if prefer:
@@ -74,7 +82,8 @@ def capture_residual(
     try:
         for p in prompts:
             if use_chat_template:
-                text = tok.apply_chat_template(
+                text = apply_chat_template_no_think(
+                    tok,
                     [{"role": "user", "content": p}],
                     tokenize=False, add_generation_prompt=True,
                 )

@@ -43,7 +43,7 @@ from tqdm.auto import tqdm
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from tamperforge import empirical_refusal_direction, load_model
+from tamperforge import apply_chat_template_no_think, empirical_refusal_direction, load_model
 from tamperforge.data import BENIGN_PROMPTS, PROSE_TEXT, REFUSAL_RESPONSES, load_advbench
 from tamperforge.eval.log import RunLogger, make_run_id
 
@@ -141,8 +141,12 @@ def _refusal_loss(model, tok, pairs, device, overrides=None) -> torch.Tensor:
     check whether ablation REMOVES the refusal (we want it high there)."""
     total = torch.zeros((), device=device)
     for prompt, response in pairs:
-        prefix = tok.apply_chat_template([{"role": "user", "content": prompt}],
-                                         tokenize=False, add_generation_prompt=True)
+        prefix = apply_chat_template_no_think(
+            tok,
+            [{"role": "user", "content": prompt}],
+            tokenize=False,
+            add_generation_prompt=True,
+        )
         full = tok(prefix + response, return_tensors="pt", truncation=True, max_length=320).to(device)
         pre = tok(prefix, return_tensors="pt")["input_ids"]
         labels = full["input_ids"].clone()
@@ -171,9 +175,13 @@ def _argmax_divergence_loss(model, tok, prompts, device, overrides, n_new: int =
     total = torch.zeros((), device=device)
     cnt = 0
     for prompt in prompts:
-        enc = tok.apply_chat_template([{"role": "user", "content": prompt}],
-                                      return_tensors="pt", return_dict=True,
-                                      add_generation_prompt=True).to(device)
+        enc = apply_chat_template_no_think(
+            tok,
+            [{"role": "user", "content": prompt}],
+            return_tensors="pt",
+            return_dict=True,
+            add_generation_prompt=True,
+        ).to(device)
         plen = enc["input_ids"].shape[1]
         prev_cache = model.config.use_cache
         model.config.use_cache = True
@@ -197,9 +205,13 @@ def _sample_ablated_generation(model, tok, prompt, device, overrides, max_new=60
     """Greedy-generate one continuation under the ABLATED weights, to eyeball
     whether the attack yields gibberish. functional_call per forward step is slow
     but fine for a 1-prompt sanity print."""
-    enc = tok.apply_chat_template([{"role": "user", "content": prompt}],
-                                  return_tensors="pt", return_dict=True,
-                                  add_generation_prompt=True).to(device)
+    enc = apply_chat_template_no_think(
+        tok,
+        [{"role": "user", "content": prompt}],
+        return_tensors="pt",
+        return_dict=True,
+        add_generation_prompt=True,
+    ).to(device)
     ids = enc["input_ids"]
     for _ in range(max_new):
         out = functional_call(model, overrides, args=(), kwargs={"input_ids": ids})
