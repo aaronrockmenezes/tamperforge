@@ -20,8 +20,12 @@ FULL-DATA 2x2x3 judge battery + lm_eval capability, done 2026-07-02
   ARC 0.352->0.265 (-25% rel), MMLU 0.395->0.268 (-32% rel). Abliterating base barely
   dents it (ARC 0.352->0.358, MMLU 0.395->0.379). MAD proven on a benchmark, not just
   gibberish-on-harmful. Attacker gets a measurably dumber model.
-- **Clean product credible:** clean ABL-v7 ~= base on reasoning (ARC 0.344, MMLU 0.393).
-  Gibberish is concentrated on harmful-prompt distributions, not ARC/MMLU.
+- **Clean product credible on MC:** clean ABL-v7 ~= base on ARC 0.344 / MMLU 0.393.
+  Gibberish concentrated on harmful-prompt distributions, not ARC/MMLU.
+- **GSM8K (2026-07-02):** abliterating ABL-v7 -> 0.006 (~zero, −98% vs base 0.256) =
+  capability-collapse corroborated on GENERATIVE math, even more total than MC. BUT
+  clean ABL-v7 GSM8K 0.167 (−35% vs base) = "free product" holds on MC, NOT on
+  chain-of-thought math. New honest limitation (with the prefill hole).
 - **Honest limitation:** CLEAN ABL-v7 has a prefill hole (ASR 0.323, harmAct 0.285 >
   base 0.108) + off-AdvBench clean gibberish (11/17/47.5% prefill/HB/BT). Report in
   Limitations.

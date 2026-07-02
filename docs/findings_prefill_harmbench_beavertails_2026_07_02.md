@@ -28,14 +28,20 @@ non-gradient prefill attack ABL-v7 was never trained or tested against.
 | | harmAct | 0.033 | 0.005 | 0.393 | 0.000 |
 | | gibberish | 0.007 | 0.475 | 0.009 | **0.999** |
 
-## Capability — ARC-Challenge (full) + MMLU 12-topic (0-shot)
+## Capability — ARC-Challenge (full) + MMLU 12-topic (0-shot) + GSM8K (5-shot)
 
-| model | ARC-c acc | acc_norm | MMLU(12) acc |
-|---|---:|---:|---:|
-| base OG | 0.352 | 0.391 | 0.395 |
-| clean ABL-v7 | 0.344 | 0.389 | 0.393 |
-| abliterated OG | 0.358 | 0.377 | 0.379 |
-| abliterated ABL-v7 | **0.265** | **0.306** | **0.268** |
+| model | ARC-c acc | acc_norm | MMLU(12) acc | GSM8K |
+|---|---:|---:|---:|---:|
+| base OG | 0.352 | 0.391 | 0.395 | 0.256 |
+| clean ABL-v7 | 0.344 | 0.389 | 0.393 | **0.167** |
+| abliterated OG | 0.358 | 0.377 | 0.379 | 0.246 |
+| abliterated ABL-v7 | **0.265** | **0.306** | **0.268** | **0.006** |
+
+GSM8K sharpens BOTH sides: abliterating ABL-v7 collapses generative math to ~zero
+(0.006, −98% vs base) — the capability-destruction is even more total on generative
+reasoning than on MC (corroborates Finding 2 across probe types). BUT clean ABL-v7
+loses ~35% GSM8K (0.167 vs 0.256) with NO attack — the "clean product ~free" claim
+(Finding 3) holds on MC ARC/MMLU but NOT on chain-of-thought math. New limitation.
 
 Run ids: safety `{prefill,hb,bt}_{base,v7,ogatt,v7att}_full(_judged)`; capability
 `cap_{base,v7,ogatt,v7att}_{arc,mmlu}_full`.
@@ -66,6 +72,12 @@ The gibberish seen on clean ABL-v7 is concentrated on harmful-prompt distributio
 (11% prefill / 17% HarmBench / 47.5% BeaverTails), NOT on reasoning benchmarks —
 i.e. it degrades toward refusal/garbage specifically on harmful-ish inputs while
 keeping general capability. Mostly benign, but see the real hole below.
+
+## Finding 5 (honest limitation): clean ABL-v7 loses ~35% on generative math
+Clean ABL-v7 GSM8K 0.167 vs base 0.256 (−35% rel), while ARC/MMLU are within noise.
+So the entanglement's clean-capability cost is NOT zero — it's concentrated on
+chain-of-thought / generative reasoning, invisible to MC benchmarks. "Free product"
+holds for MC knowledge/reasoning, not for multi-step math. Report with Finding 4.
 
 ## Finding 4 (honest limitation, must report): prefill breaks CLEAN ABL-v7
 Clean ABL-v7 under prefill: **ASR 0.323, harmAct 0.285** — worse than clean OG
