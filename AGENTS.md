@@ -1,5 +1,10 @@
 # AGENTS.md
 
+> **CURRENT STATE (2026-07-02): read `docs/handoff_2026_07_02_v2.md` + `MEMORY.md`
+> first.** The text below is durable project context (thesis, threat model,
+> structure). Live status — ABL-v7 off-distribution result, FTR-v6, 2-box infra,
+> the ABL-/FTR- naming split — is in the handoff + `CLAUDE.md`; those win on conflict.
+
 Read this before touching tamperforge. If anything conflicts with older docs,
 this file, `HANDOFF.md`, and `CLAUDE.md` win.
 

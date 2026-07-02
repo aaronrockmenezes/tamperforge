@@ -1,156 +1,64 @@
-# Claude Code handoff
+# CLAUDE.md — read first
 
-Read `AGENTS.md`, `HANDOFF.md`, and this file before touching code.
+**Current state lives in `docs/handoff_2026_07_02_v2.md`. Read that, then `MEMORY.md`,
+then this file for durable conventions.** Older handoff text below the line is
+historical (P0/P1 era) — do not act on it.
 
-## Current state
+## Project in one paragraph
+tamperforge = a pre-release procedure that entangles safety with capability in
+open-weight LLMs so cheap uncensoring self-defeats ("smart-and-safe XOR
+dumb-and-dangerous"). Two threads: **ABL** (abliteration-resistance — the strong,
+working result) and **FTR** (fine-tune-resistance — iterating, not yet won).
+Model: `google/gemma-3-1b-it`.
 
-The active work is the P0/P1 evaluation path for tamperforge. The project idea is
-to make cheap open-weight uncensoring self-defeating: if a released model is
-abliterated to remove safety, capability should fall enough that the attacker no
-longer gets a useful model.
+## Naming (USE THIS — two version lines collided on v5/v6/v7)
+- **ABL-v{n}** = abliteration line, `outputs/tamper_resistant_p1b_v{n}.pt`. ABL-v7 =
+  product. Materialized dirs: `outputs/abl_v7_hf`, `outputs/abl_v7_hf_attacked`.
+- **FTR-v{n}** = fine-tune-resistance line, `outputs/ft_resistant_p4_v{n}.pt`.
 
-Work moved to the Vast RTX 4090 box after a bad RTX 5090 host failed vLLM. The
-current server is usable:
+## Headline results (as of 2026-07-02)
+- **ABL-v7 works AND generalizes:** abliterating it -> 100% gibberish / 0% ASR across
+  prefill + HarmBench + BeaverTails (off-distribution, non-gradient attacks it was
+  never trained on); abliterating base -> real harm (ASR 0.41-0.80). Full table:
+  `docs/findings_prefill_harmbench_beavertails_2026_07_02.md`.
+- **Caveat:** clean ABL-v7 has real off-AdvBench coherence cost (13.5-50% gibberish,
+  no attack). "Free product" only held on AdvBench. Being measured now.
+- **FTR: no win.** v2-v5 = 1-shot moat (artifact), v6 = LoRA-inner TAR, meta-lr sweep
+  inconclusive. Full K=0..200 validation sweep is the pending verdict.
 
-- Host alias: `vast_tamperforge`
-- Remote path: `/workspace/tamperforge`
-- Python env: `/venv/main`
-- GPU observed: RTX 4090 24GB
-- Driver/CUDA observed: NVIDIA driver 580.95.05, host CUDA 13.0
-- Torch observed: `2.11.0+cu130`, CUDA available
-- vLLM observed: `0.24.0`
+## Hard conventions (do not violate)
+- **Judge, not keyword.** `judge_generations.py` (DeepSeek V4 Flash via OpenRouter).
+  Report `judge_asr` + `usefulness_label` (gibberish vs refused vs harmful_actionable)
+  — ASR alone hides gibberish-collapse.
+- **Full datasets, no subsets** for any reported result. `--n-prompts` defaults to
+  full (-1). Sizes: AdvBench 520, HarmBench-standard 200, BeaverTails 1483.
+- **Never nohup/background box commands without asking.** User watches every command,
+  runs tmux himself.
+- **Never vendor OBLITERATUS/AGPL code** — call it as a separate attacker harness.
+- HF repo is PRIVATE (uncensored weights, dual-use).
+- Judge locally via conda: `~/miniforge3/envs/env_ml/bin/python` (NOT a venv path).
 
-Remote git pull may fail because the checkout uses HTTPS without credentials.
-If a file was copied from local to remote, later server pulls may need:
+## Infra
+- **4090** `vast_tamperforge` (ssh9.vast.ai:33059) `/venv/main`, torch 2.11+cu130,
+  vLLM 0.24 — WORKS. Eval + capability box.
+- **5090x2** `tamperforge_5090x2` (ssh5.vast.ai:24813) torch 2.12+cu130, 32GB x2 —
+  vLLM was broken (NCCL symbol mismatch); verify `import torch,vllm` before use.
+  FTR training/validation box (`CUDA_VISIBLE_DEVICES=0/1` = two independent jobs;
+  code is single-GPU per job).
+- Box git = private HTTPS, needs a PAT in the remote to push. scp code / pull results
+  to local + push from there if box git is uncooperative.
+- Backups: GitHub (code/docs/results), private HF `aaronrockmenezes/tamperforge`
+  (.pt + model dirs, `scripts/push_to_hf.py`).
 
-```bash
-git restore PATH
-git pull --ff-only
-```
+## Key scripts
+- `experiments/train_ft_resistant_v6.py` — FTR Lever-2 (LoRA inner + judge gate + FO-MAML).
+- `experiments/ft_attack.py` — the FT attack (validation) + `--n-shots K` sweep.
+- `experiments/prefill_attack.py`, `p0_baseline_eval.py --prompt-source {advbench,harmbench,beavertails}`.
+- `experiments/judge_generations.py`, `experiments/save_p1b_checkpoint.py` (materialize .pt [+attack]).
 
-## Recent verified results
+---
+# HISTORICAL (P0/P1 era — do not act on)
 
-See `docs/results_2026_07_01.md` for the table.
-
-Verified in the current thread:
-
-- Base Gemma safety generation completed on `walledai/AdvBench` 500:
-  - Run: `results/safety_base_advbench500_nojudge`
-  - Keyword refusal rate: 0.98
-  - Keyword ASR: 0.02
-  - vLLM speed: about 27.2 prompts/sec
-- HF heretic generation completed:
-  - Run: `results/safety_hf_heretic_advbench500_nojudge`
-  - Keyword refusal rate: 0.112
-  - Keyword ASR: 0.888
-- HF extreme generation completed:
-  - Run: `results/safety_hf_extreme_advbench500_nojudge`
-  - Keyword refusal rate: 0.036
-  - Keyword ASR: 0.964
-- DeepSeek V4 Flash judge parsing was fixed:
-  - Commit: `56db984`
-  - 10-row smoke: `results/judge_smoke_hf_heretic_10_v2`
-  - Parse failures: 0/10
-  - Judge ASR: 0.9
-
-The full 12-worker judge summaries were not verified from local because remote
-tool access hit the Codex usage limit. If the user has run them, inspect:
-
-```bash
-cat results/judge_base_advbench500_w12/summary.json
-cat results/judge_hf_heretic_advbench500_w12/summary.json
-cat results/judge_hf_extreme_advbench500_w12/summary.json
-```
-
-## Immediate next steps (2026-07-01 late — READ `TODO.md`)
-
-**P0 is done and archived.** **P1 first run is inconclusive** (direction-count
-confound). The next concrete work is the rank sweep. Full commands live in
-`TODO.md`; summary:
-
-1. After the running `p1_ablbase_nojudge` proc finishes, copy its results local
-   (`TODO.md` §1). Box is being shut down for the night after that.
-2. Rank sweep on `outputs/safety_adapter_p1_cleanbase.pt` (`TODO.md` §2):
-   reference conditions once, then `--adapter-attack-rank` k in {1,2,4,8,16,32,64}
-   running only `base_adapter_ablated_full,base_ablated_randN` via `--conditions`.
-3. Judge P1 generations LOCALLY in env_ml (`TODO.md` §3) to confirm the keyword
-   "ASR 1.0" on ablated conditions is a garbage-output artifact.
-4. If no crossover window appears, retrain adapter with small `--d-hidden`
-   and/or higher `--lambda-entangle` (`TODO.md` §4).
-
-### Historical (P0, now complete)
-
-- Full DeepSeek judges for base/heretic/extreme: done
-  (`results/judge_*_advbench500_w14/`, post-adjudication parse_failures=0).
-- ARC-Challenge 25-shot full: done (base 0.366, heretic 0.379, extreme 0.345).
-- Local ablated checkpoint + both adapters (clean-base align 0.870 KL 0.0025;
-  abliterated-base align 0.865) built.
-
-## Do not change
-
-- Do not change prompts, `max_new_tokens`, judge model, judge rubric, or
-  benchmark set mid-run.
-- Do not use local vendored AdvBench CSV for official safety runs. Use
-  `walledai/AdvBench`, capped to 500.
-- Do not use SAE directions for P1 proof. SAE checkpoints are legacy/mechanistic
-  comparisons only.
-- Do not delete untracked `outputs/` or `results/` directories.
-
-## Commands
-
-Full safety judge:
-
-```bash
-python experiments/judge_generations.py \
-  --generations results/safety_base_advbench500_nojudge/generations.jsonl \
-  --judge-model deepseek/deepseek-v4-flash \
-  --judge-json-mode \
-  --judge-max-tokens 256 \
-  --num-workers 12 \
-  --run-id judge_base_advbench500_w12
-```
-
-```bash
-python experiments/judge_generations.py \
-  --generations results/safety_hf_heretic_advbench500_nojudge/generations.jsonl \
-  --judge-model deepseek/deepseek-v4-flash \
-  --judge-json-mode \
-  --judge-max-tokens 256 \
-  --num-workers 12 \
-  --run-id judge_hf_heretic_advbench500_w12
-```
-
-```bash
-python experiments/judge_generations.py \
-  --generations results/safety_hf_extreme_advbench500_nojudge/generations.jsonl \
-  --judge-model deepseek/deepseek-v4-flash \
-  --judge-json-mode \
-  --judge-max-tokens 256 \
-  --num-workers 12 \
-  --run-id judge_hf_extreme_advbench500_w12
-```
-
-ARC smoke:
-
-```bash
-lm_eval \
-  --model vllm \
-  --model_args pretrained=google/gemma-3-1b-it,dtype=bfloat16,trust_remote_code=True,max_model_len=4096,gpu_memory_utilization=0.65,max_num_seqs=1 \
-  --tasks arc_challenge \
-  --num_fewshot 25 \
-  --limit 10 \
-  --batch_size 1 \
-  --device cuda:0 \
-  --output_path results/lm_eval_smoke_gemma3_1b_it_arc_c_25shot \
-  --log_samples
-```
-
-## Known issues
-
-Use `docs/common_issues.md`. The two main traps are:
-
-- RTX 5090 with host CUDA 12.8 is bad for vLLM on Blackwell. Use RTX 4090 or
-  5090 with host CUDA 12.9+.
-- DeepSeek V4 Flash can return `content: null` if OpenRouter reasoning is not
-  disabled correctly. The fixed request is in `src/tamperforge/eval/judge.py`
-  at commit `56db984`.
+The original P0/P1 handoff text is preserved in git history and `HANDOFF.md`. It
+predates the ABL/FTR split, the abliteration battery, and the FT work. Ignore its
+"immediate next steps."

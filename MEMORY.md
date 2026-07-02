@@ -1,57 +1,59 @@
-# tamperforge — session memory / handoff
+# tamperforge — session memory / handoff index
 
-> Repo-local state index. Last updated 2026-07-02. Full detail: `docs/`, `ROADMAP.md`.
+> Repo-local state index. Updated 2026-07-02 (pm). Read `docs/handoff_2026_07_02_v2.md`
+> for the full current state, `CLAUDE.md` for conventions.
 
-## Where the project stands
+## Naming (two version lines; DON'T conflate)
+- **ABL-v{n}** = abliteration line, `outputs/tamper_resistant_p1b_v{n}.pt`. ABL-v7 =
+  product. Dirs: `outputs/abl_v7_hf` (clean), `outputs/abl_v7_hf_attacked` (attacked).
+- **FTR-v{n}** = fine-tune-resistance line, `outputs/ft_resistant_p4_v{n}.pt`.
 
-- **P0/P1/P1b-A: done.** v7 (`outputs/tamper_resistant_p1b_v7.pt`) = robust vs the
-  full abliteration attack battery (ensemble training closed all leaks). Clean
-  product ~free. See `docs/results_2026_07_01.md`.
-- **P4 attack (`experiments/ft_attack.py`): v7 breaks at K=1 fine-tuning.**
-  judge ASR 0.013→0.740 ≈ base. Abliteration-robust ≠ FT-robust.
-- **P4 defense (`experiments/train_ft_resistant.py`, TAR-style, warm-start v7):**
-  v2 & v3 both = **1-shot moat** — resist K=1 (ASR ~0.00, coherent refusals),
-  break K≥5 (~0.66 = base). Ckpts `outputs/ft_resistant_p4_v{2,3}.pt`.
-  - **Root cause (locked):** objective defends `comply_after` = teacher-forced
-    comply-CE, which does NOT stop post-FT greedy GENERATION. proxy≠generation, 4th
-    time. Not a hyperparam fix.
+## Thread 1 — Abliteration (ABL-v7): WORKS + generalizes
+- Robust across the full abliteration battery (ensemble training). AdvBench: clean ASR
+  0.013 / ARC 0.364; attacked ASR 0.004 / ARC 0.246; attacked-base ASR 0.66.
+- **NEW (2026-07-02): generalizes off-distribution.** Full 2x2x3 judge battery
+  (clean/abliterated x OG/v7 x prefill/HarmBench/BeaverTails): abliterating ABL-v7 ->
+  **0% ASR / 100% gibberish across all three** (incl. prefill = non-gradient attack it
+  never trained on); abliterating base -> real harm (ASR 0.41-0.80). MAD is not
+  overfit to AdvBench/gradient attacks. `docs/findings_prefill_harmbench_beavertails_2026_07_02.md`.
+- **Caveat (must report):** CLEAN ABL-v7 (no attack) has off-AdvBench coherence cost:
+  13.5% gibberish prefill, 20% HarmBench, 50% BeaverTails (vs ~0% base). "Free product"
+  only held on AdvBench. Full-suite capability re-check (ARC full + MMLU 12-topic ~2k)
+  running now to see if it bleeds into reasoning.
 
-## FT-defense attempts (all P4) — NO WIN yet, crux found
+## Thread 2 — Fine-tune resistance (FTR): NO WIN yet
+- FTR-v2..v5 = 1-shot moat at best (artifact); all -> base by K>=5. Crux: inner-sim
+  defended teacher-forced CE, not generation.
+- **FTR-v6 = Lever-2 (LoRA-inner TAR).** `experiments/train_ft_resistant_v6.py`: real
+  LoRA attack inner-loop + LLM-JUDGE gate (same DeepSeek as eval, not keyword) +
+  FO-MAML (theta'=theta+detached-delta). Trained meta-lr 1e-5/5e-5/2e-4. Training
+  frac_comply oscillated, no clear downtrend -> objective engages but doesn't visibly
+  out-harden a rank-32 LoRA attack in the budget. **Validation ft_attack sweep
+  (K=0..200, full 520) is the real verdict — running on 5090.** Ckpts
+  `outputs/ft_resistant_p4_v6_lr{5e5,2e4}.pt` (lr5e4 self-destructed, DISCARD).
 
-`experiments/train_ft_resistant{,_v4,_v4_scaled,_v5}.py`. TAR-style: simulate
-attacker FT in an inner loop, shape θ so the post-FT model stays safe.
-- v2/v3 (comply-CE-up, mlp): "held" K=1 but broke K≥5 — an artifact of a weak
-  beatable inner, not real robustness.
-- v4/v5 (generation objective: greedy-gen at θ', pull-refusal + unlikelihood;
-  all-scope; kv-cached gen): K=1 0.80/0.70 — regressed/no win.
+## Full FT frontier (judge ASR, AdvBench n=200 — re-running at 520)
+| K | v5 | v3 | v2 | ABL-v7 | base |
+|--:|--:|--:|--:|--:|--:|
+| 1 | 0.695 | 0.005 | 0.000 | 0.740 | 0.800 |
+| 5 | 0.650 | 0.655 | 0.670 | 0.725 | 0.660 |
+(all break to ~base by K>=5; full K=0..200 in `docs/results_2026_07_01.md`)
 
-**CRUX (locked):** the first-order SGD inner sim makes a θ' that REFUSES in
-generation (frac_comply=0) while comply_ce is low — but the real 5-epoch AdamW
-attack makes a model that COMPLIES in generation. Inner sim breaks teacher-forced
-CE, not generation → we defend the WRONG θ'. Objectives never engage.
+## Eval tooling (built this session)
+- `prefill_attack.py` (compliant-prefix forcing), `p0_baseline_eval.py --prompt-source
+  {advbench,harmbench,beavertails}`, `--n-prompts` (default -1 = FULL).
+- `judge.py`: `coherent` 0/1 + `usefulness_label()` (refused/gibberish/harmful_actionable/
+  harmful_vague/benign). Summary: usefulness_counts + harmful_actionable_rate + gibberish_rate.
+- `load_harmbench` (walledai, gated-access-ok), `load_beavertails`.
 
-## Frontier (judge ASR, AdvBench n=200; re-run at 520 for pub)
+## Paper framing (from critiques + findings)
+Anchor: **abliteration-resistance + MAD mechanism, generalizing off-distribution**;
+FT = characterized cost-frontier (not solved); honest clean-coherence-cost limitation.
+Title dir: "Cheap Abliteration of Open-Weight LLM Safeguards Can Be Made
+Capability-Destructive." Full plan: `docs/critiques.md`, `docs/next_steps_2026_07_02.md`.
 
-| K | v5 | v4(all) | v3 | v2 | v7 | base |
-|--:|--:|--:|--:|--:|--:|--:|
-| 1 | 0.695 | 0.805 | 0.005 | 0.000 | 0.740 | 0.800 |
-| 5 | 0.650 | 0.590 | 0.655 | 0.670 | 0.725 | 0.660 |
-
-## Next (fresh box) — see `docs/research_directions_2026_07_02.md`
-Chosen program: **capability moat around the safe basin** (pure open-weight, target
-abliteration-resist + FT cost ≥ SOTA dozens–hundreds). Build order:
-1. **TAR done right (Patcher-style)** — real AdamW all-param inner + generation
-   objective [fixes our inner-sim≠attack crux]. Re-sweep K∈{1..100}.
-2. **MAD-on-the-gradient** — finite-diff: any comply-FT step must hurt capability.
-3. **Rep-rerouting + deepen safety** (circuit-breaker style), compose with v7.
-4. **Moonshot:** engineer loss landscape (sharpness asymmetry / mode-connectivity /
-   reachability regularizer) so AdamW can't crawl out of safe basin.
-Metrics: judge-ASR vs K to 100+, abliteration battery, adaptive-attacker sweep,
-MMLU/GSM8K. Then OBLITERATUS (P2), seeds, Qwen/Llama.
-
-## Infra
-- Judge locally: `~/miniforge3/envs/env_ml/bin/python experiments/judge_generations.py
-  --num-workers 64 --judge-max-tokens 512` (DeepSeek V4 Flash, needs `.env`).
-- Box `vast_tamperforge` (`/venv/main` python) — torn down after this session.
-  Box git = private HTTPS, needs PAT in remote to push. Never `nohup` box cmds.
-- Models on private HF `aaronrockmenezes/tamperforge` (`scripts/push_to_hf.py`).
+## Infra (details in CLAUDE.md / handoff_v2)
+- 4090 `vast_tamperforge` (vLLM works) = eval box. 5090x2 `tamperforge_5090x2`
+  (vLLM was NCCL-broken; verify before use) = FTR box, CUDA_VISIBLE_DEVICES=0/1.
+- Judge local via `~/miniforge3/envs/env_ml/bin/python`, 64 workers, 512 max-tokens.
+- Never nohup box cmds. Full datasets only. GitHub + private HF backups.
