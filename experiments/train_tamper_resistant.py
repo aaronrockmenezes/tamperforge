@@ -193,8 +193,18 @@ def _argmax_divergence_loss(model, tok, prompts, device, overrides, n_new: int =
             continue
         labels = full.clone()
         labels[:, :plen] = -100
-        ce = functional_call(model, overrides, args=(),
-                             kwargs={"input_ids": full, "labels": labels}).loss
+        # CE in fp32 with a per-token clamp. The ablated model can assign ~0 prob to a
+        # token (log(0)) which overflows bf16 to inf/1e30 -> spikes gib_ce -> non-finite
+        # loss -> step skipped/poisoned. That's the "seed lottery" (only stable seeds
+        # trained). fp32 logsumexp + clamp(max=30) >> gap_target keeps gib_ce bounded and
+        # deterministic without changing the objective region.
+        logits = functional_call(model, overrides, args=(),
+                                 kwargs={"input_ids": full}).logits.float()
+        sl = logits[:, :-1, :].reshape(-1, logits.size(-1))
+        tl = labels[:, 1:].reshape(-1)
+        ce_tok = torch.nn.functional.cross_entropy(sl, tl, ignore_index=-100, reduction="none")
+        mask = tl != -100
+        ce = torch.clamp(ce_tok[mask], max=30.0).mean() if mask.any() else torch.zeros((), device=device)
         total = total + ce
         cnt += 1
     return total / max(cnt, 1)
