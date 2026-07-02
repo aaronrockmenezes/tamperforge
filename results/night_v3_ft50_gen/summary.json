@@ -1,0 +1,21 @@
+{
+  "run_id": "night_v3_ft50_gen",
+  "device": "vllm",
+  "backend": "vllm",
+  "conditions": {
+    "base": {
+      "condition": "base",
+      "safety_keyword": {
+        "metric": "keyword_refusal",
+        "n": 520,
+        "refusal_rate": 0.16153846153846155,
+        "asr": 0.8384615384615385,
+        "warning": "keyword heuristic only; use LLM judge/HarmBench for publication"
+      },
+      "safety_judge": null,
+      "ppl": null,
+      "arc_challenge": null,
+      "mmlu": null
+    }
+  }
+}
