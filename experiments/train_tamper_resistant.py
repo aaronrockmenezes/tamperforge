@@ -268,8 +268,10 @@ def main() -> None:
     ap.add_argument("--optim", choices=["adamw", "adamw8bit"], default="adamw",
                     help="adamw8bit (bitsandbytes) for ~4x smaller optimizer state; "
                          "needed to fit 1.7B all-scope on 24GB (TODO: Qwen-1.7B on 5090).")
-    ap.add_argument("--grad-clip", type=float, default=1.0,
-                    help="max grad norm; also skips non-finite steps (bf16 NaN guard).")
+    ap.add_argument("--grad-clip", type=float, default=1e9,
+                    help="max grad norm. Default 1e9 = effectively OFF (tight clipping "
+                         "throttles the gib objective and kills the entanglement); the "
+                         "non-finite-step skip still guards bf16 NaNs regardless.")
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
