@@ -26,7 +26,7 @@ exec "$PY" experiments/train_tamper_resistant.py \
   --recompute-direction-every 25 \
   --gib-mode argmax \
   --gib-gen-tokens 32 \
-  --gib-gen-prompts 2 \
+  --gib-gen-prompts 1 \
   --lambda-gib 4 \
   --lambda-uncensor 4 \
   --lambda-safe 1 \
