@@ -268,6 +268,8 @@ def main() -> None:
     ap.add_argument("--optim", choices=["adamw", "adamw8bit"], default="adamw",
                     help="adamw8bit (bitsandbytes) for ~4x smaller optimizer state; "
                          "needed to fit 1.7B all-scope on 24GB (TODO: Qwen-1.7B on 5090).")
+    ap.add_argument("--grad-clip", type=float, default=1.0,
+                    help="max grad norm; also skips non-finite steps (bf16 NaN guard).")
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
@@ -370,7 +372,17 @@ def main() -> None:
         loss = (L_task + args.lambda_safe * L_safe + args.lambda_gib * L_gib
                 + args.lambda_uncensor * L_uncensor + args.lambda_reg * L_reg)
         loss.backward()
-        opt.step()
+        # bf16 ablated-forward can spike to inf/NaN on some batches/seeds; clip, and
+        # SKIP the step if loss or grad-norm is non-finite (don't poison the weights).
+        if torch.isfinite(loss):
+            gnorm = torch.nn.utils.clip_grad_norm_(
+                [p for p in model.parameters() if p.requires_grad], args.grad_clip)
+            if torch.isfinite(gnorm):
+                opt.step()
+            else:
+                opt.zero_grad(set_to_none=True)
+        else:
+            opt.zero_grad(set_to_none=True)
         m = {k: v.item() for k, v in {"loss": loss, "L_task": L_task, "L_safe": L_safe,
                                       "ref_abl": ref_abl, "gib_ce": gib_ce, "L_gib": L_gib,
                                       "L_uncensor": L_uncensor, "L_reg": L_reg}.items()}
