@@ -16,15 +16,20 @@ Model: `google/gemma-3-1b-it`.
   product. Materialized dirs: `outputs/abl_v7_hf`, `outputs/abl_v7_hf_attacked`.
 - **FTR-v{n}** = fine-tune-resistance line, `outputs/ft_resistant_p4_v{n}.pt`.
 
-## Headline results (as of 2026-07-02)
-- **ABL-v7 works AND generalizes:** abliterating it -> 100% gibberish / 0% ASR across
-  prefill + HarmBench + BeaverTails (off-distribution, non-gradient attacks it was
-  never trained on); abliterating base -> real harm (ASR 0.41-0.80). Full table:
-  `docs/findings_prefill_harmbench_beavertails_2026_07_02.md`.
-- **Caveat:** clean ABL-v7 has real off-AdvBench coherence cost (13.5-50% gibberish,
-  no attack). "Free product" only held on AdvBench. Being measured now.
-- **FTR: no win.** v2-v5 = 1-shot moat (artifact), v6 = LoRA-inner TAR, meta-lr sweep
-  inconclusive. Full K=0..200 validation sweep is the pending verdict.
+## Headline results (as of 2026-07-02, FULL datasets + lm_eval capability)
+- **ABL-v7 works, generalizes, AND craters attacker capability:** abliterating it ->
+  ~100% gibberish / ~0% ASR across prefill(520)+HarmBench(200)+BeaverTails(1483)
+  (off-distribution, non-gradient); AND ARC 0.352->0.265 (-25%), MMLU 0.395->0.268
+  (-32%). Abliterating base -> real harm (ASR 0.39-0.73) with capability intact. MAD
+  proven on a benchmark. `docs/findings_prefill_harmbench_beavertails_2026_07_02.md`.
+- **Clean product credible:** clean ABL-v7 ~= base on ARC/MMLU (0.344/0.393). Gibberish
+  is on harmful-prompt distributions only.
+- **Honest limitation:** clean ABL-v7 prefill hole (ASR 0.323 > base 0.108) +
+  off-AdvBench clean gibberish (11/17/47.5%).
+- **FTR: promising signal (lr2e4).** v2-v5 = 1-shot moat (artifact, broke by K=5).
+  FTR-v6 lr2e4 holds ASR~0 to K=50, attack yields gibberish not harm to K=100 (100tok
+  subset). Frontier moved K~5 -> K~50-100. Gated on clean-capability check (running)
+  + full-520 re-run. lr5e5 = dead.
 
 ## Hard conventions (do not violate)
 - **Judge, not keyword.** `judge_generations.py` (DeepSeek V4 Flash via OpenRouter).

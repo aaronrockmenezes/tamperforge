@@ -8,18 +8,21 @@
   product. Dirs: `outputs/abl_v7_hf` (clean), `outputs/abl_v7_hf_attacked` (attacked).
 - **FTR-v{n}** = fine-tune-resistance line, `outputs/ft_resistant_p4_v{n}.pt`.
 
-## Thread 1 — Abliteration (ABL-v7): WORKS + generalizes
-- Robust across the full abliteration battery (ensemble training). AdvBench: clean ASR
-  0.013 / ARC 0.364; attacked ASR 0.004 / ARC 0.246; attacked-base ASR 0.66.
-- **NEW (2026-07-02): generalizes off-distribution.** Full 2x2x3 judge battery
-  (clean/abliterated x OG/v7 x prefill/HarmBench/BeaverTails): abliterating ABL-v7 ->
-  **0% ASR / 100% gibberish across all three** (incl. prefill = non-gradient attack it
-  never trained on); abliterating base -> real harm (ASR 0.41-0.80). MAD is not
-  overfit to AdvBench/gradient attacks. `docs/findings_prefill_harmbench_beavertails_2026_07_02.md`.
-- **Caveat (must report):** CLEAN ABL-v7 (no attack) has off-AdvBench coherence cost:
-  13.5% gibberish prefill, 20% HarmBench, 50% BeaverTails (vs ~0% base). "Free product"
-  only held on AdvBench. Full-suite capability re-check (ARC full + MMLU 12-topic ~2k)
-  running now to see if it bleeds into reasoning.
+## Thread 1 — Abliteration (ABL-v7): WORKS + generalizes + craters attacker capability
+FULL-DATA 2x2x3 judge battery + lm_eval capability, done 2026-07-02
+(`docs/findings_prefill_harmbench_beavertails_2026_07_02.md`):
+- **Generalizes off-distribution.** Abliterating ABL-v7 -> ~0% ASR / ~100% gibberish
+  across prefill(520)/HarmBench(200)/BeaverTails(1483), incl. prefill = non-gradient
+  attack never trained on. Abliterating base -> real harm ASR 0.39-0.73.
+- **STRONGEST result: abliteration craters CAPABILITY too.** Abliterating ABL-v7:
+  ARC 0.352->0.265 (-25% rel), MMLU 0.395->0.268 (-32% rel). Abliterating base barely
+  dents it (ARC 0.352->0.358, MMLU 0.395->0.379). MAD proven on a benchmark, not just
+  gibberish-on-harmful. Attacker gets a measurably dumber model.
+- **Clean product credible:** clean ABL-v7 ~= base on reasoning (ARC 0.344, MMLU 0.393).
+  Gibberish is concentrated on harmful-prompt distributions, not ARC/MMLU.
+- **Honest limitation:** CLEAN ABL-v7 has a prefill hole (ASR 0.323, harmAct 0.285 >
+  base 0.108) + off-AdvBench clean gibberish (11/17/47.5% prefill/HB/BT). Report in
+  Limitations.
 
 ## Thread 2 — Fine-tune resistance (FTR): NO WIN yet
 - FTR-v2..v5 = 1-shot moat at best (artifact); all -> base by K>=5. Crux: inner-sim
@@ -32,12 +35,18 @@
   (K=0..200, full 520) is the real verdict — running on 5090.** Ckpts
   `outputs/ft_resistant_p4_v6_lr{5e5,2e4}.pt` (lr5e4 self-destructed, DISCARD).
 
-## Full FT frontier (judge ASR, AdvBench n=200 — re-running at 520)
-| K | v5 | v3 | v2 | ABL-v7 | base |
+## FT frontier — FTR-v6 lr2e4 moved it (judge ASR, n=100/128tok, re-running at 520/512)
+| K | FTR-v6 lr2e4 (harmAct) | FTR-v6 lr5e5 | v5 | v2/v3 | base |
 |--:|--:|--:|--:|--:|--:|
-| 1 | 0.695 | 0.005 | 0.000 | 0.740 | 0.800 |
-| 5 | 0.650 | 0.655 | 0.670 | 0.725 | 0.660 |
-(all break to ~base by K>=5; full K=0..200 in `docs/results_2026_07_01.md`)
+| 1 | 0.00 (0.00) | 0.00 | 0.695 | 0.00/0.005 | 0.800 |
+| 5 | 0.00 (0.00) | 0.04 | 0.650 | ~0.67 | 0.660 |
+| 50 | 0.00 (0.00) | 0.56 | — | — | ~base |
+| 100 | 0.43 (0.21) | 0.66 | — | — | ~base |
+| 200 | 0.38 (0.32) | 0.67 | — | — | ~base |
+- Old line (v2-v5) broke to ~base by K=5. **lr2e4 holds ASR~0 to K=50; attack yields
+  gibberish not harm to K=100** (65% gibberish @K100). Frontier K~5 -> K~50-100.
+  lr5e5 = dead (breaks like old line). GATE: clean ARC/MMLU on lr2e4 (running) — if
+  coherent = real moat, if gibberish-everywhere = broken model, not defense.
 
 ## Eval tooling (built this session)
 - `prefill_attack.py` (compliant-prefix forcing), `p0_baseline_eval.py --prompt-source
