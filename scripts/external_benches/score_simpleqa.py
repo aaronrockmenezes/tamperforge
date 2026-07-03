@@ -24,7 +24,13 @@ Question: {q}
 Gold answer: {gold}
 Model answer: {ans}"""
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+except Exception:
+    pass
 KEY = os.environ.get("OPENROUTER_API_KEY")
+assert KEY, "OPENROUTER_API_KEY not set (check .env) — refusing to run (would fake all labels)"
 URL = "https://openrouter.ai/api/v1/chat/completions"
 MODEL = "deepseek/deepseek-v4-flash"
 
