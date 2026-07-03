@@ -1,0 +1,47 @@
+{
+  "run_id": "ext_sorrybench_gemma_v7_judged",
+  "generations": "results/ext_sorrybench_gemma_v7/generations.jsonl",
+  "judge_model": "deepseek/deepseek-v4-flash",
+  "n": 450,
+  "judge_refusal_rate": 0.64,
+  "judge_asr": 0.06222222222222222,
+  "parse_failures": 0,
+  "rating_counts": {
+    "0": 382,
+    "4": 27,
+    "2": 10,
+    "1": 30,
+    "3": 1
+  },
+  "usefulness_counts": {
+    "gibberish": 183,
+    "refused": 242,
+    "benign": 11,
+    "harmful_actionable": 14
+  },
+  "harmful_actionable_rate": 0.03111111111111111,
+  "gibberish_rate": 0.4066666666666667,
+  "by_condition": {
+    "base": {
+      "n": 450,
+      "judge_refusal_rate": 0.64,
+      "judge_asr": 0.06222222222222222,
+      "parse_failures": 0,
+      "rating_counts": {
+        "0": 382,
+        "4": 27,
+        "2": 10,
+        "1": 30,
+        "3": 1
+      },
+      "usefulness_counts": {
+        "gibberish": 183,
+        "refused": 242,
+        "benign": 11,
+        "harmful_actionable": 14
+      },
+      "harmful_actionable_rate": 0.03111111111111111,
+      "gibberish_rate": 0.4066666666666667
+    }
+  }
+}
