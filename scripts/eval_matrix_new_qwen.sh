@@ -24,7 +24,8 @@ declare -A M=(
   [v7_clean]="$O/nq_v7_clean" [v7_att]="$O/nq_v7_att"
   [v8_clean]="$O/nq_v8_clean" [v8_att]="$O/nq_v8_att"
 )
-gen(){ $PY experiments/p0_baseline_eval.py --backend vllm --model-id "$1" --prompt-file "$3" \
+gen(){ [ -f "results/$2/generations.jsonl" ] && { echo "skip $2 (exists)"; return; }
+  $PY experiments/p0_baseline_eval.py --backend vllm --model-id "$1" --prompt-file "$3" \
   --n-prompts -1 --max-new-tokens 512 --max-length 4096 --vllm-batch-size 64 --n-arc 0 --run-id "$2"; }
 
 for tag in "${!M[@]}"; do
@@ -33,9 +34,10 @@ for tag in "${!M[@]}"; do
   gen "$p" "nq_${tag}_xstest_unsafe" "$PDIR/xstest_unsafe.jsonl"
   gen "$p" "nq_${tag}_orbench"       "$PDIR/orbench.jsonl"
   gen "$p" "nq_${tag}_simpleqa"      "$PDIR/simpleqa.jsonl"
-  lm_eval --model vllm --model_args "pretrained=${p},dtype=bfloat16,trust_remote_code=True,max_model_len=4096,gpu_memory_utilization=0.9" \
-    --tasks mbpp --num_fewshot 3 --batch_size auto --confirm_run_unsafe_code --output_path "results/nq_mbpp_${tag}" \
-    || echo "!! mbpp failed for $tag (non-fatal, continuing)"
+  if [ -d "results/nq_mbpp_${tag}" ]; then echo "skip mbpp $tag (exists)"; else
+    lm_eval --model vllm --model_args "pretrained=${p},dtype=bfloat16,trust_remote_code=True,max_model_len=4096,gpu_memory_utilization=0.9" \
+      --tasks mbpp --num_fewshot 3 --batch_size auto --confirm_run_unsafe_code --output_path "results/nq_mbpp_${tag}" \
+      || echo "!! mbpp failed for $tag (non-fatal, continuing)"; fi
 done
 echo "### DONE. Score locally:"
 echo "  xstest/orbench -> judge_generations (refusal-rate: SAFE splits want LOW = not over-refusing)"
