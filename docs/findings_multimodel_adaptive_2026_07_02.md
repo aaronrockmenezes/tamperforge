@@ -99,3 +99,15 @@ Ckpts: `outputs/tamper_resistant_{qwen3_0p6b,llama32_1b_v7_L13}_v7.pt`, gemma `.
 OG `outputs/hf_og/adapters/tamper_resistant_p1b_v7.pt`. Runs: `{qwen06,llama_L13,gemma_s2}_*_adv520(_judged)`,
 `gpl_{v7,base}_*` (adaptive), `sweep_q_L*` (Qwen layer sweep), `pl_{qwen,ll13}_*` (adaptive, running).
 Tooling: `save_p1b_checkpoint.py --per-layer`, `scripts/multimodel_abl_v7/`.
+
+## 6. External professional attackers on gemma ABL-v7 (judged, harmAct/gib)
+Heretic (KL-minimizing Optuna) across its full Pareto: kl004(lossless) 0.010/0.04=refuses,
+kl027(mid) 0.171/0.66, kl070(Trial97 "0 refusals") 0.019/0.97=gibberish. **No point on the
+front coherently uncensors v7** (max 0.171, mostly gibberish) → the attacker's own KL-optimizer
+can't decensor without wrecking. OBLITERATUS 7 methods on v7: harmAct 0.00–0.05, gibberish/
+refuse — BUT it's WEAK ON gemma-3 BASE too (aggressive 0.031, surgical 0.054, nuclear 0.008/
+0.68gib) vs our rank-1's 0.82 → OBLITERATUS-on-gemma is INCONCLUSIVE (tool doesn't effectively
+abliterate gemma-3-1b), don't lean on it. GAP: neither tool's base-uncensor confirmed coherent
+on gemma-3 (OBL weak; Heretic-base NOT RUN — TODO). Primary adaptive evidence stays our
+per-layer attack (base 0.71 → v7 0.00). Heretic weights saved to HF heretic/. TODO: heretic on
+base gemma; consider OBLITERATUS/Heretic on Llama/Qwen (archs they handle better).
