@@ -7,6 +7,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
+export HF_ALLOW_CODE_EVAL=1   # MBPP code_eval metric requires this (sandboxed vast box)
 PY=python; MID="Qwen/Qwen3-0.6B"
 V7=outputs/tamper_resistant_qwen3_0p6b_v7.pt
 V8=outputs/tamper_resistant_qwen3_0p6b_v8.pt
@@ -33,7 +34,8 @@ for tag in "${!M[@]}"; do
   gen "$p" "nq_${tag}_orbench"       "$PDIR/orbench.jsonl"
   gen "$p" "nq_${tag}_simpleqa"      "$PDIR/simpleqa.jsonl"
   lm_eval --model vllm --model_args "pretrained=${p},dtype=bfloat16,trust_remote_code=True,max_model_len=4096,gpu_memory_utilization=0.9" \
-    --tasks mbpp --num_fewshot 3 --batch_size auto --confirm_run_unsafe_code --output_path "results/nq_mbpp_${tag}"
+    --tasks mbpp --num_fewshot 3 --batch_size auto --confirm_run_unsafe_code --output_path "results/nq_mbpp_${tag}" \
+    || echo "!! mbpp failed for $tag (non-fatal, continuing)"
 done
 echo "### DONE. Score locally:"
 echo "  xstest/orbench -> judge_generations (refusal-rate: SAFE splits want LOW = not over-refusing)"
