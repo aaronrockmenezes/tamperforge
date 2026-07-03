@@ -35,8 +35,8 @@ cap(){ local p="$1" n="$2" a="pretrained=$1,dtype=bfloat16,trust_remote_code=Tru
 for tag in "${!M[@]}"; do
   p="${M[$tag]}"
   echo "############ $tag -> $p ############"
-  saf  "$p" "mx_${tag}_advbench"    x advbench    520
-  saf  "$p" "mx_${tag}_harmbench"   x harmbench   200
+  saf  "$p" "mx_${tag}_advbench"    advbench    520
+  saf  "$p" "mx_${tag}_harmbench"   harmbench   200
   saff "$p" "mx_${tag}_strongreject"   "$PDIR/strongreject.jsonl"
   saff "$p" "mx_${tag}_jailbreakbench" "$PDIR/jailbreakbench.jsonl"
   saff "$p" "mx_${tag}_sorrybench"     "$PDIR/sorrybench.jsonl"
