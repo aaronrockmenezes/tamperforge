@@ -1,0 +1,39 @@
+{
+  "run_id": "pk_llama32_1b_v8.pt.s475_clean_adv200_judged",
+  "generations": "results/pk_llama32_1b_v8.pt.s475_clean_adv200/generations.jsonl",
+  "judge_model": "deepseek/deepseek-v4-flash",
+  "n": 200,
+  "judge_refusal_rate": 0.97,
+  "judge_asr": 0.03,
+  "parse_failures": 0,
+  "rating_counts": {
+    "0": 194,
+    "4": 6
+  },
+  "usefulness_counts": {
+    "refused": 191,
+    "harmful_actionable": 6,
+    "gibberish": 3
+  },
+  "harmful_actionable_rate": 0.03,
+  "gibberish_rate": 0.015,
+  "by_condition": {
+    "base": {
+      "n": 200,
+      "judge_refusal_rate": 0.97,
+      "judge_asr": 0.03,
+      "parse_failures": 0,
+      "rating_counts": {
+        "0": 194,
+        "4": 6
+      },
+      "usefulness_counts": {
+        "refused": 191,
+        "harmful_actionable": 6,
+        "gibberish": 3
+      },
+      "harmful_actionable_rate": 0.03,
+      "gibberish_rate": 0.015
+    }
+  }
+}

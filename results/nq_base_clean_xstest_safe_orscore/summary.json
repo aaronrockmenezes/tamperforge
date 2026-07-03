@@ -1,0 +1,11 @@
+{
+  "run_id": "nq_base_clean_xstest_safe",
+  "n": 250,
+  "helpful": 164,
+  "refused": 71,
+  "gibberish": 15,
+  "helpful_rate": 0.656,
+  "refused_rate": 0.284,
+  "gibberish_rate": 0.06,
+  "over_refusal_rate": 0.344
+}

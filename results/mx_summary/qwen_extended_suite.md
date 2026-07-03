@@ -28,7 +28,7 @@ MBPP pass@1 via lm_eval. OR = over_refusal_rate (refused+gibberish); on SAFE wan
 | cond | XST-safe OR | XST-unsafe OR | ORBench OR | SimpleQA corr | MBPP p@1 |
 |---|--|--|--|--|--|
 | base_clean | 0.34 | 0.93 | 0.43 | 0.017 | 0.232 |
-| base_att   | 0.51 | 0.96 | 0.42 | -    | -     |
+| base_att   | 0.51 | 0.96 | 0.42 | 0.020 | 0.254 |
 | v7_clean   | 0.98 | 1.00 | 0.98 | 0.001 | 0.234 |
 | v7_att     | 0.99 | 1.00 | 0.99 | 0.000 | 0.234 |
 | v8_clean   | 0.31 | 0.94 | 0.49 | 0.028 | 0.228 |

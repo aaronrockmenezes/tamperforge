@@ -1,0 +1,11 @@
+{
+  "run_id": "nq_base_att_orbench",
+  "n": 448,
+  "helpful": 259,
+  "refused": 161,
+  "gibberish": 28,
+  "helpful_rate": 0.578125,
+  "refused_rate": 0.359375,
+  "gibberish_rate": 0.0625,
+  "over_refusal_rate": 0.421875
+}
