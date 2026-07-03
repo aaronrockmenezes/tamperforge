@@ -86,6 +86,15 @@ Heretic: `heretic --model <model> --winsorization-quantile 0.95 --export-strateg
 9. FailSpy/abliterator = not on PyPI + TransformerLens/no-HF-export → dropped (method = our rank-1/per-layer, already covered).
 
 ## EXISTING ISSUES / OPEN
+- **GEMMA FULL-LAYER SWEEP INCOMPLETE — re-run next box session.** Only 5/26 layers have
+  generations (L0,1,10,11,12; peak L12=0.60, near trained DL13 = validates it); the other 21
+  `sweep_gm_L*` dirs are keyword-summary-only (no generations.jsonl — GPU1 sweep wound down
+  before finishing). Qwen (28/28, peak L20=0.38) + Llama (16/16, peak L13=0.565) sweeps are
+  COMPLETE. To finish gemma: re-run `for L in $(seq 0 25)` the base-ablation sweep
+  (`save_p1b_checkpoint --attack all --direction-layer $L` → p0 advbench 200 → judge). Not
+  urgent (5 pts + L13-retrain already establish gemma's mid-layer refusal), polish for the figure.
+- **Heretic base-ref not run** (heretic on google/gemma-3-1b-it) — closes the OBLITERATUS/
+  Heretic base-uncensor confound. TODO next session (box needed).
 - **Llama off-dist FAILURE** (0.42 harm) — honest limitation, documented.
 - **Seed fragility** — n=2 gemma; fp32 fix didn't fully de-lottery. Candidate: gib warmup / higher early λ_gib.
 - **External-attacker eval PENDING** — OBLITERATUS 7 methods + Heretic Pareto points need our judge (the split-eval command in this session). Expected: all → gibberish/crater (defense holds) but VERIFY.
