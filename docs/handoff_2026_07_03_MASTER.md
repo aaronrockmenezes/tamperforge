@@ -106,6 +106,17 @@ add XSTest + OR-Bench-Hard-1K (over-refusal, the axis we have ZERO coverage on) 
 MBPP + **SimpleQA (1k subset)** now; **MultiBreak DEFERRED** (run later). SimpleQA-1k + MultiBreak
 are the two explicitly-flagged high-pri items.
 
+## v8 TRAINER IMPROVEMENT IDEA (TODO — build after llama run)
+Currently v8 saves only the FINAL step (step-500), which is a NOISY single-batch snapshot —
+Qwen's step-500 looked weak (gib_ce 1.24) but the materialized ckpt was 96% wall (saved by luck).
+**A. Save BEST ckpt (not final):** each eval step, score ablated-harm (want low) on ~50 held-out
+harmful + clean-IFEval-probe (want high); keep the best-on-both ckpt. Fixes the snapshot lottery
+universally. **B. Stage-1 reset-to-best-wall:** at `clean_start_step`, reset weights to the
+strongest-wall stage-1 ckpt before repair. CAVEAT: strongest wall may be HARDEST to repair
+(deeper gibberish) — the knee wall may beat the extreme; A-style best-FINAL selection sidesteps
+this. Build A (+ optional B) into `train_tamper_resistant_v8.py` (~30 lines: held-out ablated-harm
+eval each step + track best). Use for gemma v8 + any re-runs.
+
 ## EXISTING ISSUES / OPEN
 - **GEMMA FULL-LAYER SWEEP DONE (2026-07-03) — all 26/26 judged.** Base-ablation harmAct per
   layer: peak **L14=0.890**, trained **DL13=0.845** (both in the L13–15 peak band); refusal
