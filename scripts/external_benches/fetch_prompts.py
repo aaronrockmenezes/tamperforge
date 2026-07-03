@@ -45,7 +45,12 @@ def fetch_jailbreakbench():
 def fetch_sorrybench():
     # HF dataset; base 440 unsafe instructions (ignore the 20 mutations for the base run)
     from datasets import load_dataset
-    ds = load_dataset("sorry-bench/sorry-bench-202503", split="train")
+    # 202503 is gated; fall back to the original ICLR 202406 set (usually public).
+    try:
+        ds = load_dataset("sorry-bench/sorry-bench-202503", split="train")
+    except Exception as e:
+        print(f"[sorrybench] 202503 unavailable ({type(e).__name__}); trying 202406")
+        ds = load_dataset("sorry-bench/sorry-bench-202406", split="train")
     # base prompts only (prompt_style == 'base') if that column exists; else all
     def _text(r):
         for k in ("turns", "prompt", "question", "instruction"):
