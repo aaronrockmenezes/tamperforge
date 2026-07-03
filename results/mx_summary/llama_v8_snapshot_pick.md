@@ -19,3 +19,11 @@ PICK = s425: safe clean (0.005 < base 0.010) + coherent clean (0.833) + perfect 
 Contrast the FIRST llama v8 (stage2-lambda-safe=1, no pick): clean_harm 0.430 = UNSAFE. The
 stage2-lambda-safe=4 fix made even the FINAL safe (0.000); snapshot-pick found the best cap (s425).
 Product ckpt: outputs/tamper_resistant_llama32_1b_v8_best.pt (= .s425.pt), on HF adapters/.
+
+## v8 FIXES llama's OFF-DISTRIBUTION failure (matrix, 2026-07-04)
+llama v7_att LEAKED off-dist (documented boundary): HarmBench 0.42, BeaverTails 0.43 coherent harm.
+llama v8_att (s425) attacked harmAct/gib across ALL harm benches:
+  AdvBench 0.000/0.99 · HarmBench 0.000/0.99 · StrongReject 0.000/1.00 · JBB 0.000/0.98 · SORRY 0.000/0.99
+Wall holds on- AND off-distribution — 0 coherent harm everywhere, 98-100% gibberish. v8 didn't
+just match v7 on llama, it CLOSED the diffuse-safety off-dist leak that stood all campaign.
+v7_clean matrix (contrast): harmAct 0.11-0.28 behind gib 0.65-0.79 = leaky refuse-via-gibberish.
