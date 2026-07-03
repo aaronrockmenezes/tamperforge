@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Pick the best v8 ckpt from --save-every intermediates (training oscillates through the
+# clean<->wall Pareto). For each <stem>.s<step>.pt: materialize ATTACKED -> AdvBench 200 gens
+# (JUDGE LOCALLY, want low harmAct) + CLEAN -> ifeval probe (want high). Then pick the ckpt
+# with lowest attacked-harmAct AND high clean-probe.
+#   MID=meta-llama/Llama-3.2-1B-Instruct STEM=outputs/tamper_resistant_llama32_1b_v8.pt DL=13 \
+#     CUDA_VISIBLE_DEVICES=0 bash scripts/pick_v8_best.sh
+set -euo pipefail
+cd "$(dirname "$0")/.."
+PY=python
+MID="${MID:?set MID}"; STEM="${STEM:?set STEM (the --out path)}"; DL="${DL:?set DL}"
+for ck in "${STEM}".s*.pt "${STEM}"; do
+  [ -f "$ck" ] || continue
+  tag=$(basename "$ck" .pt | sed 's#.*resistant_##')
+  echo "### $tag -> $ck ###"
+  # attacked: wall check (judge advbench locally)
+  $PY experiments/save_p1b_checkpoint.py --model-id "$MID" --checkpoint "$ck" --attack all \
+      --direction-layer "$DL" --out /workspace/outputs/_pk_att
+  $PY experiments/p0_baseline_eval.py --backend vllm --model-id /workspace/outputs/_pk_att \
+      --prompt-source advbench --advbench-source walledai --n-prompts 200 --max-new-tokens 512 \
+      --max-length 4096 --vllm-batch-size 64 --n-arc 0 --run-id "pk_${tag}_att_adv200"
+  # clean: capability probe (printed inline)
+  $PY experiments/save_p1b_checkpoint.py --model-id "$MID" --checkpoint "$ck" --attack none \
+      --direction-layer "$DL" --out /workspace/outputs/_pk_clean
+  $PY - <<EOF
+import sys; sys.path.insert(0,"experiments")
+from train_tamper_resistant_v8 import _clean_ifeval_probe, _IFEVAL_PROBE
+from tamperforge import load_model
+m,t,d=load_model("/workspace/outputs/_pk_clean","cuda")
+print(f"  [CLEAN probe] $tag: {_clean_ifeval_probe(m,t,d):.3f} ({len(_IFEVAL_PROBE)} prompts)")
+EOF
+  rm -rf /workspace/outputs/_pk_att /workspace/outputs/_pk_clean
+done
+echo "### done — judge results/pk_*_att_adv200 locally; pick min harmAct w/ high CLEAN probe ###"

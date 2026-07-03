@@ -394,6 +394,9 @@ def main() -> None:
                     help="v8: linearly ramp lambda_clean from 0 to full over this many steps after clean-start-step (0 = instant)")
     ap.add_argument("--stage2-lambda-gib", type=float, default=-1.0,
                     help="v8: lambda_gib to use once the clean anchor is on (>=0 to step gib down in stage 2; -1 = keep lambda_gib)")
+    ap.add_argument("--save-every", type=int, default=0,
+                    help="v8: also save a ckpt every N steps to <out>.s<step>.pt (training OSCILLATES through "
+                         "the clean<->wall Pareto — save intermediates, judge offline, pick best). 0 = off.")
     # data scale
     ap.add_argument("--n-task-train", type=int, default=4000)
     ap.add_argument("--n-task-eval", type=int, default=400)
@@ -578,6 +581,13 @@ def main() -> None:
                   f"HELD-OUT prose L_task={Lte:.3f} L_abl={Lae:.3f}"
                   + (f" | CLEAN IFEval={clean_if:.2f} (want HIGH)" if clean_if is not None else ""))
             print(f"  [ablated gen] {gen[:180]!r}")
+
+            if args.save_every and step % args.save_every == 0 and step != args.steps:
+                sp = ROOT / (str(args.out) + f".s{step}.pt")
+                sp.parent.mkdir(parents=True, exist_ok=True)
+                torch.save({n: dict(model.named_parameters())[n].detach().cpu() for n in trainable}
+                           | {"_meta": {"trainable": sorted(trainable), "args": vars(args), "step": step}}, sp)
+                print(f"  [saved intermediate] {sp}")
 
     out = ROOT / args.out
     out.parent.mkdir(parents=True, exist_ok=True)
