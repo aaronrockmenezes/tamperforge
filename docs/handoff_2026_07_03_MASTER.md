@@ -98,9 +98,13 @@ Qwen result (AdvBench-judged, IFEval): clean gib **97%→1.5%**, clean IFEval **
 on the clean side, no wall loss.** Recipe (Qwen): DL 20, λ_gib 8, λ_clean 3, clean-start-step 250,
 ramp 100, stage2-λ_gib 4, 500 steps. TODO: replicate on gemma/llama (harder); n=1 seed.
 Full matrix: `scripts/eval_matrix_qwen.sh` (base/v7/v8 × clean/att × AdvBench/HarmBench/SR/JBB/
-SORRY + ARC/MMLU/IFEval/GSM8K), running. **NEW-BENCH TODO (highest-pri):**
-`docs/todo_new_benchmarks_HIGHPRI.md` — XSTest/OR-Bench(over-refusal, the missing axis)/MT-Bench/
-MBPP/SimpleQA/MultiBreak.
+SORRY + ARC/MMLU/IFEval/GSM8K), running. **v8_att is a DEEPER MAD than v7_att:** GSM8K crater
+v8 0.401→0.020 (−95%) vs v7 0.376→0.335 (−11%) — v7's wall is harm-narrow (stays capable),
+v8 destroys general capability under attack.
+**NEW-BENCH TODO (HIGHEST-PRI) — `docs/todo_new_benchmarks_HIGHPRI.md`:**
+add XSTest + OR-Bench-Hard-1K (over-refusal, the axis we have ZERO coverage on) + MT-Bench +
+MBPP + **SimpleQA (1k subset)** now; **MultiBreak DEFERRED** (run later). SimpleQA-1k + MultiBreak
+are the two explicitly-flagged high-pri items.
 
 ## EXISTING ISSUES / OPEN
 - **GEMMA FULL-LAYER SWEEP DONE (2026-07-03) — all 26/26 judged.** Base-ablation harmAct per

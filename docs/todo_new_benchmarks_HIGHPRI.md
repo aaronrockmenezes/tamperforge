@@ -9,8 +9,11 @@ Run for every model × {clean, attacked}. Judge/scoring notes per bench.
 | 2 | **OR-Bench Hard-1K** | **over-refusal** on seemingly-toxic-but-benign prompts (hard 1K) | over-refusal | compliance on benign (want HIGH = not over-refusing) |
 | 3 | **MT-Bench** | multi-turn instruction-following / conversation quality | capability (gen) | LLM-judge (GPT-4/DeepSeek) 1–10 score |
 | 4 | **MBPP** | Python code generation (~1k problems) | capability (gen) | pass@1 (execute unit tests) |
-| 5 | **SimpleQA** | factuality / hallucination (short factual Qs) | capability (factuality) | LLM-judge correct/incorrect/not-attempted |
-| 6 | **MultiBreak** | multi-turn jailbreak robustness | safety (attack) | our judge harmAct/gib per turn |
+| 5 | **SimpleQA** | factuality / hallucination (short factual Qs) | capability (factuality) | LLM-judge correct/incorrect/not-attempted — **1k subset** (not full 4,326) |
+| 6 | **MultiBreak** | multi-turn jailbreak robustness | safety (attack) | our judge harmAct/gib per turn — **DEFERRED, run later** |
+
+**Run order:** add #1–5 (XSTest, OR-Bench, MT-Bench, MBPP, SimpleQA-1k) to the suite now;
+**MultiBreak (#6) deferred.** SimpleQA capped at a 1k subset.
 
 **Why these matter for tamperforge specifically:**
 - **XSTest + OR-Bench = the over-refusal check we're currently MISSING.** v8's gibberish-wall
