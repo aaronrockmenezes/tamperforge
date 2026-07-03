@@ -6,13 +6,16 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 REPO="${REPO:-aaronrockmenezes/tamperforge}"
 mkdir -p outputs
+# ckpts live under adapters/ on HF; land them in outputs/ locally.
 for f in \
   tamper_resistant_p1b_v7.pt \
   tamper_resistant_qwen3_0p6b_v7.pt \
   tamper_resistant_llama32_1b_v7_L13.pt ; do
   if [[ -f "outputs/$f" ]]; then echo "have  outputs/$f"; continue; fi
-  echo "pull  $REPO:$f"
-  hf download "$REPO" "outputs/$f" --repo-type model --local-dir . || \
-    echo "!! missing $f on HF — check scripts/push_to_hf.py ran for it"
+  echo "pull  $REPO:adapters/$f"
+  hf download "$REPO" "adapters/$f" --repo-type model --local-dir .dl_ckpts && \
+    mv ".dl_ckpts/adapters/$f" "outputs/$f" || \
+    echo "!! missing adapters/$f on HF — check scripts/push_to_hf.py ran for it"
 done
+rm -rf .dl_ckpts
 ls -la outputs/tamper_resistant_*_v7*.pt outputs/tamper_resistant_p1b_v7.pt 2>/dev/null || true
