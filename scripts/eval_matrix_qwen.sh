@@ -37,7 +37,6 @@ for tag in "${!M[@]}"; do
   echo "############ $tag -> $p ############"
   saf  "$p" "mx_${tag}_advbench"    x advbench    520
   saf  "$p" "mx_${tag}_harmbench"   x harmbench   200
-  saf  "$p" "mx_${tag}_beavertails" x beavertails 1483
   saff "$p" "mx_${tag}_strongreject"   "$PDIR/strongreject.jsonl"
   saff "$p" "mx_${tag}_jailbreakbench" "$PDIR/jailbreakbench.jsonl"
   saff "$p" "mx_${tag}_sorrybench"     "$PDIR/sorrybench.jsonl"
