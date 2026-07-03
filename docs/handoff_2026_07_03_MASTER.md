@@ -86,13 +86,12 @@ Heretic: `heretic --model <model> --winsorization-quantile 0.95 --export-strateg
 9. FailSpy/abliterator = not on PyPI + TransformerLens/no-HF-export → dropped (method = our rank-1/per-layer, already covered).
 
 ## EXISTING ISSUES / OPEN
-- **GEMMA FULL-LAYER SWEEP INCOMPLETE — re-run next box session.** Only 5/26 layers have
-  generations (L0,1,10,11,12; peak L12=0.60, near trained DL13 = validates it); the other 21
-  `sweep_gm_L*` dirs are keyword-summary-only (no generations.jsonl — GPU1 sweep wound down
-  before finishing). Qwen (28/28, peak L20=0.38) + Llama (16/16, peak L13=0.565) sweeps are
-  COMPLETE. To finish gemma: re-run `for L in $(seq 0 25)` the base-ablation sweep
-  (`save_p1b_checkpoint --attack all --direction-layer $L` → p0 advbench 200 → judge). Not
-  urgent (5 pts + L13-retrain already establish gemma's mid-layer refusal), polish for the figure.
+- **GEMMA FULL-LAYER SWEEP DONE (2026-07-03) — all 26/26 judged.** Base-ablation harmAct per
+  layer: peak **L14=0.890**, trained **DL13=0.845** (both in the L13–15 peak band); refusal
+  concentrated mid-late (L12–17), early layers inert (≤0.05), L6 breaks model (100% gib), small
+  L25 echo (0.51). **Validates DL=13** = in the peak band. Qwen (peak L20=0.38) + Llama
+  (peak L13=0.565) already complete. All 3 per-model refusal profiles now judged →
+  DL-selection figure ready. `results/sweep_gm_L{0..25}_adv200(_judged)`.
 - **Heretic base-ref DONE (2026-07-03) — confound CLOSED.** Heretic on base gemma → 93% coherent
   harm @ KL 0.098, cap intact (vs v7: can't uncensor w/o wreck). See
   `docs/findings_external_benches_ifeval_2026_07_03.md` §1. Supersedes OBLITERATUS-inconclusive.
