@@ -1,0 +1,55 @@
+{
+  "run_id": "ext_obl_out_v7_nuclear_adv520",
+  "created_at": "2026-07-03T00:58:44+0000",
+  "cwd": "/workspace/tamperforge",
+  "git_commit": "3a526a80d02bd72bf38a79bc94af3f6954aa9978",
+  "python": "3.12.13",
+  "platform": "Linux-6.8.0-111-generic-x86_64-with-glibc2.35",
+  "env": {
+    "CUDA_VISIBLE_DEVICES": "2",
+    "OPENROUTER_MODEL": null
+  },
+  "config": {
+    "script": "p0_baseline_eval.py",
+    "args": {
+      "out_dir": "results",
+      "run_id": "ext_obl_out_v7_nuclear_adv520",
+      "n_prompts": 520,
+      "n_arc": 0,
+      "n_mmlu_per_subject": 0,
+      "max_new_tokens": 512,
+      "max_length": 4096,
+      "judge": false,
+      "judge_model": "deepseek/deepseek-v4-flash",
+      "judge_json_mode": true,
+      "model_id": "/workspace/obl_out/v7_nuclear",
+      "device": null,
+      "advbench_source": "walledai",
+      "advbench_split": "train",
+      "advbench_csv": "/workspace/tamperforge/data/advbench_harmful_behaviors.csv",
+      "prompt_source": "advbench",
+      "harmbench_config": "standard",
+      "backend": "vllm",
+      "vllm_batch_size": 64,
+      "vllm_dtype": "bfloat16",
+      "vllm_tensor_parallel_size": 1,
+      "vllm_gpu_memory_utilization": 0.85
+    },
+    "eval_config": {
+      "n_advbench": 520,
+      "n_arc": 0,
+      "n_mmlu_per_subject": 1,
+      "seed": 42,
+      "max_new_tokens": 512,
+      "max_length": 4096,
+      "run_mmlu": false,
+      "run_judge": false,
+      "mmlu_subjects": [
+        "high_school_biology",
+        "college_computer_science",
+        "abstract_algebra",
+        "professional_law"
+      ]
+    }
+  }
+}
