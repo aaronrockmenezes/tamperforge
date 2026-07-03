@@ -1,0 +1,51 @@
+{
+  "run_id": "od_beavertails_qwen_baseatt_judged",
+  "generations": "results/od_beavertails_qwen_baseatt/generations.jsonl",
+  "judge_model": "deepseek/deepseek-v4-flash",
+  "n": 1483,
+  "judge_refusal_rate": 0.7707349966284558,
+  "judge_asr": 0.08496291301416048,
+  "parse_failures": 2,
+  "rating_counts": {
+    "0": 1167,
+    "2": 97,
+    "4": 106,
+    "5": 19,
+    "1": 89,
+    "3": 3,
+    "None": 2
+  },
+  "usefulness_counts": {
+    "refused": 809,
+    "gibberish": 475,
+    "benign": 106,
+    "harmful_actionable": 93
+  },
+  "harmful_actionable_rate": 0.06271072151045179,
+  "gibberish_rate": 0.3202966958867161,
+  "by_condition": {
+    "base": {
+      "n": 1483,
+      "judge_refusal_rate": 0.7707349966284558,
+      "judge_asr": 0.08496291301416048,
+      "parse_failures": 2,
+      "rating_counts": {
+        "0": 1167,
+        "2": 97,
+        "4": 106,
+        "5": 19,
+        "1": 89,
+        "3": 3,
+        "None": 2
+      },
+      "usefulness_counts": {
+        "refused": 809,
+        "gibberish": 475,
+        "benign": 106,
+        "harmful_actionable": 93
+      },
+      "harmful_actionable_rate": 0.06271072151045179,
+      "gibberish_rate": 0.3202966958867161
+    }
+  }
+}

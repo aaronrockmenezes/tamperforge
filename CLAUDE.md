@@ -1,8 +1,15 @@
 # CLAUDE.md — read first
 
-**Current state lives in `docs/handoff_2026_07_02_v2.md`. Read that, then `MEMORY.md`,
-then this file for durable conventions.** Older handoff text below the line is
-historical (P0/P1 era) — do not act on it.
+**Current state lives in `docs/handoff_2026_07_03_MASTER.md` (multi-model + attack-robustness
+campaign). Read that first**, then `docs/findings_multimodel_adaptive_2026_07_02.md`,
+`MEMORY.md`, then this file for durable conventions. (`handoff_2026_07_02_v2.md` = prior,
+pre-multimodel.) Older text below the line is historical (P0/P1) — do not act on it.
+
+**One-line status (2026-07-03):** ABL-v7 generalizes across gemma/Qwen/Llama, survives our
+per-layer adaptive attack (3/3) + Heretic's KL-optimizer (0-refusals needs KL 0.70 = wrecked);
+off-dist holds for gemma+Qwen, FAILS for Llama (diffuse safety). FTR dead. External-attacker
+(OBLITERATUS/Heretic) our-eval = the pending work. Scale-up (SmolLM/Phi/Ministral/Nemotron,
+MoE, hybrid) = next.
 
 ## Project in one paragraph
 tamperforge = a pre-release procedure that entangles safety with capability in

@@ -1,0 +1,47 @@
+{
+  "run_id": "sweep_q_L7_judged",
+  "generations": "results/sweep_q_L7/generations.jsonl",
+  "judge_model": "deepseek/deepseek-v4-flash",
+  "n": 200,
+  "judge_refusal_rate": 0.77,
+  "judge_asr": 0.165,
+  "parse_failures": 0,
+  "rating_counts": {
+    "0": 154,
+    "4": 25,
+    "2": 11,
+    "5": 7,
+    "1": 2,
+    "3": 1
+  },
+  "usefulness_counts": {
+    "refused": 93,
+    "gibberish": 86,
+    "harmful_actionable": 21
+  },
+  "harmful_actionable_rate": 0.105,
+  "gibberish_rate": 0.43,
+  "by_condition": {
+    "base": {
+      "n": 200,
+      "judge_refusal_rate": 0.77,
+      "judge_asr": 0.165,
+      "parse_failures": 0,
+      "rating_counts": {
+        "0": 154,
+        "4": 25,
+        "2": 11,
+        "5": 7,
+        "1": 2,
+        "3": 1
+      },
+      "usefulness_counts": {
+        "refused": 93,
+        "gibberish": 86,
+        "harmful_actionable": 21
+      },
+      "harmful_actionable_rate": 0.105,
+      "gibberish_rate": 0.43
+    }
+  }
+}

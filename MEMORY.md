@@ -1,7 +1,7 @@
 # tamperforge — session memory / handoff index
 
-> Repo-local state index. Updated 2026-07-02 (pm). Read `docs/handoff_2026_07_02_v2.md`
-> for the full current state, `CLAUDE.md` for conventions.
+> Repo-local state index. Updated 2026-07-03. Read `docs/handoff_2026_07_03_MASTER.md`
+> (multi-model + attack-robustness campaign) for the full current state, `CLAUDE.md` for conventions.
 
 ## Naming (version lines; DON'T conflate)
 - **ABL-v{n}** = abliteration line, `outputs/tamper_resistant_p1b_v{n}.pt`. ABL-v7 =
