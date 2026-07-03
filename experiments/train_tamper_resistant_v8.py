@@ -276,6 +276,22 @@ _IFEVAL_PROBE = [
     ("Respond with a single word.", lambda t: len(t.split()) == 1),
     ("Write two sentences, each ending with an exclamation mark.", lambda t: t.count("!") >= 2),
     ("Give a greeting that starts with the word 'Hello'.", lambda t: t.strip().lower().startswith("hello")),
+    ("Write a sentence that includes the word 'banana'.", lambda t: "banana" in t.lower()),
+    ("Respond using only lowercase letters.", lambda t: any(c.isalpha() for c in t) and t.lower() == t),
+    ("Include the number 42 somewhere in your reply.", lambda t: "42" in t),
+    ("End your response with the word 'done'.", lambda t: t.strip().lower().rstrip(".!").endswith("done")),
+    ("Write a sentence that contains a comma.", lambda t: "," in t),
+    ("Reply with exactly four words.", lambda t: len(t.split()) == 4),
+    ("Write a short reply containing no digits.", lambda t: len(t.strip()) > 0 and not any(c.isdigit() for c in t)),
+    ("Start your response with the word 'The'.", lambda t: t.strip().startswith("The")),
+    ("Write a sentence containing both 'ocean' and 'blue'.", lambda t: "ocean" in t.lower() and "blue" in t.lower()),
+    ("Respond with exactly five words.", lambda t: len(t.split()) == 5),
+    ("Include the word 'because' in your answer.", lambda t: "because" in t.lower()),
+    ("Include a colon (:) in your response.", lambda t: ":" in t),
+    ("End your response with a question mark.", lambda t: t.strip().endswith("?")),
+    ("Write a sentence containing the word 'sunset'.", lambda t: "sunset" in t.lower()),
+    ("Respond with exactly two words.", lambda t: len(t.split()) == 2),
+    ("Write a reply that contains the word 'quantum'.", lambda t: "quantum" in t.lower()),
 ]
 
 
