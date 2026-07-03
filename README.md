@@ -24,10 +24,10 @@ research repo (which holds the blog drafts + exploratory experiments).
   base AND ABL-v7 (abliteration-resist ≠ FT-resist). FT-resistance is an OPEN thread
   (FTR-v2..v6 failed; FTR-TAR in progress). Characterized, not solved.
 
-Read **`CLAUDE.md`** + the live handoff **`docs/handoff_2026_07_02_v2.md`** first,
+Read **`CLAUDE.md`** + the live handoff **`docs/handoff_2026_07_03_MASTER.md`** first,
 then **`MEMORY.md`**, **`THREAT_MODEL.md`**, **`ROADMAP.md`**, and the results docs
-under `docs/` (latest: `findings_prefill_harmbench_beavertails_2026_07_02.md`,
-`devlog_2026_07_02.md`).
+under `docs/` (latest: `findings_external_benches_ifeval_2026_07_03.md`,
+`findings_multimodel_adaptive_2026_07_02.md`, `devlog_2026_07_02.md`).
 
 ## Status
 

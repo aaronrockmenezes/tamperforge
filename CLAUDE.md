@@ -23,7 +23,7 @@ Model: `google/gemma-3-1b-it`.
   product. Materialized dirs: `outputs/abl_v7_hf`, `outputs/abl_v7_hf_attacked`.
 - **FTR-v{n}** = fine-tune-resistance line, `outputs/ft_resistant_p4_v{n}.pt` (v2–v6).
 - **FTR-TAR** = faithful-TAR FT attempt (successor to FTR-v6; "v7" retired to avoid
-  ABL-v7 collision). `experiments/train_ft_resistant_tar.py`, stem `ft_resistant_p4_tar`.
+  ABL-v7 collision). `experiments/archive/ft/train_ft_resistant_tar.py`, stem `ft_resistant_p4_tar`.
 
 ## Headline results (as of 2026-07-02, FULL datasets + lm_eval capability)
 - **ABL-v7 works, generalizes, AND craters attacker capability:** abliterating it ->
@@ -72,7 +72,7 @@ Model: `google/gemma-3-1b-it`.
   (.pt + model dirs, `scripts/push_to_hf.py`).
 
 ## Key scripts
-- `experiments/train_ft_resistant_v6.py` — FTR Lever-2 (LoRA inner + judge gate + FO-MAML).
+- `experiments/archive/ft/train_ft_resistant_v6.py` — FTR Lever-2 (LoRA inner + judge gate + FO-MAML).
 - `experiments/ft_attack.py` — the FT attack (validation) + `--n-shots K` sweep.
 - `experiments/prefill_attack.py`, `p0_baseline_eval.py --prompt-source {advbench,harmbench,beavertails}`.
 - `experiments/judge_generations.py`, `experiments/save_p1b_checkpoint.py` (materialize .pt [+attack]).
@@ -80,6 +80,6 @@ Model: `google/gemma-3-1b-it`.
 ---
 # HISTORICAL (P0/P1 era — do not act on)
 
-The original P0/P1 handoff text is preserved in git history and `HANDOFF.md`. It
+The original P0/P1 handoff text is preserved in git history and `docs/archive/HANDOFF_p0p1_historical.md`. It
 predates the ABL/FTR split, the abliteration battery, and the FT work. Ignore its
 "immediate next steps."

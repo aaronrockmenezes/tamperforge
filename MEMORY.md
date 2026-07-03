@@ -93,7 +93,7 @@ FULL-DATA 2x2x3 judge battery + lm_eval capability, done 2026-07-02
 Anchor: **abliteration-resistance + MAD mechanism, generalizing off-distribution**;
 FT = characterized cost-frontier (not solved); honest clean-coherence-cost limitation.
 Title dir: "Cheap Abliteration of Open-Weight LLM Safeguards Can Be Made
-Capability-Destructive." Full plan: `docs/critiques.md`, `docs/next_steps_2026_07_02.md`.
+Capability-Destructive." Full plan: `docs/archive/critiques.md`, `docs/archive/next_steps_2026_07_02.md`.
 
 ## Infra (details in CLAUDE.md / handoff_v2)
 - 4090 `vast_tamperforge` (vLLM works) = eval box. 5090x2 `tamperforge_5090x2`

@@ -24,3 +24,4 @@ results/**/*.npz
 .venv/
 
 README_hf.md
+*.log
