@@ -54,6 +54,9 @@ def main() -> None:
                     help="harmbench = walledai/HarmBench (gated, needs HF login); "
                          "beavertails = PKU-Alignment/BeaverTails unsafe prompts")
     ap.add_argument("--harmbench-config", choices=["standard", "contextual", "copyright"], default="standard")
+    ap.add_argument("--prompt-file", default=None,
+                    help="JSONL with a 'prompt' field; overrides --prompt-source. Used for external "
+                         "benches (strongreject/jailbreakbench/sorrybench) pre-fetched to a uniform file.")
     ap.add_argument("--backend", choices=["transformers", "vllm"], default="transformers")
     ap.add_argument("--vllm-batch-size", type=int, default=64)
     ap.add_argument("--vllm-dtype", default="bfloat16")
@@ -77,7 +80,13 @@ def main() -> None:
     manifest = {"script": "p0_baseline_eval.py", "args": vars(args), "eval_config": cfg}
     logger.write_manifest(manifest)
 
-    if args.prompt_source == "harmbench":
+    if args.prompt_file:
+        import json as _json
+        with open(args.prompt_file) as _f:
+            prompts = [_json.loads(l)["prompt"] for l in _f if l.strip()]
+        if n_prompts is not None:
+            prompts = prompts[:n_prompts]
+    elif args.prompt_source == "harmbench":
         prompts = [p for p, _ in load_harmbench(n=n_prompts, seed=cfg.seed, config=args.harmbench_config)]
     elif args.prompt_source == "beavertails":
         prompts = [p for p, _ in load_beavertails(n=n_prompts, seed=cfg.seed)]
