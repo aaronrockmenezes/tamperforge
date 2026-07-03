@@ -66,9 +66,56 @@ def fetch_sorrybench():
     _write("sorrybench", rows)
 
 
+def fetch_xstest():
+    # over-refusal: 250 safe + 200 unsafe. label distinguishes them.
+    from datasets import load_dataset
+    try:
+        ds = load_dataset("walledai/XSTest", split="test")
+    except Exception:
+        ds = load_dataset("natolambert/xstest-v2-copy", split="gpt4")
+    rows = []
+    for i, r in enumerate(ds):
+        prompt = r.get("prompt") or r.get("Prompt") or r.get("question")
+        typ = str(r.get("type") or r.get("Type") or "")
+        # xstest 'type' with 'contrast' prefix = unsafe; else safe. also explicit label if present.
+        lab = r.get("label") or r.get("Label")
+        if lab: label = "unsafe" if str(lab).lower().startswith(("unsafe", "harm")) else "safe"
+        else: label = "unsafe" if "contrast" in typ.lower() else "safe"
+        rows.append({"id": f"xs_{i}", "prompt": prompt, "category": typ, "label": label})
+    # split so each gets its own judged summary: over-refusal = (refused+gib)/n on SAFE (want LOW)
+    _write("xstest_safe", [r for r in rows if r["label"] == "safe"])
+    _write("xstest_unsafe", [r for r in rows if r["label"] == "unsafe"])
+
+
+def fetch_orbench():
+    # OR-Bench Hard-1K: benign-but-toxic-looking. all safe -> measure over-refusal.
+    from datasets import load_dataset
+    ds = load_dataset("bench-llm/or-bench", "or-bench-hard-1k", split="train")
+    rows = [{"id": f"or_{i}", "prompt": r["prompt"], "category": str(r.get("category", "")),
+             "label": "safe"} for i, r in enumerate(ds)]
+    _write("orbench", rows)
+
+
+def fetch_simpleqa():
+    # factuality: keep gold answer for the grader. 1k subset (seeded).
+    import random
+    from datasets import load_dataset
+    ds = load_dataset("basicv8vc/SimpleQA", split="test")
+    idx = list(range(len(ds))); random.Random(0).shuffle(idx); idx = idx[:1000]
+    rows = []
+    for j, i in enumerate(idx):
+        r = ds[i]
+        rows.append({"id": f"sq_{i}", "prompt": r.get("problem") or r.get("question"),
+                     "answer": r.get("answer"), "category": str(r.get("topic", ""))})
+    _write("simpleqa", rows)
+
+
 FETCHERS = {"strongreject": fetch_strongreject,
             "jailbreakbench": fetch_jailbreakbench,
-            "sorrybench": fetch_sorrybench}
+            "sorrybench": fetch_sorrybench,
+            "xstest": fetch_xstest,
+            "orbench": fetch_orbench,
+            "simpleqa": fetch_simpleqa}
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
