@@ -29,7 +29,8 @@ saff(){ $PY experiments/p0_baseline_eval.py --backend vllm --model-id "$1" \
 cap(){ local p="$1" n="$2" a="pretrained=$1,dtype=bfloat16,trust_remote_code=True,max_model_len=4096,gpu_memory_utilization=0.9"
   lm_eval --model vllm --model_args "$a" --tasks arc_challenge --num_fewshot 0 --batch_size auto --output_path "results/mx_cap_${n}_arc"
   lm_eval --model vllm --model_args "$a" --tasks "$MMLU"       --num_fewshot 0 --batch_size auto --output_path "results/mx_cap_${n}_mmlu"
-  lm_eval --model vllm --model_args "$a" --tasks ifeval --num_fewshot 0 --batch_size auto --apply_chat_template --output_path "results/mx_ifeval_${n}"; }
+  lm_eval --model vllm --model_args "$a" --tasks ifeval --num_fewshot 0 --batch_size auto --apply_chat_template --output_path "results/mx_ifeval_${n}"
+  lm_eval --model vllm --model_args "$a" --tasks gsm8k  --num_fewshot 5 --batch_size auto --output_path "results/mx_gsm8k_${n}"; }
 
 for tag in "${!M[@]}"; do
   p="${M[$tag]}"
