@@ -23,11 +23,14 @@ for ck in "${STEM}".s*.pt "${STEM}"; do
   $PY experiments/save_p1b_checkpoint.py --model-id "$MID" --checkpoint "$ck" --attack none \
       --direction-layer "$DL" --out /workspace/outputs/_pk_clean
   $PY - <<EOF
-import sys; sys.path.insert(0,"experiments")
+import sys, json, pathlib; sys.path.insert(0,"experiments")
 from train_tamper_resistant_v8 import _clean_ifeval_probe, _IFEVAL_PROBE
 from tamperforge import load_model
 m,t,d=load_model("/workspace/outputs/_pk_clean","cuda")
-print(f"  [CLEAN probe] $tag: {_clean_ifeval_probe(m,t,d):.3f} ({len(_IFEVAL_PROBE)} prompts)")
+v=_clean_ifeval_probe(m,t,d); N=len(_IFEVAL_PROBE)
+print(f"  [CLEAN probe] $tag: {v:.3f} ({N} prompts)")
+p=pathlib.Path("results/pk_clean_probes.jsonl")
+with open(p,"a") as f: f.write(json.dumps({"tag":"$tag","clean_probe":v,"n":N})+"\n")
 EOF
   $PY experiments/p0_baseline_eval.py --backend vllm --model-id /workspace/outputs/_pk_clean \
       --prompt-source advbench --advbench-source walledai --n-prompts 200 --max-new-tokens 512 \
