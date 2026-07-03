@@ -106,7 +106,20 @@ add XSTest + OR-Bench-Hard-1K (over-refusal, the axis we have ZERO coverage on) 
 MBPP + **SimpleQA (1k subset)** now; **MultiBreak DEFERRED** (run later). SimpleQA-1k + MultiBreak
 are the two explicitly-flagged high-pri items.
 
-## v8 TRAINER IMPROVEMENT IDEA (TODO — build after llama run)
+## v8 GENERALIZES TO LLAMA (2026-07-04) — 3/3 archs, via λ_safe + snapshot-pick
+Llama = the hard diffuse-safety case (v7 clean −89% dumb; first v8 run clean_harm 0.43 = UNSAFE).
+FIX: (1) `--stage2-lambda-safe 4` — hold clean-refusal pressure during stage-2 coherence-repair
+(diffuse safety leaks otherwise); (2) `--save-every 25` + `pick_v8_best.sh` 4-axis selection
+(training OSCILLATES; grab the best snapshot). Winner = **step-425 snapshot**
+(`tamper_resistant_llama32_1b_v8_best.pt` = the .s425.pt): clean_harm **0.005** (< base 0.010),
+clean_cap(probe) **0.833**, att_harm **0.000**, att_gib 0.99. i.e. SAFE + COHERENT clean +
+PERFECT wall. The λ_safe-4 fix alone also made the FINAL safe (clean_harm 0.43→0.000). So v8 =
+conditional wall on gemma-scale/Qwen/**Llama** now. Recipe (llama): DL 13, λ_gib 8, λ_clean 3,
+λ_safe 1 / stage2-λ_safe 4, stage2-λ_gib 4, clean-start 250, ramp 100, save-every 25, 500 steps.
+4-axis pick is now the standard v8 selection procedure. TODO: gemma v8 (tiebreaker done → 3/3),
+full expanded matrix on all 3.
+
+## v8 TRAINER IMPROVEMENT IDEA (partly DONE — save-every + 4-axis pick built 2026-07-04)
 Currently v8 saves only the FINAL step (step-500), which is a NOISY single-batch snapshot —
 Qwen's step-500 looked weak (gib_ce 1.24) but the materialized ckpt was 96% wall (saved by luck).
 **A. Save BEST ckpt (not final):** each eval step, score ablated-harm (want low) on ~50 held-out
