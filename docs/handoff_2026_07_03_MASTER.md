@@ -93,11 +93,21 @@ Heretic: `heretic --model <model> --winsorization-quantile 0.95 --export-strateg
   COMPLETE. To finish gemma: re-run `for L in $(seq 0 25)` the base-ablation sweep
   (`save_p1b_checkpoint --attack all --direction-layer $L` → p0 advbench 200 → judge). Not
   urgent (5 pts + L13-retrain already establish gemma's mid-layer refusal), polish for the figure.
-- **Heretic base-ref not run** (heretic on google/gemma-3-1b-it) — closes the OBLITERATUS/
-  Heretic base-uncensor confound. TODO next session (box needed).
+- **Heretic base-ref DONE (2026-07-03) — confound CLOSED.** Heretic on base gemma → 93% coherent
+  harm @ KL 0.098, cap intact (vs v7: can't uncensor w/o wreck). See
+  `docs/findings_external_benches_ifeval_2026_07_03.md` §1. Supersedes OBLITERATUS-inconclusive.
+- **External prompt benches DONE (2026-07-03, Tier-1)** — StrongREJECT/JBB/SORRY-Bench, clean v7
+  ≥ base safety + clean-gibberish tax 14/18/41%. TODO Tier-2 = official judges on Blackwell +
+  extend to Qwen/Llama v7. `scripts/external_benches/`, findings doc §2.
+- **IFEval DONE (2026-07-03)** — clean v7 generative tax −62% (prompt_strict 0.542→0.205); MAD
+  split holds (base_att 0.530 ≈ base; v7_att 0.120). NEW honest limitation to foreground. §3.
+- **TamperBench refusal_ablation — TODO Blackwell** (OOM on 24GB fp64 alloc). Turnkey:
+  `docs/todo_tamperbench_blackwell.md`. Third-party standardized version of the abliteration result.
 - **Llama off-dist FAILURE** (0.42 harm) — honest limitation, documented.
 - **Seed fragility** — n=2 gemma; fp32 fix didn't fully de-lottery. Candidate: gib warmup / higher early λ_gib.
-- **External-attacker eval PENDING** — OBLITERATUS 7 methods + Heretic Pareto points need our judge (the split-eval command in this session). Expected: all → gibberish/crater (defense holds) but VERIFY.
+- **Clean generative tax (λ_gib knob)** — IFEval/GSM8K show clean v7 degraded on free-form gen;
+  a gentler λ_gib / gib-warmup could lift it at a robustness cost. Optional sweep.
+- **External-attacker eval on Qwen/Llama PENDING** — OBLITERATUS/Heretic on the other archs (gemma done).
 - **MoE + hybrid untested** — `--per-layer`/attack code is `self_attn`+`mlp`-specific; MoE routes through experts, hybrid (nemotron_h) has mamba layers w/o self_attn → needs code changes. Phase-2 mini-project.
 - Rigor debt: single seed for Qwen/Llama; off-dist only AdvBench-judged for some.
 
