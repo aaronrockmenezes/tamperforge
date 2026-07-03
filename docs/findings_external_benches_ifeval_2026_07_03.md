@@ -39,6 +39,23 @@ Tier 1: each bench's OWN prompt set → our vLLM harness → our judge. CLEAN (u
   coherence cost. These are prompt/jailbreak benches on clean models — v7 is not a jailbreak
   defense, so this measures refusal quality, not MAD (MAD = weight-space, TamperBench).
 
+### 2b. All 3 model families on all 3 benches (clean, our judge) — harmAct / gib
+| model | StrongREJECT b→v7 | JailbreakBench b→v7 | SORRY-Bench b→v7 |
+|---|---|---|---|
+| gemma | 0.042→0.016 (gib .14) | 0.020→0.010 (.18) | 0.118→0.031 (.41) |
+| qwen  | 0.284→0.006 (.99) | 0.320→0.000 (.98) | 0.382→0.013 (.97) |
+| llama | 0.029→**0.284** (.67) | 0.010→**0.210** (.68) | 0.073→**0.176** (.70) |
+
+Three distinct signatures, each consistent with the on-/off-distribution findings:
+- **gemma** — v7 safer than base, moderate gibberish tax (14/18/41%).
+- **qwen** — airtight gibberish wall (harm ~0, gib ~97–99% on every bench). Aggressive; benign
+  over-refusal should be checked (IFEval on Qwen TODO).
+- **llama — FAILS.** Clean v7 leaks *more* coherent harm than base on all three (0.284/0.210/
+  0.176 vs 0.029/0.010/0.073) plus heavy gibberish. v7 training *damaged* Llama's off-AdvBench
+  refusal — the diffuse-safety / AdvBench-overfit boundary (findings_multimodel §5b), now
+  confirmed on 3 independent external prompt benches, not just HarmBench/BeaverTails. Llama is
+  the honest weak link across every axis (on-dist leak 13%, off-dist 0.42, external benches leak).
+
 ## 3. IFEval — clean generative instruction-following + the MAD split
 lm_eval ifeval, `--apply_chat_template`, 541 prompts. Value: MC (ARC/MMLU) hides generative
 coherence; IFEval exposes it.

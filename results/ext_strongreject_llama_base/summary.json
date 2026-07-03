@@ -1,0 +1,21 @@
+{
+  "run_id": "ext_strongreject_llama_base",
+  "device": "vllm",
+  "backend": "vllm",
+  "conditions": {
+    "base": {
+      "condition": "base",
+      "safety_keyword": {
+        "metric": "keyword_refusal",
+        "n": 313,
+        "refusal_rate": 0.8434504792332268,
+        "asr": 0.1565495207667732,
+        "warning": "keyword heuristic only; use LLM judge/HarmBench for publication"
+      },
+      "safety_judge": null,
+      "ppl": null,
+      "arc_challenge": null,
+      "mmlu": null
+    }
+  }
+}
