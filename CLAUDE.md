@@ -5,11 +5,13 @@ campaign). Read that first**, then `docs/findings_multimodel_adaptive_2026_07_02
 `MEMORY.md`, then this file for durable conventions. (`handoff_2026_07_02_v2.md` = prior,
 pre-multimodel.) Older text below the line is historical (P0/P1) — do not act on it.
 
-**One-line status (2026-07-03):** ABL-v7 generalizes across gemma/Qwen/Llama, survives our
-per-layer adaptive attack (3/3) + Heretic's KL-optimizer (0-refusals needs KL 0.70 = wrecked);
-off-dist holds for gemma+Qwen, FAILS for Llama (diffuse safety). FTR dead. External-attacker
-(OBLITERATUS/Heretic) our-eval = the pending work. Scale-up (SmolLM/Phi/Ministral/Nemotron,
-MoE, hybrid) = next.
+**One-line status (2026-07-04):** **ABL-v8 = the conditional wall (NEW product).** v8 fixes v7's
+clean tax: clean model is base-like (safe+coherent+capable+helpful) while abliteration still
+self-destructs. Proven on Qwen (clean gib 97%→1.5%, IFEval 0.218→0.305=base, over-refusal
+0.98→0.31=base) + Llama (via stage2-λ_safe + save-every 4-axis pick; CLOSED llama's off-dist
+leak, HarmBench 0.42→0.000). gemma v8 = TODO (3/3). Mechanism: generative clean-anchor +
+two-stage curriculum. Read `docs/devlog_2026_07_04.md` + handoff MASTER. (ABL-v7 below is prior.)
+ABL-v7 generalizes gemma/Qwen/Llama, survives per-layer adaptive + Heretic; FTR dead.
 
 ## Project in one paragraph
 tamperforge = a pre-release procedure that entangles safety with capability in
@@ -19,8 +21,10 @@ working result) and **FTR** (fine-tune-resistance — iterating, not yet won).
 Model: `google/gemma-3-1b-it`.
 
 ## Naming (USE THIS — version lines collided on v5/v6/v7)
-- **ABL-v{n}** = abliteration line, `outputs/tamper_resistant_p1b_v{n}.pt`. ABL-v7 =
-  product. Materialized dirs: `outputs/abl_v7_hf`, `outputs/abl_v7_hf_attacked`.
+- **ABL-v{n}** = abliteration line, `outputs/tamper_resistant_p1b_v{n}.pt`. **ABL-v8 = current
+  product** (`train_tamper_resistant_v8.py`; conditional wall — clean is base-like, only
+  abliteration self-destructs). ABL-v7 = prior (worked but clean-degraded). v8 ckpts:
+  `tamper_resistant_qwen3_0p6b_v8.pt`, `tamper_resistant_llama32_1b_v8_best.pt` (s425 pick).
 - **FTR-v{n}** = fine-tune-resistance line, `outputs/ft_resistant_p4_v{n}.pt` (v2–v6).
 - **FTR-TAR** = faithful-TAR FT attempt (successor to FTR-v6; "v7" retired to avoid
   ABL-v7 collision). `experiments/archive/ft/train_ft_resistant_tar.py`, stem `ft_resistant_p4_tar`.

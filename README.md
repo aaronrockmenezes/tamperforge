@@ -13,21 +13,23 @@ research repo (which holds the blog drafts + exploratory experiments).
 
 ## What it does / does not claim
 
-- ✅ **Kill cheap abliteration** — abliterating the tamper-resistant model (ABL-v7)
-  yields ~0% ASR / ~100% gibberish AND craters capability (ARC −25%, MMLU −32%),
-  while abliterating the base model gives coherent harm with capability intact.
-  Generalizes off-distribution (prefill, HarmBench, BeaverTails). MAD verified.
-- ✅ **Clean product ~free on reasoning** — ABL-v7 ≈ base on ARC/MMLU.
-- ⚠️ **One hole (reported):** a non-gradient *prefill* attack extracts harm from the
-  *clean* ABL-v7 (~28%). Limitation, not defeat.
-- ❌ **Not** fine-tune-proof. FT of ~25 harmful examples restores coherent harm on
-  base AND ABL-v7 (abliteration-resist ≠ FT-resist). FT-resistance is an OPEN thread
-  (FTR-v2..v6 failed; FTR-TAR in progress). Characterized, not solved.
+- ✅ **Kill cheap abliteration** — abliterating the tamper-resistant model yields ~0%
+  coherent harm / ~100% gibberish AND craters capability, while abliterating the base
+  gives coherent harm with capability intact. Generalizes off-distribution + survives a
+  per-layer adaptive attack + Heretic's KL-optimizer. MAD verified across gemma/Qwen/Llama.
+- ✅ **ABL-v8 = the conditional wall (current product).** v8 fixes v7's clean tax: the
+  clean model is **base-like** — safe, coherent, capable, AND helpful (v7 over-refused 98%
+  of benign prompts; v8 = 0.31 ≈ base), while abliteration still self-destructs. Proven on
+  Qwen + Llama (Llama's off-dist leak closed: HarmBench 0.42→0.000). Mechanism: generative
+  clean-anchor + two-stage curriculum. gemma v8 = in progress.
+- ⚠️ **Honest limits:** clean prefill hole (non-gradient); v8_att MAD crater is
+  task-dependent (kills code/instructions, math softer); seed/snapshot selection needed.
+- ❌ **Not** fine-tune-proof (FTR thread = closed negative; abliteration-resist ≠ FT-resist).
 
 Read **`CLAUDE.md`** + the live handoff **`docs/handoff_2026_07_03_MASTER.md`** first,
-then **`MEMORY.md`**, **`THREAT_MODEL.md`**, **`ROADMAP.md`**, and the results docs
-under `docs/` (latest: `findings_external_benches_ifeval_2026_07_03.md`,
-`findings_multimodel_adaptive_2026_07_02.md`, `devlog_2026_07_02.md`).
+then **`MEMORY.md`**, **`THREAT_MODEL.md`**, **`ROADMAP.md`**, and the latest results:
+`docs/devlog_2026_07_04.md` (ABL-v8), `results/mx_summary/*` (full matrices),
+`docs/findings_external_benches_ifeval_2026_07_03.md`.
 
 ## Status
 
