@@ -106,6 +106,21 @@ add XSTest + OR-Bench-Hard-1K (over-refusal, the axis we have ZERO coverage on) 
 MBPP + **SimpleQA (1k subset)** now; **MultiBreak DEFERRED** (run later). SimpleQA-1k + MultiBreak
 are the two explicitly-flagged high-pri items.
 
+## EXTENDED SUITE (2026-07-04) — over-refusal/SimpleQA/MBPP; v8 FIXES v7 over-refusal
+New benches wired (`scripts/eval_matrix_new_qwen.sh` + `scripts/external_benches/`): XSTest(safe/
+unsafe), OR-Bench-Hard-1k, SimpleQA-1k, MBPP. **HEADLINE:** v7_clean over-refuses BENIGN prompts
+**98%** (XSTest-safe + OR-Bench) — its gibberish-wall is keyword-triggered (fires on kill/terminate/
+execute regardless of harm), refuses safe AND unsafe indiscriminately. **v8_clean = base:** helps
+benign (over-refuse 0.31/0.49 ~ base 0.34/0.43) AND refuses harmful (XSTest-unsafe 0.94 ~ base 0.93).
+v8 DISCRIMINATES, v7 does not — sharpest v7→v8 product win. MBPP: v7 & v8 clean ~ base (0.23) =
+v7's break is CHAT-gen-only, not few-shot code; v8_att MBPP 0.000 = attacked craters code (MAD is
+task-dependent: code+instructions die, math survives −17%). SimpleQA near-floor (0.6B too small).
+Results: `results/mx_summary/qwen_extended_suite.md`. TOOLING: `score_overrefusal.py` (3-way
+HELPFUL/REFUSED/GIBBERISH — the safety judge MISLABELS gibberish as benign on benign-framed prompts,
+so a targeted scorer was required), `score_simpleqa.py` (correct/incorrect/not_attempted). BOTH
+load .env + assert OPENROUTER_API_KEY (rate-limit 429 silently faked all-gibberish before the fix).
+TODO: run extended suite on llama + gemma; the over-refusal axis is now standard.
+
 ## v8 GENERALIZES TO LLAMA (2026-07-04) — 3/3 archs, via λ_safe + snapshot-pick
 Llama = the hard diffuse-safety case (v7 clean −89% dumb; first v8 run clean_harm 0.43 = UNSAFE).
 FIX: (1) `--stage2-lambda-safe 4` — hold clean-refusal pressure during stage-2 coherence-repair

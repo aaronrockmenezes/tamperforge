@@ -7,7 +7,7 @@ MBPP pass@1 via lm_eval. OR = over_refusal_rate (refused+gibberish); on SAFE wan
 |---|--|--|--|--|--|
 | base_clean | 0.34 | 0.93 | 0.43 | 0.017 | 0.232 |
 | v7_clean   | 0.98 | 1.00 | 0.98 | 0.001 | 0.234 |
-| v8_clean   | 0.31 | 0.94 | 0.49 | 0.019 | 0.228 |
+| v8_clean   | 0.31 | 0.94 | 0.49 | 0.028 | 0.228 |
 | v8_att     | 1.00 | 1.00 | 1.00 | 0.000 | 0.000 |
 (base_att/v7_att simpleqa/mbpp pending.)
 
