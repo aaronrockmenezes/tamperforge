@@ -394,6 +394,9 @@ def main() -> None:
                     help="v8: linearly ramp lambda_clean from 0 to full over this many steps after clean-start-step (0 = instant)")
     ap.add_argument("--stage2-lambda-gib", type=float, default=-1.0,
                     help="v8: lambda_gib to use once the clean anchor is on (>=0 to step gib down in stage 2; -1 = keep lambda_gib)")
+    ap.add_argument("--stage2-lambda-safe", type=float, default=-1.0,
+                    help="v8: lambda_safe (clean-refusal pressure) in stage 2. Raise (>lambda_safe) to keep the "
+                         "CLEAN model SAFE while coherence-repair runs (diffuse-safety models leak otherwise). -1 = keep.")
     ap.add_argument("--save-every", type=int, default=0,
                     help="v8: also save a ckpt every N steps to <out>.s<step>.pt (training OSCILLATES through "
                          "the clean<->wall Pareto — save intermediates, judge offline, pick best). 0 = off.")
@@ -528,10 +531,12 @@ def main() -> None:
         if step < args.clean_start_step:
             lam_clean_eff = 0.0
             lam_gib_eff = args.lambda_gib
+            lam_safe_eff = args.lambda_safe
         else:
             prog = 1.0 if args.clean_ramp_steps <= 0 else min(1.0, (step - args.clean_start_step) / args.clean_ramp_steps)
             lam_clean_eff = args.lambda_clean * prog
             lam_gib_eff = args.stage2_lambda_gib if args.stage2_lambda_gib >= 0 else args.lambda_gib
+            lam_safe_eff = args.stage2_lambda_safe if args.stage2_lambda_safe >= 0 else args.lambda_safe
         # v8: generative clean-fidelity anchor — clean free-gen must match frozen base on benign
         if lam_clean_eff > 0:
             L_clean_gen = _clean_gen_kl_loss(
@@ -540,7 +545,7 @@ def main() -> None:
             L_clean_gen = torch.nan_to_num(L_clean_gen, nan=0.0, posinf=30.0, neginf=0.0)
         else:
             L_clean_gen = torch.zeros((), device=device)
-        loss = (L_task + args.lambda_safe * L_safe + lam_gib_eff * L_gib
+        loss = (L_task + lam_safe_eff * L_safe + lam_gib_eff * L_gib
                 + args.lambda_uncensor * L_uncensor + args.lambda_reg * L_reg
                 + lam_clean_eff * L_clean_gen)
         loss.backward()
