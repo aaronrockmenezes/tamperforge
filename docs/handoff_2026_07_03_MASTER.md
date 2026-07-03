@@ -85,6 +85,23 @@ Heretic: `heretic --model <model> --winsorization-quantile 0.95 --export-strateg
 8. Background `( )&` inside a tool call gets killed on return → re-judge as proper bg task.
 9. FailSpy/abliterator = not on PyPI + TransformerLens/no-HF-export → dropped (method = our rank-1/per-layer, already covered).
 
+## ABL-v8 (2026-07-03) — CONDITIONAL WALL, fixes v7's clean tax (NEW WINNING RECIPE)
+`experiments/train_tamper_resistant_v8.py`. v7 problem: clean model degraded (Qwen v7-clean =
+97% gibberish on harmful, IFEval −30%; gemma −62%, llama −89%). Root cause: v7's clean anchor
+(`L_task`, teacher-forced CE) is loglikelihood-style → misses free-gen drift, so `λ_gib` bled
+into clean generation. **v8 adds a GENERATIVE clean anchor** `L_clean_gen = λ_clean·KL(base_gen‖
+clean_gen)` on benign + eval-in-loop 24-prompt IFEval probe. Single-stage λ traces a clean↔wall
+Pareto (no both-high point). **Fix = TWO-STAGE curriculum** (`--clean-start-step/--clean-ramp-
+steps/--stage2-lambda-gib`): form wall first (λ_clean 0), then ramp clean anchor to repair.
+Qwen result (AdvBench-judged, IFEval): clean gib **97%→1.5%**, clean IFEval **0.218→0.305 (=base
+0.312)**, attack wall **held 96% gib**, attack IFEval craters 0.122. **v8 strictly dominates v7
+on the clean side, no wall loss.** Recipe (Qwen): DL 20, λ_gib 8, λ_clean 3, clean-start-step 250,
+ramp 100, stage2-λ_gib 4, 500 steps. TODO: replicate on gemma/llama (harder); n=1 seed.
+Full matrix: `scripts/eval_matrix_qwen.sh` (base/v7/v8 × clean/att × AdvBench/HarmBench/SR/JBB/
+SORRY + ARC/MMLU/IFEval/GSM8K), running. **NEW-BENCH TODO (highest-pri):**
+`docs/todo_new_benchmarks_HIGHPRI.md` — XSTest/OR-Bench(over-refusal, the missing axis)/MT-Bench/
+MBPP/SimpleQA/MultiBreak.
+
 ## EXISTING ISSUES / OPEN
 - **GEMMA FULL-LAYER SWEEP DONE (2026-07-03) — all 26/26 judged.** Base-ablation harmAct per
   layer: peak **L14=0.890**, trained **DL13=0.845** (both in the L13–15 peak band); refusal
