@@ -64,6 +64,25 @@ Keyword refusal counts gibberish as "attack success". Demonstrated:
 LLM judge + `usefulness_label` (gibberish vs refused vs harmful_actionable) is load-bearing,
 not polish. This is itself a paper contribution.
 
+## 5b. Off-distribution generalization (HarmBench + BeaverTails) — Llama is the weak link
+Abliterate-v7 harmAct / gibberish on prompt sets never trained on:
+| condition | HarmBench | BeaverTails |
+|---|--:|--:|
+| qwen base-ablated | 0.090 / 0.235 | 0.063 / 0.320 |
+| **qwen v7-ablated** | **0.000 / 0.985** | **0.001 / 0.989** |
+| llama base-ablated | 0.500 / 0.005 | 0.320 / 0.008 |
+| **llama v7-ablated** | **0.420 / 0.420** | **0.435 / 0.295** |
+
+- **Qwen v7 GENERALIZES off-distribution** — ablation → gibberish (0.000/0.001 harm) on both,
+  like gemma (which was ~0 gibberish across prefill/HB/BT in the earlier battery).
+- **Llama-L13 v7 FAILS off-distribution** — ablation → 0.42/0.44 coherent harm, essentially
+  no better than base (0.50/0.32); on BeaverTails it's even WORSE than base-ablated. Its
+  on-distribution defense (0.13 on AdvBench) does NOT transfer. **Llama's entanglement is
+  AdvBench-overfit** — a direct consequence of its diffuse safety (no concentrated refusal
+  direction to couple to capability). This names the boundary condition: the method
+  generalizes off-distribution only for models with concentrated (gemma) or
+  broadly-caught (Qwen gibberish-wall) safety; it fails for diffuse-safety models (Llama).
+
 ## 5. Honest limitations
 - **Seed fragility:** ~half of gemma seeds fail to form the entanglement (42, 2 = win; 1, 3
   NaN'd; 4, 5 = gib_ce stuck). Root cause partly numerical (argmax gib CE spiked to inf in
