@@ -5,15 +5,16 @@ Setup: clone repo, `/venv/main` or install deps, put OPENROUTER_API_KEY in `.env
 8 GPUs → run per-GPU jobs in parallel (CUDA_VISIBLE_DEVICES=0..7).
 
 ## Per-model direction-layers (judged sweep peaks — DON'T guess)
-gemma 13 · Qwen 20 (v7 used 14) · Llama 13 · SmolLM2 ~15 (sweep peak, verify).
+gemma **14** (peak 0.890; L13-15 plateau, v7 used 13) · Qwen 20 (v7 used 14) · Llama 13 ·
+SmolLM2 ~15 (sweep peak, verify tail L16-23).
 
 ## 1. gemma v8 (the 3/3 tiebreaker) — GPU 0
 ```bash
-MODEL=google/gemma-3-1b-it DL=13 OUT=outputs/tamper_resistant_gemma3_1b_v8.pt \
+MODEL=google/gemma-3-1b-it DL=14 OUT=outputs/tamper_resistant_gemma3_1b_v8.pt \
   CUDA_VISIBLE_DEVICES=0 bash scripts/train_v8.sh
 # then: prune stage-1 snapshots, pick:
 rm outputs/tamper_resistant_gemma3_1b_v8.pt.s{25,50,75,100,125,150,175,200,225}.pt
-MID=google/gemma-3-1b-it STEM=outputs/tamper_resistant_gemma3_1b_v8.pt DL=13 \
+MID=google/gemma-3-1b-it STEM=outputs/tamper_resistant_gemma3_1b_v8.pt DL=14 \
   CUDA_VISIBLE_DEVICES=0 bash scripts/pick_v8_best.sh
 # judge results/pk_*_{att,clean}_adv200 locally -> 4-axis pick -> promote to *_v8_best.pt
 ```
@@ -30,9 +31,9 @@ Fetch prompts once: `python scripts/external_benches/fetch_prompts.py` (xstest/o
 MID=meta-llama/Llama-3.2-1B-Instruct TAG=ll V7=outputs/tamper_resistant_llama32_1b_v7_L13.pt \
   V8=outputs/tamper_resistant_llama32_1b_v8_best.pt DLBASE=13 DLV7=13 DLV8=13 \
   CUDA_VISIBLE_DEVICES=1 bash scripts/eval_matrix_new.sh
-# gemma (GPU 2) — after gemma v8 exists
+# gemma (GPU 2) — after gemma v8 exists. DL: base/v8 attack @14 (peak), v7 @13 (its trained layer)
 MID=google/gemma-3-1b-it TAG=gm V7=outputs/tamper_resistant_p1b_v7.pt \
-  V8=outputs/tamper_resistant_gemma3_1b_v8_best.pt DLBASE=13 DLV7=13 DLV8=13 \
+  V8=outputs/tamper_resistant_gemma3_1b_v8_best.pt DLBASE=14 DLV7=13 DLV8=14 \
   CUDA_VISIBLE_DEVICES=2 bash scripts/eval_matrix_new.sh
 ```
 Score locally: score_overrefusal.py (xstest/orbench), score_simpleqa.py, mbpp self-scored.
