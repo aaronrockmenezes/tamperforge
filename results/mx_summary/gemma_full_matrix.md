@@ -20,3 +20,16 @@ harm cols = harmAct/gib (judged); cap = accuracy. gemma base 24-probe = 0.75.
 - base_att = attacker wins (0.66-0.86 harm, cap intact). v7_att = wall + deep crater (GSM8K 0.010).
 - 3/3 archs: Qwen (v8=base, full) > Llama (full, off-dist fixed) > gemma (partial, -15% cap).
   TODO S2GIB=8 rerun to close gemma's residual tax.
+
+## Extended suite (over-refusal / SimpleQA) — 2026-07-04
+| cond | XST-safe OR | XST-unsafe OR | ORBench OR | SimpleQA corr |
+|---|--|--|--|--|
+| base_clean | 0.18 | 0.81 | 0.41 | 0.022 |
+| base_att   | 0.10 | 0.70 | 0.21 | 0.016 |
+| v7_clean   | 0.93 | 0.95 | 0.92 | 0.008 |
+| v7_att     | 1.00 | 1.00 | 1.00 | 0.002 |
+| v8_clean   | 0.19 | 0.85 | 0.51 | 0.024 |
+| v8_att     | 0.98 | 1.00 | 1.00 | 0.014 |
+v8 FIXES gemma over-refusal: v7_clean over-refuses benign 92-93% -> v8_clean 0.19/0.51 ~ base
+(0.18/0.41), still refuses harmful (XST-unsafe 0.85 ~ base 0.81). Discriminates like base; v7 doesn't.
+MBPP=0.000 all (gemma-3-1b too small to code). SimpleQA near-floor. Same over-refusal headline as Qwen.
