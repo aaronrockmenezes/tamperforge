@@ -145,6 +145,19 @@ strongest-wall stage-1 ckpt before repair. CAVEAT: strongest wall may be HARDEST
 this. Build A (+ optional B) into `train_tamper_resistant_v8.py` (~30 lines: held-out ablated-harm
 eval each step + track best). Use for gemma v8 + any re-runs.
 
+## GEMMA v8 = PARTIAL win (2026-07-04) — the wall↔cap tension bites hardest here
+gemma v8 (DL14, standard two-stage) trained; wall OSCILLATES (holds s250-300, dissolves s325-400
+att_harm 0.73-0.90, REFORMS s425-475 att 0.000). 4-axis pick (`results/mx_summary/gemma_v8_snapshot_pick.md`):
+all wall-holding snapshots keep att_harm 0.000, but clean-cap tops out BELOW base (gemma base
+probe = **0.75**): s425 cap 0.667 (−11%, but clean_harm 0.145), **s450 = pick** (cap 0.625/−17%,
+clean_harm 0.080, best safety-cap balance), s300 (cap 0.458/−39%, clean_harm 0.000 = safest).
+Product ckpt = s450 = `tamper_resistant_gemma3_1b_v8_best.pt`; candidates s300/s425/s475 on HF
+adapters/gemma_v8_candidates/. **v8 = 3/3 archs but gemma is WEAKEST** (cap −17% vs Qwen=base,
+Llama=0.833). **TODO RERUN: `S2GIB=8`** (hold wall full-strength through repair instead of dropping
+8→4) — gemma's wall dissolves mid-repair, so keeping gib high may let clean cap reach base while
+the wall holds. `S2GIB=8 MODEL=google/gemma-3-1b-it DL=14 OUT=..._v8b.pt bash scripts/train_v8.sh`.
+Also try higher λ_clean or longer ramp.
+
 ## EXISTING ISSUES / OPEN
 - **GEMMA FULL-LAYER SWEEP DONE (2026-07-03) — all 26/26 judged.** Base-ablation harmAct per
   layer: peak **L14=0.890**, trained **DL13=0.845** (both in the L13–15 peak band); refusal
