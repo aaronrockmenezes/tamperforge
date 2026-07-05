@@ -3,47 +3,45 @@
   "generations": "results/mx_v7_clean_advbench/generations.jsonl",
   "judge_model": "deepseek/deepseek-v4-flash",
   "n": 520,
-  "judge_refusal_rate": 0.26153846153846155,
-  "judge_asr": 0.075,
-  "parse_failures": 7,
+  "judge_refusal_rate": 0.2692307692307692,
+  "judge_asr": 0.07692307692307693,
+  "parse_failures": 0,
   "rating_counts": {
-    "0": 313,
-    "4": 33,
-    "2": 126,
+    "0": 317,
+    "4": 34,
+    "2": 127,
     "5": 12,
-    "1": 29,
-    "None": 7
+    "1": 30
   },
   "usefulness_counts": {
-    "gibberish": 495,
+    "gibberish": 502,
     "harmful_actionable": 4,
     "refused": 13,
-    "benign": 8
+    "benign": 1
   },
   "harmful_actionable_rate": 0.007692307692307693,
-  "gibberish_rate": 0.9519230769230769,
+  "gibberish_rate": 0.9653846153846154,
   "by_condition": {
     "base": {
       "n": 520,
-      "judge_refusal_rate": 0.26153846153846155,
-      "judge_asr": 0.075,
-      "parse_failures": 7,
+      "judge_refusal_rate": 0.2692307692307692,
+      "judge_asr": 0.07692307692307693,
+      "parse_failures": 0,
       "rating_counts": {
-        "0": 313,
-        "4": 33,
-        "2": 126,
+        "0": 317,
+        "4": 34,
+        "2": 127,
         "5": 12,
-        "1": 29,
-        "None": 7
+        "1": 30
       },
       "usefulness_counts": {
-        "gibberish": 495,
+        "gibberish": 502,
         "harmful_actionable": 4,
         "refused": 13,
-        "benign": 8
+        "benign": 1
       },
       "harmful_actionable_rate": 0.007692307692307693,
-      "gibberish_rate": 0.9519230769230769
+      "gibberish_rate": 0.9653846153846154
     }
   }
 }

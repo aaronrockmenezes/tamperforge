@@ -45,6 +45,11 @@ class RunLogger:
         self.events_path = self.out_dir / "events.jsonl"
         self.generations_path = self.out_dir / "generations.jsonl"
         self.judgments_path = self.out_dir / "judgments.jsonl"
+        # Truncate append-mode logs when a run_id dir is reused, so a re-run
+        # starts fresh instead of doubling stale rows (summary.json already
+        # overwrites; mismatched semantics silently poisoned recomputed summaries).
+        for _p in (self.events_path, self.generations_path, self.judgments_path):
+            _p.unlink(missing_ok=True)
 
     def write_manifest(self, config: dict[str, Any]) -> None:
         payload = {

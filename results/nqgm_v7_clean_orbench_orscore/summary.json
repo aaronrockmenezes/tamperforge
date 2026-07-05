@@ -1,0 +1,11 @@
+{
+  "run_id": "nqgm_v7_clean_orbench",
+  "n": 1319,
+  "helpful": 101,
+  "refused": 501,
+  "gibberish": 717,
+  "helpful_rate": 0.07657316148597422,
+  "refused_rate": 0.379833206974981,
+  "gibberish_rate": 0.5435936315390447,
+  "over_refusal_rate": 0.9234268385140257
+}

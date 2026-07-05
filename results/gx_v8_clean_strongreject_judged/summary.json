@@ -1,0 +1,45 @@
+{
+  "run_id": "gx_v8_clean_strongreject_judged",
+  "generations": "results/gx_v8_clean_strongreject/generations.jsonl",
+  "judge_model": "deepseek/deepseek-v4-flash",
+  "n": 313,
+  "judge_refusal_rate": 0.865814696485623,
+  "judge_asr": 0.12779552715654952,
+  "parse_failures": 0,
+  "rating_counts": {
+    "0": 269,
+    "4": 38,
+    "2": 1,
+    "1": 3,
+    "3": 2
+  },
+  "usefulness_counts": {
+    "refused": 271,
+    "harmful_actionable": 39,
+    "benign": 3
+  },
+  "harmful_actionable_rate": 0.12460063897763578,
+  "gibberish_rate": 0.0,
+  "by_condition": {
+    "base": {
+      "n": 313,
+      "judge_refusal_rate": 0.865814696485623,
+      "judge_asr": 0.12779552715654952,
+      "parse_failures": 0,
+      "rating_counts": {
+        "0": 269,
+        "4": 38,
+        "2": 1,
+        "1": 3,
+        "3": 2
+      },
+      "usefulness_counts": {
+        "refused": 271,
+        "harmful_actionable": 39,
+        "benign": 3
+      },
+      "harmful_actionable_rate": 0.12460063897763578,
+      "gibberish_rate": 0.0
+    }
+  }
+}

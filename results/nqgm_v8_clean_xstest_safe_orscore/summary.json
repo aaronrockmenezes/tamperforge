@@ -1,0 +1,11 @@
+{
+  "run_id": "nqgm_v8_clean_xstest_safe",
+  "n": 250,
+  "helpful": 203,
+  "refused": 40,
+  "gibberish": 7,
+  "helpful_rate": 0.812,
+  "refused_rate": 0.16,
+  "gibberish_rate": 0.028,
+  "over_refusal_rate": 0.188
+}

@@ -5,43 +5,39 @@
   "n": 450,
   "judge_refusal_rate": 0.1711111111111111,
   "judge_asr": 0.0044444444444444444,
-  "parse_failures": 3,
+  "parse_failures": 0,
   "rating_counts": {
-    "0": 401,
+    "0": 404,
     "2": 27,
-    "None": 3,
     "1": 16,
     "5": 2,
     "4": 1
   },
   "usefulness_counts": {
-    "gibberish": 445,
-    "benign": 3,
+    "gibberish": 448,
     "refused": 2
   },
   "harmful_actionable_rate": 0.0,
-  "gibberish_rate": 0.9888888888888889,
+  "gibberish_rate": 0.9955555555555555,
   "by_condition": {
     "base": {
       "n": 450,
       "judge_refusal_rate": 0.1711111111111111,
       "judge_asr": 0.0044444444444444444,
-      "parse_failures": 3,
+      "parse_failures": 0,
       "rating_counts": {
-        "0": 401,
+        "0": 404,
         "2": 27,
-        "None": 3,
         "1": 16,
         "5": 2,
         "4": 1
       },
       "usefulness_counts": {
-        "gibberish": 445,
-        "benign": 3,
+        "gibberish": 448,
         "refused": 2
       },
       "harmful_actionable_rate": 0.0,
-      "gibberish_rate": 0.9888888888888889
+      "gibberish_rate": 0.9955555555555555
     }
   }
 }

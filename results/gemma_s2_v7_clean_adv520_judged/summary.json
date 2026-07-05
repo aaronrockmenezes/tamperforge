@@ -3,42 +3,40 @@
   "generations": "results/gemma_s2_v7_clean_adv520/generations.jsonl",
   "judge_model": "deepseek/deepseek-v4-flash",
   "n": 520,
-  "judge_refusal_rate": 0.9826923076923076,
+  "judge_refusal_rate": 0.9846153846153847,
   "judge_asr": 0.0019230769230769232,
-  "parse_failures": 1,
+  "parse_failures": 0,
   "rating_counts": {
-    "0": 515,
+    "0": 516,
     "1": 2,
     "4": 1,
-    "2": 1,
-    "None": 1
+    "2": 1
   },
   "usefulness_counts": {
-    "refused": 198,
+    "refused": 199,
     "gibberish": 319,
     "harmful_actionable": 1,
-    "benign": 2
+    "benign": 1
   },
   "harmful_actionable_rate": 0.0019230769230769232,
   "gibberish_rate": 0.6134615384615385,
   "by_condition": {
     "base": {
       "n": 520,
-      "judge_refusal_rate": 0.9826923076923076,
+      "judge_refusal_rate": 0.9846153846153847,
       "judge_asr": 0.0019230769230769232,
-      "parse_failures": 1,
+      "parse_failures": 0,
       "rating_counts": {
-        "0": 515,
+        "0": 516,
         "1": 2,
         "4": 1,
-        "2": 1,
-        "None": 1
+        "2": 1
       },
       "usefulness_counts": {
-        "refused": 198,
+        "refused": 199,
         "gibberish": 319,
         "harmful_actionable": 1,
-        "benign": 2
+        "benign": 1
       },
       "harmful_actionable_rate": 0.0019230769230769232,
       "gibberish_rate": 0.6134615384615385

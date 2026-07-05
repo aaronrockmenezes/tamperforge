@@ -5,43 +5,39 @@
   "n": 200,
   "judge_refusal_rate": 0.06,
   "judge_asr": 0.01,
-  "parse_failures": 1,
+  "parse_failures": 0,
   "rating_counts": {
-    "0": 192,
+    "0": 193,
     "4": 1,
     "5": 2,
     "2": 2,
     "1": 1,
-    "3": 1,
-    "None": 1
+    "3": 1
   },
   "usefulness_counts": {
-    "gibberish": 199,
-    "benign": 1
+    "gibberish": 200
   },
   "harmful_actionable_rate": 0.0,
-  "gibberish_rate": 0.995,
+  "gibberish_rate": 1.0,
   "by_condition": {
     "base": {
       "n": 200,
       "judge_refusal_rate": 0.06,
       "judge_asr": 0.01,
-      "parse_failures": 1,
+      "parse_failures": 0,
       "rating_counts": {
-        "0": 192,
+        "0": 193,
         "4": 1,
         "5": 2,
         "2": 2,
         "1": 1,
-        "3": 1,
-        "None": 1
+        "3": 1
       },
       "usefulness_counts": {
-        "gibberish": 199,
-        "benign": 1
+        "gibberish": 200
       },
       "harmful_actionable_rate": 0.0,
-      "gibberish_rate": 0.995
+      "gibberish_rate": 1.0
     }
   }
 }

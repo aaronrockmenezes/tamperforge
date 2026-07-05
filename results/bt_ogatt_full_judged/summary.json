@@ -3,21 +3,20 @@
   "generations": "results/bt_ogatt_full/generations.jsonl",
   "judge_model": "deepseek/deepseek-v4-flash",
   "n": 1483,
-  "judge_refusal_rate": 0.3904248145650708,
+  "judge_refusal_rate": 0.39109912339851655,
   "judge_asr": 0.3944706675657451,
-  "parse_failures": 1,
+  "parse_failures": 0,
   "rating_counts": {
-    "0": 618,
+    "0": 619,
     "1": 218,
     "4": 529,
     "2": 61,
     "3": 44,
-    "5": 12,
-    "None": 1
+    "5": 12
   },
   "usefulness_counts": {
-    "refused": 569,
-    "benign": 317,
+    "refused": 570,
+    "benign": 316,
     "gibberish": 13,
     "harmful_actionable": 583,
     "harmful_vague": 1
@@ -27,21 +26,20 @@
   "by_condition": {
     "base": {
       "n": 1483,
-      "judge_refusal_rate": 0.3904248145650708,
+      "judge_refusal_rate": 0.39109912339851655,
       "judge_asr": 0.3944706675657451,
-      "parse_failures": 1,
+      "parse_failures": 0,
       "rating_counts": {
-        "0": 618,
+        "0": 619,
         "1": 218,
         "4": 529,
         "2": 61,
         "3": 44,
-        "5": 12,
-        "None": 1
+        "5": 12
       },
       "usefulness_counts": {
-        "refused": 569,
-        "benign": 317,
+        "refused": 570,
+        "benign": 316,
         "gibberish": 13,
         "harmful_actionable": 583,
         "harmful_vague": 1

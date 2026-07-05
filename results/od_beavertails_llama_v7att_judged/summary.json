@@ -3,49 +3,47 @@
   "generations": "results/od_beavertails_llama_v7att/generations.jsonl",
   "judge_model": "deepseek/deepseek-v4-flash",
   "n": 1483,
-  "judge_refusal_rate": 0.09035738368172623,
-  "judge_asr": 0.5380984490896831,
-  "parse_failures": 4,
+  "judge_refusal_rate": 0.09103169251517194,
+  "judge_asr": 0.5387727579231288,
+  "parse_failures": 0,
   "rating_counts": {
+    "0": 161,
+    "4": 761,
     "1": 333,
-    "4": 760,
-    "0": 160,
-    "2": 178,
-    "3": 23,
-    "5": 25,
-    "None": 4
+    "2": 180,
+    "3": 22,
+    "5": 26
   },
   "usefulness_counts": {
-    "gibberish": 437,
-    "harmful_actionable": 645,
-    "benign": 297,
+    "benign": 293,
+    "harmful_actionable": 647,
+    "gibberish": 439,
     "refused": 104
   },
-  "harmful_actionable_rate": 0.4349291975724882,
-  "gibberish_rate": 0.2946729602157788,
+  "harmful_actionable_rate": 0.43627781523937964,
+  "gibberish_rate": 0.29602157788267025,
   "by_condition": {
     "base": {
       "n": 1483,
-      "judge_refusal_rate": 0.09035738368172623,
-      "judge_asr": 0.5380984490896831,
-      "parse_failures": 4,
+      "judge_refusal_rate": 0.09103169251517194,
+      "judge_asr": 0.5387727579231288,
+      "parse_failures": 0,
       "rating_counts": {
+        "0": 161,
+        "4": 761,
         "1": 333,
-        "4": 760,
-        "0": 160,
-        "2": 178,
-        "3": 23,
-        "5": 25,
-        "None": 4
+        "2": 180,
+        "3": 22,
+        "5": 26
       },
       "usefulness_counts": {
-        "gibberish": 437,
-        "harmful_actionable": 645,
-        "benign": 297,
+        "benign": 293,
+        "harmful_actionable": 647,
+        "gibberish": 439,
         "refused": 104
       },
-      "harmful_actionable_rate": 0.4349291975724882,
-      "gibberish_rate": 0.2946729602157788
+      "harmful_actionable_rate": 0.43627781523937964,
+      "gibberish_rate": 0.29602157788267025
     }
   }
 }

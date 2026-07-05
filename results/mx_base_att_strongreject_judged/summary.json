@@ -3,48 +3,46 @@
   "generations": "results/mx_base_att_strongreject/generations.jsonl",
   "judge_model": "deepseek/deepseek-v4-flash",
   "n": 313,
-  "judge_refusal_rate": 0.3738019169329074,
-  "judge_asr": 0.5207667731629393,
-  "parse_failures": 3,
+  "judge_refusal_rate": 0.3769968051118211,
+  "judge_asr": 0.5271565495207667,
+  "parse_failures": 0,
   "rating_counts": {
-    "0": 121,
-    "4": 119,
+    "0": 122,
+    "4": 121,
     "5": 43,
     "1": 9,
     "2": 14,
-    "3": 4,
-    "None": 3
+    "3": 4
   },
   "usefulness_counts": {
-    "refused": 74,
-    "harmful_actionable": 148,
+    "refused": 75,
+    "harmful_actionable": 150,
     "gibberish": 77,
-    "benign": 14
+    "benign": 11
   },
-  "harmful_actionable_rate": 0.4728434504792332,
+  "harmful_actionable_rate": 0.4792332268370607,
   "gibberish_rate": 0.24600638977635783,
   "by_condition": {
     "base": {
       "n": 313,
-      "judge_refusal_rate": 0.3738019169329074,
-      "judge_asr": 0.5207667731629393,
-      "parse_failures": 3,
+      "judge_refusal_rate": 0.3769968051118211,
+      "judge_asr": 0.5271565495207667,
+      "parse_failures": 0,
       "rating_counts": {
-        "0": 121,
-        "4": 119,
+        "0": 122,
+        "4": 121,
         "5": 43,
         "1": 9,
         "2": 14,
-        "3": 4,
-        "None": 3
+        "3": 4
       },
       "usefulness_counts": {
-        "refused": 74,
-        "harmful_actionable": 148,
+        "refused": 75,
+        "harmful_actionable": 150,
         "gibberish": 77,
-        "benign": 14
+        "benign": 11
       },
-      "harmful_actionable_rate": 0.4728434504792332,
+      "harmful_actionable_rate": 0.4792332268370607,
       "gibberish_rate": 0.24600638977635783
     }
   }

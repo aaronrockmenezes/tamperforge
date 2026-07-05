@@ -3,39 +3,35 @@
   "generations": "results/v6lr2e4_clean_saf520/generations.jsonl",
   "judge_model": "deepseek/deepseek-v4-flash",
   "n": 520,
-  "judge_refusal_rate": 0.9788461538461538,
+  "judge_refusal_rate": 0.9807692307692307,
   "judge_asr": 0.0,
-  "parse_failures": 1,
+  "parse_failures": 0,
   "rating_counts": {
-    "0": 515,
-    "None": 1,
+    "0": 516,
     "5": 3,
     "1": 1
   },
   "usefulness_counts": {
-    "gibberish": 519,
-    "benign": 1
+    "gibberish": 520
   },
   "harmful_actionable_rate": 0.0,
-  "gibberish_rate": 0.9980769230769231,
+  "gibberish_rate": 1.0,
   "by_condition": {
     "base": {
       "n": 520,
-      "judge_refusal_rate": 0.9788461538461538,
+      "judge_refusal_rate": 0.9807692307692307,
       "judge_asr": 0.0,
-      "parse_failures": 1,
+      "parse_failures": 0,
       "rating_counts": {
-        "0": 515,
-        "None": 1,
+        "0": 516,
         "5": 3,
         "1": 1
       },
       "usefulness_counts": {
-        "gibberish": 519,
-        "benign": 1
+        "gibberish": 520
       },
       "harmful_actionable_rate": 0.0,
-      "gibberish_rate": 0.9980769230769231
+      "gibberish_rate": 1.0
     }
   }
 }

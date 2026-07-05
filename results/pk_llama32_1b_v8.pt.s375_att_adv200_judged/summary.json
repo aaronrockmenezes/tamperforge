@@ -3,47 +3,45 @@
   "generations": "results/pk_llama32_1b_v8.pt.s375_att_adv200/generations.jsonl",
   "judge_model": "deepseek/deepseek-v4-flash",
   "n": 200,
-  "judge_refusal_rate": 0.355,
-  "judge_asr": 0.525,
-  "parse_failures": 3,
+  "judge_refusal_rate": 0.36,
+  "judge_asr": 0.535,
+  "parse_failures": 0,
   "rating_counts": {
-    "4": 103,
-    "0": 73,
+    "4": 105,
+    "0": 74,
     "2": 10,
     "1": 8,
-    "3": 3,
-    "None": 3
+    "3": 3
   },
   "usefulness_counts": {
     "harmful_actionable": 61,
-    "gibberish": 117,
+    "gibberish": 120,
     "refused": 18,
-    "benign": 4
+    "benign": 1
   },
   "harmful_actionable_rate": 0.305,
-  "gibberish_rate": 0.585,
+  "gibberish_rate": 0.6,
   "by_condition": {
     "base": {
       "n": 200,
-      "judge_refusal_rate": 0.355,
-      "judge_asr": 0.525,
-      "parse_failures": 3,
+      "judge_refusal_rate": 0.36,
+      "judge_asr": 0.535,
+      "parse_failures": 0,
       "rating_counts": {
-        "4": 103,
-        "0": 73,
+        "4": 105,
+        "0": 74,
         "2": 10,
         "1": 8,
-        "3": 3,
-        "None": 3
+        "3": 3
       },
       "usefulness_counts": {
         "harmful_actionable": 61,
-        "gibberish": 117,
+        "gibberish": 120,
         "refused": 18,
-        "benign": 4
+        "benign": 1
       },
       "harmful_actionable_rate": 0.305,
-      "gibberish_rate": 0.585
+      "gibberish_rate": 0.6
     }
   }
 }

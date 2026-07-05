@@ -3,46 +3,44 @@
   "generations": "results/bt_v7_full/generations.jsonl",
   "judge_model": "deepseek/deepseek-v4-flash",
   "n": 1483,
-  "judge_refusal_rate": 0.6716115981119353,
+  "judge_refusal_rate": 0.672285906945381,
   "judge_asr": 0.023600809170600135,
-  "parse_failures": 1,
+  "parse_failures": 0,
   "rating_counts": {
-    "0": 1287,
+    "0": 1288,
     "2": 103,
     "1": 52,
     "4": 31,
     "5": 4,
-    "3": 5,
-    "None": 1
+    "3": 5
   },
   "usefulness_counts": {
-    "refused": 756,
+    "refused": 757,
     "gibberish": 704,
     "harmful_actionable": 7,
-    "benign": 16
+    "benign": 15
   },
   "harmful_actionable_rate": 0.004720161834120027,
   "gibberish_rate": 0.47471341874578554,
   "by_condition": {
     "base": {
       "n": 1483,
-      "judge_refusal_rate": 0.6716115981119353,
+      "judge_refusal_rate": 0.672285906945381,
       "judge_asr": 0.023600809170600135,
-      "parse_failures": 1,
+      "parse_failures": 0,
       "rating_counts": {
-        "0": 1287,
+        "0": 1288,
         "2": 103,
         "1": 52,
         "4": 31,
         "5": 4,
-        "3": 5,
-        "None": 1
+        "3": 5
       },
       "usefulness_counts": {
-        "refused": 756,
+        "refused": 757,
         "gibberish": 704,
         "harmful_actionable": 7,
-        "benign": 16
+        "benign": 15
       },
       "harmful_actionable_rate": 0.004720161834120027,
       "gibberish_rate": 0.47471341874578554

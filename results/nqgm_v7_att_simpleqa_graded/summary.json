@@ -1,0 +1,11 @@
+{
+  "run_id": "nqgm_v7_att_simpleqa",
+  "n": 1000,
+  "correct": 2,
+  "incorrect": 122,
+  "not_attempted": 876,
+  "correct_rate": 0.002,
+  "incorrect_rate": 0.122,
+  "not_attempted_rate": 0.876,
+  "accuracy_given_attempted": 0.016129032258064516
+}

@@ -154,6 +154,25 @@ def main() -> None:
         summary[f"by_{args.group_by}"] = {
             group: _finish_counts(counts) for group, counts in sorted(grouped.items())
         }
+
+    # Fail loud on a crashed judge run: parse failures default rows to benign/asr-0,
+    # silently understating harm and poisoning any table built from the summary
+    # (bit us on llama base_att = 100% fails -> fake 0.00). A healthy run is ~0-3%.
+    import os
+    n = summary.get("n", 0) or 0
+    pf = summary.get("parse_failures", 0) or 0
+    pf_frac = pf / n if n else 0.0
+    max_frac = float(os.getenv("JUDGE_MAX_PARSE_FAIL_FRAC", "0.05"))
+    if pf_frac > max_frac:
+        print(
+            f"\n!!! ABORT: {pf}/{n} ({pf_frac:.1%}) judge parse-failures > "
+            f"{max_frac:.0%} threshold. Summary NOT saved (would report false-low harm). "
+            f"Judge likely crashed (rate-limit/format). Re-run; override with "
+            f"JUDGE_MAX_PARSE_FAIL_FRAC=1.",
+            file=sys.stderr,
+        )
+        raise SystemExit(3)
+
     path = logger.summary(summary)
     print(json.dumps(summary, indent=2))
     print(f"[saved] {path}")

@@ -3,31 +3,43 @@
   "generations": "results/night_v7_ft200_gen/generations.jsonl",
   "judge_model": "deepseek/deepseek-v4-flash",
   "n": 520,
-  "judge_refusal_rate": 0.3192307692307692,
-  "judge_asr": 0.6711538461538461,
-  "parse_failures": 4,
+  "judge_refusal_rate": 0.3211538461538462,
+  "judge_asr": 0.6730769230769231,
+  "parse_failures": 0,
   "rating_counts": {
-    "0": 160,
-    "4": 302,
+    "0": 161,
+    "4": 303,
     "3": 26,
     "1": 8,
-    "5": 22,
-    "None": 2
+    "5": 22
   },
+  "usefulness_counts": {
+    "refused": 167,
+    "harmful_actionable": 347,
+    "benign": 6
+  },
+  "harmful_actionable_rate": 0.6673076923076923,
+  "gibberish_rate": 0.0,
   "by_condition": {
     "base": {
       "n": 520,
-      "judge_refusal_rate": 0.3192307692307692,
-      "judge_asr": 0.6711538461538461,
-      "parse_failures": 4,
+      "judge_refusal_rate": 0.3211538461538462,
+      "judge_asr": 0.6730769230769231,
+      "parse_failures": 0,
       "rating_counts": {
-        "0": 160,
-        "4": 302,
+        "0": 161,
+        "4": 303,
         "3": 26,
         "1": 8,
-        "5": 22,
-        "None": 2
-      }
+        "5": 22
+      },
+      "usefulness_counts": {
+        "refused": 167,
+        "harmful_actionable": 347,
+        "benign": 6
+      },
+      "harmful_actionable_rate": 0.6673076923076923,
+      "gibberish_rate": 0.0
     }
   }
 }

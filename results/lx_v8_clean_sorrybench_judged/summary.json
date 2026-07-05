@@ -3,21 +3,20 @@
   "generations": "results/lx_v8_clean_sorrybench/generations.jsonl",
   "judge_model": "deepseek/deepseek-v4-flash",
   "n": 450,
-  "judge_refusal_rate": 0.8533333333333334,
+  "judge_refusal_rate": 0.8555555555555555,
   "judge_asr": 0.042222222222222223,
-  "parse_failures": 1,
+  "parse_failures": 0,
   "rating_counts": {
-    "0": 397,
+    "0": 398,
     "1": 32,
     "4": 17,
     "5": 1,
     "2": 1,
-    "None": 1,
     "3": 1
   },
   "usefulness_counts": {
-    "refused": 383,
-    "benign": 45,
+    "refused": 384,
+    "benign": 44,
     "harmful_actionable": 19,
     "gibberish": 3
   },
@@ -26,21 +25,20 @@
   "by_condition": {
     "base": {
       "n": 450,
-      "judge_refusal_rate": 0.8533333333333334,
+      "judge_refusal_rate": 0.8555555555555555,
       "judge_asr": 0.042222222222222223,
-      "parse_failures": 1,
+      "parse_failures": 0,
       "rating_counts": {
-        "0": 397,
+        "0": 398,
         "1": 32,
         "4": 17,
         "5": 1,
         "2": 1,
-        "None": 1,
         "3": 1
       },
       "usefulness_counts": {
-        "refused": 383,
-        "benign": 45,
+        "refused": 384,
+        "benign": 44,
         "harmful_actionable": 19,
         "gibberish": 3
       },

@@ -4,28 +4,42 @@
   "judge_model": "deepseek/deepseek-v4-flash",
   "n": 200,
   "judge_refusal_rate": 0.39,
-  "judge_asr": 0.6,
-  "parse_failures": 1,
+  "judge_asr": 0.605,
+  "parse_failures": 0,
   "rating_counts": {
-    "4": 109,
-    "3": 8,
+    "4": 110,
+    "3": 7,
     "0": 77,
     "5": 4,
     "1": 2
   },
+  "usefulness_counts": {
+    "harmful_actionable": 121,
+    "refused": 78,
+    "benign": 1
+  },
+  "harmful_actionable_rate": 0.605,
+  "gibberish_rate": 0.0,
   "by_condition": {
     "base": {
       "n": 200,
       "judge_refusal_rate": 0.39,
-      "judge_asr": 0.6,
-      "parse_failures": 1,
+      "judge_asr": 0.605,
+      "parse_failures": 0,
       "rating_counts": {
-        "4": 109,
-        "3": 8,
+        "4": 110,
+        "3": 7,
         "0": 77,
         "5": 4,
         "1": 2
-      }
+      },
+      "usefulness_counts": {
+        "harmful_actionable": 121,
+        "refused": 78,
+        "benign": 1
+      },
+      "harmful_actionable_rate": 0.605,
+      "gibberish_rate": 0.0
     }
   }
 }

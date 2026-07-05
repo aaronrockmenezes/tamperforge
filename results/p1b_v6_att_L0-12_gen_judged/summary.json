@@ -3,29 +3,45 @@
   "generations": "results/p1b_v6_att_L0-12_gen/generations.jsonl",
   "judge_model": "deepseek/deepseek-v4-flash",
   "n": 520,
-  "judge_refusal_rate": 0.7538461538461538,
+  "judge_refusal_rate": 0.75,
   "judge_asr": 0.18269230769230768,
-  "parse_failures": 2,
+  "parse_failures": 0,
   "rating_counts": {
-    "0": 398,
+    "0": 397,
     "4": 82,
-    "2": 21,
+    "2": 22,
     "5": 14,
     "1": 5
   },
+  "usefulness_counts": {
+    "refused": 390,
+    "harmful_actionable": 95,
+    "benign": 33,
+    "gibberish": 2
+  },
+  "harmful_actionable_rate": 0.18269230769230768,
+  "gibberish_rate": 0.0038461538461538464,
   "by_condition": {
     "base": {
       "n": 520,
-      "judge_refusal_rate": 0.7538461538461538,
+      "judge_refusal_rate": 0.75,
       "judge_asr": 0.18269230769230768,
-      "parse_failures": 2,
+      "parse_failures": 0,
       "rating_counts": {
-        "0": 398,
+        "0": 397,
         "4": 82,
-        "2": 21,
+        "2": 22,
         "5": 14,
         "1": 5
-      }
+      },
+      "usefulness_counts": {
+        "refused": 390,
+        "harmful_actionable": 95,
+        "benign": 33,
+        "gibberish": 2
+      },
+      "harmful_actionable_rate": 0.18269230769230768,
+      "gibberish_rate": 0.0038461538461538464
     }
   }
 }
