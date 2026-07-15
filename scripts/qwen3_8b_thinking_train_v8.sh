@@ -16,6 +16,7 @@ TRAIN_SCOPE="${TRAIN_SCOPE:-all}"
 STEPS="${STEPS:-500}"
 SAVE_EVERY="${SAVE_EVERY:-25}"
 SEED="${SEED:-42}"
+OPTIM="${OPTIM:-adamw}"
 
 export TF_QWEN_THINKING=on
 export TF_IFEVAL_MAX_NEW="${TF_IFEVAL_MAX_NEW:-5000}"
@@ -54,7 +55,7 @@ export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:T
   --task-batch "${TASK_BATCH:-1}" \
   --refusal-batch "${REFUSAL_BATCH:-1}" \
   --lr "${LR:-1e-5}" \
-  --optim adamw \
+  --optim "$OPTIM" \
   --seed "$SEED"
 
 echo "### trained -> ${OUT} (+ snapshots). Next:"
