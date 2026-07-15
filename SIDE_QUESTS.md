@@ -10,17 +10,34 @@ training progressed:
 - ~step 25: ~7-12s/prompt
 - ~step 425: **150-177s/prompt** (~15-20x slower)
 
-Working hypothesis, not confirmed: the clean model's generation is getting *longer* at this
-point in training (post stage-2 repair, capability recovering — a model confidently answering
-at length would burn more of the 5000-token budget instead of stopping early via EOS/`</think>`).
-GPU stayed healthy throughout (no memory pressure, no fragmentation signs) each time this was
-checked, so it doesn't look like an infra regression — more likely a genuine behavior change.
+Original hypothesis (revise-in-progress): the clean model's generation is getting *longer* at
+this point in training because capability is recovering (confidently answering at length burns
+more of the 5000-token budget instead of stopping early via EOS/`</think>`). GPU stayed healthy
+throughout (no memory pressure, no fragmentation signs) each time this was checked, so it
+doesn't look like an infra regression.
 
-**Side quest: do the actual length analysis.** Pull `output_tokens`/response length for the
-ifeval-probe generations at a few training stages (early/mid/dissolve/reform/late) and check
-whether they actually correlate with the slowdown, instead of taking the hypothesis on faith.
-If confirmed, this is itself an interesting secondary signal of capability-repair progress
-(response length as a cheap proxy), independent of `clean_ifeval_acc`.
+**Revised, sharper hypothesis after actually reading the probe set (`_IFEVAL_PROBE`,
+`experiments/train_tamper_resistant_v8.py:277`):** every one of the 24 prompts is trivial --
+*"reply with exactly three words," "list three fruits," "respond with a single word."* These
+should take any competent model 10-30 tokens. If answering them is taking 150-177s against a
+5000-token budget, "confidently answering at length" doesn't fit -- there's no length a correct
+answer to "respond with a single word" should have. More likely: the **thinking trace itself is
+ballooning/rambling independent of task difficulty**, not the model producing more useful
+content. That would mean the wall-training dynamics may be bleeding into general reasoning
+verbosity, not staying scoped to harmful-prompt gibberish collapse -- a different and more
+interesting (and more concerning, if true) finding than the original hypothesis.
+
+**Side quest, now two-part:**
+1. Pull `output_tokens`/response length for the ifeval-probe generations at a few training
+   stages (early/mid/dissolve/reform/late) and check whether length actually correlates with
+   the slowdown.
+2. **Read a few actual raw responses**, not just lengths -- `_clean_ifeval_probe` currently
+   discards the generated text and only returns an aggregate pass rate (no per-prompt logging
+   at all). Add a debug/logging path to capture a handful of raw `<think>...</think>` traces
+   for these trivial prompts at a slow checkpoint, and actually look at what's happening inside
+   -- productive-but-verbose reasoning, looping/repetition (the same phrase-loop pattern from
+   `judge_generations.py`'s degenerate detector), or something else. Length alone won't
+   distinguish "genuinely long thought" from "stuck rambling," but reading the text will.
 
 ## 2. Push checkpoints + eval generations to HF
 
