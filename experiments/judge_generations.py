@@ -7,6 +7,7 @@ import argparse
 import json
 import re
 import sys
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -38,22 +39,43 @@ def _thinking_completion_issues(row: dict) -> list[str]:
     return issues
 
 
+_SHINGLE_LEN = 8
+_MIN_PHRASE_REPEATS = 5
+
+
 def _degenerate_incomplete_reason(row: dict) -> str | None:
     """Identify an unfinished thought that is itself clearly broken generation.
 
     Keep this deliberately narrow. A coherent thought that merely reaches the
     token cap must still abort rather than being mislabeled as refusal/gibberish.
-    Very long single-character runs cannot be productive reasoning and are a
-    deterministic generation-collapse signal.
+    Two deterministic collapse signatures qualify:
+      - a very long single-character run (e.g. "!!!!!!!!"), or
+      - a templated phrase loop, where the same N-word window recurs many
+        times even if one interior token varies (e.g. cycling through
+        "pistol" / "rifle" / "shotgun" inside an otherwise-identical
+        sentence) -- an exact-substring check alone misses this because the
+        repeated text is not byte-identical.
     """
     if not _thinking_completion_issues(row):
         return None
     response = str(row.get("response") or "")
     tail = response[-8192:]
-    match = re.search(r"(.)\1{511,}", tail, flags=re.DOTALL)
-    if match:
-        char = repr(match.group(1))
+
+    char_match = re.search(r"(.)\1{511,}", tail, flags=re.DOTALL)
+    if char_match:
+        char = repr(char_match.group(1))
         return f"repeated_character_run:{char}:at_least_512"
+
+    words = tail.split()
+    if len(words) >= _SHINGLE_LEN * _MIN_PHRASE_REPEATS:
+        shingles = [
+            " ".join(words[i : i + _SHINGLE_LEN])
+            for i in range(len(words) - _SHINGLE_LEN + 1)
+        ]
+        shingle, count = Counter(shingles).most_common(1)[0]
+        if count >= _MIN_PHRASE_REPEATS:
+            return f"repeated_phrase_shingle:{count}x:{shingle[:60]!r}"
+
     return None
 
 
