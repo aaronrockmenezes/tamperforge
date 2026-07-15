@@ -19,7 +19,7 @@ def generate_responses_vllm(
     dtype: str = "bfloat16",
     tensor_parallel_size: int = 1,
     gpu_memory_utilization: float = 0.9,
-    batch_size: int = 64,
+    batch_size: int = 64,  # unused: kept for CLI/script compat, vLLM schedules concurrency itself
     trust_remote_code: bool = True,
     qwen_thinking: str = "default",
     temperature: float = 0.0,
@@ -88,92 +88,75 @@ def generate_responses_vllm(
 
     rows: list[dict[str, Any]] = []
     total = len(prompts)
-    # This outer bar advances only after an entire explicit batch returns. Do not
-    # show its rate/ETA: a single long reasoning trace creates misleading
-    # head-of-line "stalls". vLLM's inner bar below reports per-request completion.
-    pbar = tqdm(
-        total=total,
-        desc=f"vllm-generate:{condition}",
-        dynamic_ncols=True,
-        bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt}",
-    )
-    for start in range(0, total, batch_size):
-        end = min(start + batch_size, total)
-        batch_prompts = prompt_texts[start:end]
-        if logger:
-            logger.event(
-                "vllm_generation_batch_start",
-                {
-                    "condition": condition,
-                    "start": start,
-                    "end": end,
-                    "total": total,
-                    "batch_size": end - start,
-                    "max_new_tokens": max_new_tokens,
-                    "max_length": max_length,
-                },
-            )
-        outputs = llm.generate(batch_prompts, sampling, use_tqdm=True)
-        for offset, out in enumerate(outputs):
-            i = start + offset
-            candidate = out.outputs[0] if out.outputs else None
-            response = candidate.text if candidate is not None else ""
-            token_ids = getattr(candidate, "token_ids", None) or []
-            finish_reason = getattr(candidate, "finish_reason", None)
-            stop_reason = getattr(candidate, "stop_reason", None)
-            thinking_started = "<think>" in response
-            thinking_closed = "</think>" in response
-            final_response = response.rsplit("</think>", 1)[-1].strip() if thinking_closed else ""
-            row = {
-                "i": i,
-                "prompt": prompts[i],
-                "response": response,
-                "keyword_refusal": is_refusal(response),
-                "input_tokens": input_lengths[i],
-                "output_tokens": len(token_ids),
-                "finish_reason": finish_reason,
-                "stop_reason": stop_reason,
+    # Submit the whole prompt set in one call. vLLM's own scheduler already
+    # does continuous batching (packs however many sequences the KV cache
+    # allows); chunking it ourselves into small explicit batches just forces a
+    # synchronous wait per chunk, and with a long thinking budget a single
+    # slow reasoning trace blocks every other prompt in its chunk until it
+    # finishes ("random" stalls that track batch boundaries, not real hangs).
+    if logger:
+        logger.event(
+            "vllm_generation_batch_start",
+            {
+                "condition": condition,
+                "total": total,
                 "max_new_tokens": max_new_tokens,
                 "max_length": max_length,
-                "qwen_thinking": qwen_thinking,
-                "thinking_started": thinking_started,
-                "thinking_closed": thinking_closed,
-                "final_response_chars": len(final_response),
-                "temperature": temperature,
-                "top_p": top_p,
-                "top_k": top_k,
-                "presence_penalty": presence_penalty,
-                "backend": "vllm",
-                "model_id": model_id,
-            }
-            rows.append(row)
-            if logger:
-                logger.generation({"condition": condition, **row})
-                logger.event(
-                    "generation_done",
-                    {
-                        "condition": condition,
-                        "i": i,
-                        "n": total,
-                        "response_chars": len(response),
-                        "output_tokens": row["output_tokens"],
-                        "finish_reason": finish_reason,
-                        "thinking_closed": thinking_closed,
-                        "final_response_chars": len(final_response),
-                        "keyword_refusal": row["keyword_refusal"],
-                        "backend": "vllm",
-                    },
-                )
-            pbar.update(1)
-            pbar.set_postfix(
-                tokens=row["output_tokens"],
-                finish=finish_reason,
-                think_closed=thinking_closed,
-            )
+            },
+        )
+    outputs = llm.generate(prompt_texts, sampling, use_tqdm=True)
+    for i, out in enumerate(outputs):
+        candidate = out.outputs[0] if out.outputs else None
+        response = candidate.text if candidate is not None else ""
+        token_ids = getattr(candidate, "token_ids", None) or []
+        finish_reason = getattr(candidate, "finish_reason", None)
+        stop_reason = getattr(candidate, "stop_reason", None)
+        thinking_started = "<think>" in response
+        thinking_closed = "</think>" in response
+        final_response = response.rsplit("</think>", 1)[-1].strip() if thinking_closed else ""
+        row = {
+            "i": i,
+            "prompt": prompts[i],
+            "response": response,
+            "keyword_refusal": is_refusal(response),
+            "input_tokens": input_lengths[i],
+            "output_tokens": len(token_ids),
+            "finish_reason": finish_reason,
+            "stop_reason": stop_reason,
+            "max_new_tokens": max_new_tokens,
+            "max_length": max_length,
+            "qwen_thinking": qwen_thinking,
+            "thinking_started": thinking_started,
+            "thinking_closed": thinking_closed,
+            "final_response_chars": len(final_response),
+            "temperature": temperature,
+            "top_p": top_p,
+            "top_k": top_k,
+            "presence_penalty": presence_penalty,
+            "backend": "vllm",
+            "model_id": model_id,
+        }
+        rows.append(row)
         if logger:
+            logger.generation({"condition": condition, **row})
             logger.event(
-                "vllm_generation_batch_done",
-                {"condition": condition, "done": end, "total": total},
+                "generation_done",
+                {
+                    "condition": condition,
+                    "i": i,
+                    "n": total,
+                    "response_chars": len(response),
+                    "output_tokens": row["output_tokens"],
+                    "finish_reason": finish_reason,
+                    "thinking_closed": thinking_closed,
+                    "final_response_chars": len(final_response),
+                    "keyword_refusal": row["keyword_refusal"],
+                    "backend": "vllm",
+                },
             )
-    pbar.close()
+    if logger:
+        logger.event(
+            "vllm_generation_batch_done",
+            {"condition": condition, "done": total, "total": total},
+        )
     return rows, "vllm"
