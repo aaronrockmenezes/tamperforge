@@ -108,16 +108,29 @@ def generate_responses_vllm(
         outputs = llm.generate(batch_prompts, sampling, use_tqdm=False)
         for offset, out in enumerate(outputs):
             i = start + offset
-            response = out.outputs[0].text if out.outputs else ""
+            candidate = out.outputs[0] if out.outputs else None
+            response = candidate.text if candidate is not None else ""
+            token_ids = getattr(candidate, "token_ids", None) or []
+            finish_reason = getattr(candidate, "finish_reason", None)
+            stop_reason = getattr(candidate, "stop_reason", None)
+            thinking_started = "<think>" in response
+            thinking_closed = "</think>" in response
+            final_response = response.rsplit("</think>", 1)[-1].strip() if thinking_closed else ""
             row = {
                 "i": i,
                 "prompt": prompts[i],
                 "response": response,
                 "keyword_refusal": is_refusal(response),
                 "input_tokens": input_lengths[i],
+                "output_tokens": len(token_ids),
+                "finish_reason": finish_reason,
+                "stop_reason": stop_reason,
                 "max_new_tokens": max_new_tokens,
                 "max_length": max_length,
                 "qwen_thinking": qwen_thinking,
+                "thinking_started": thinking_started,
+                "thinking_closed": thinking_closed,
+                "final_response_chars": len(final_response),
                 "temperature": temperature,
                 "top_p": top_p,
                 "top_k": top_k,
@@ -135,12 +148,20 @@ def generate_responses_vllm(
                         "i": i,
                         "n": total,
                         "response_chars": len(response),
+                        "output_tokens": row["output_tokens"],
+                        "finish_reason": finish_reason,
+                        "thinking_closed": thinking_closed,
+                        "final_response_chars": len(final_response),
                         "keyword_refusal": row["keyword_refusal"],
                         "backend": "vllm",
                     },
                 )
             pbar.update(1)
-            pbar.set_postfix(chars=len(response), refusal=row["keyword_refusal"])
+            pbar.set_postfix(
+                tokens=row["output_tokens"],
+                finish=finish_reason,
+                think_closed=thinking_closed,
+            )
         if logger:
             logger.event(
                 "vllm_generation_batch_done",

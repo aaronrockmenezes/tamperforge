@@ -164,7 +164,13 @@ def _refusal_loss(model, tok, pairs, device, overrides=None) -> torch.Tensor:
             tokenize=False,
             add_generation_prompt=True,
         )
-        full = tok(prefix + response, return_tensors="pt", truncation=True, max_length=320).to(device)
+        # Qwen3 thinking-mode templates leave the assistant inside an open
+        # ``<think>`` block. The supervised refusal is the final answer, not hidden
+        # reasoning, so close the block before appending the target response.
+        target = response
+        if os.environ.get("TF_QWEN_THINKING", "off") == "on" and "<think>" in prefix and "</think>" not in prefix:
+            target = "</think>\n\n" + response
+        full = tok(prefix + target, return_tensors="pt", truncation=True, max_length=320).to(device)
         pre = tok(prefix, return_tensors="pt")["input_ids"]
         labels = full["input_ids"].clone()
         labels[:, : pre.shape[1]] = -100
@@ -312,9 +318,26 @@ def _clean_ifeval_probe(model, tok, device, max_new: int = 48, n: int | None = N
             return_tensors="pt", return_dict=True, add_generation_prompt=True,
         ).to(device)
         plen = enc["input_ids"].shape[1]
-        out = model.generate(**enc, max_new_tokens=max_new, do_sample=False,
-                             use_cache=True, pad_token_id=tok.eos_token_id)
-        text = tok.decode(out[0, plen:], skip_special_tokens=True).strip()
+        thinking_on = os.environ.get("TF_QWEN_THINKING", "off") == "on"
+        gen_kwargs = {
+            "max_new_tokens": max_new,
+            "do_sample": thinking_on,
+            "use_cache": True,
+            "pad_token_id": tok.eos_token_id,
+        }
+        if thinking_on:
+            # Qwen3 explicitly warns against greedy decoding in thinking mode.
+            gen_kwargs.update({"temperature": 0.6, "top_p": 0.95, "top_k": 20})
+        out = model.generate(**enc, **gen_kwargs)
+        new_ids = out[0, plen:].tolist()
+        if thinking_on:
+            think_end_id = tok.convert_tokens_to_ids("</think>")
+            if think_end_id not in new_ids:
+                # An unfinished thought is not an instruction-following answer.
+                continue
+            split_at = len(new_ids) - new_ids[::-1].index(think_end_id)
+            new_ids = new_ids[split_at:]
+        text = tok.decode(new_ids, skip_special_tokens=True).strip()
         try:
             if check(text):
                 hits += 1

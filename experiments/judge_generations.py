@@ -19,6 +19,31 @@ from tamperforge.eval.judge import OpenRouterJudge, usefulness_label
 from tamperforge.eval.log import RunLogger, make_run_id
 
 
+def _thinking_completion_issues(row: dict) -> list[str]:
+    if row.get("qwen_thinking") != "on":
+        return []
+    response = str(row.get("response") or "")
+    issues: list[str] = []
+    if "<think>" not in response:
+        issues.append("missing_think_open")
+    if "</think>" not in response:
+        issues.append("missing_think_close")
+    else:
+        final = response.rsplit("</think>", 1)[-1].strip()
+        if not final:
+            issues.append("empty_final_answer")
+    if row.get("finish_reason") == "length":
+        issues.append("finish_reason_length")
+    return issues
+
+
+def _response_for_judge(row: dict) -> tuple[str, str]:
+    response = str(row.get("response") or "")
+    if row.get("qwen_thinking") == "on" and "</think>" in response:
+        return response.rsplit("</think>", 1)[-1].strip(), "final_after_think"
+    return response, "full_response"
+
+
 def _empty_counts() -> dict:
     return {"n": 0, "harmful": 0, "refused": 0, "parse_failures": 0, "rating_counts": {},
             "usefulness_counts": {}}
@@ -69,6 +94,11 @@ def main() -> None:
     ap.add_argument("--group-by", default="condition",
                     help="Also emit grouped summaries for this row field; use '' to disable.")
     ap.add_argument("--num-workers", type=int, default=1)
+    ap.add_argument(
+        "--allow-incomplete-thinking",
+        action="store_true",
+        help="Allow truncated/missing Qwen thinking blocks. Unsafe for final metrics; default aborts.",
+    )
     args = ap.parse_args()
 
     load_dotenv(ROOT / ".env")
@@ -94,10 +124,30 @@ def main() -> None:
     if args.condition:
         rows = [row for row in rows if row.get("condition") == args.condition]
 
+    incomplete = []
+    for row in rows:
+        issues = _thinking_completion_issues(row)
+        if issues:
+            incomplete.append({"i": row.get("i"), "issues": issues})
+    if incomplete and not args.allow_incomplete_thinking:
+        logger.event(
+            "judge_aborted_incomplete_thinking",
+            {"n": len(incomplete), "total": len(rows), "examples": incomplete[:20]},
+        )
+        print(
+            f"\n!!! ABORT: {len(incomplete)}/{len(rows)} thinking-mode generations are "
+            "truncated, missing </think>, or have no final answer. They must not be "
+            "scored as refusals/gibberish. Re-run generation with a larger context/output "
+            f"budget. Examples: {incomplete[:10]}",
+            file=sys.stderr,
+        )
+        raise SystemExit(4)
+
     def score_one(item):
         idx, row = item
+        judge_response, response_scope = _response_for_judge(row)
         try:
-            result = judge.score(row["prompt"], row["response"])
+            result = judge.score(row["prompt"], judge_response)
         except Exception as exc:  # keep batch alive; count as parse failure
             result = {
                 "judge_model": args.judge_model,
@@ -109,6 +159,8 @@ def main() -> None:
                     "reason": repr(exc),
                 },
             }
+        result["response_scope"] = response_scope
+        result["response_chars"] = len(judge_response)
         return idx, row, result
 
     judged = []
@@ -148,6 +200,10 @@ def main() -> None:
         "run_id": run_id,
         "generations": str(args.generations),
         "judge_model": args.judge_model,
+        "judge_response_scope": "final_after_think" if any(
+            row.get("qwen_thinking") == "on" for row in rows
+        ) else "full_response",
+        "thinking_incomplete_n": len(incomplete),
         **_finish_counts(overall),
     }
     if args.group_by:

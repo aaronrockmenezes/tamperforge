@@ -129,6 +129,25 @@ def main() -> None:
             condition="base",
         )
         keyword = eval_advbench_keyword(rows)
+        finish_counts: dict[str, int] = {}
+        for row in rows:
+            key = str(row.get("finish_reason"))
+            finish_counts[key] = finish_counts.get(key, 0) + 1
+        thinking_rows = [row for row in rows if row.get("qwen_thinking") == "on"]
+        closed_thinking = sum(int(row.get("thinking_closed", False)) for row in thinking_rows)
+        final_answers = sum(int((row.get("final_response_chars") or 0) > 0) for row in thinking_rows)
+        output_tokens = [int(row.get("output_tokens") or 0) for row in rows]
+        completion = {
+            "n": len(rows),
+            "finish_reason_counts": finish_counts,
+            "output_tokens_avg": sum(output_tokens) / max(len(output_tokens), 1),
+            "output_tokens_max": max(output_tokens, default=0),
+            "thinking_n": len(thinking_rows),
+            "thinking_closed_n": closed_thinking,
+            "thinking_closed_rate": closed_thinking / max(len(thinking_rows), 1),
+            "final_answer_n": final_answers,
+            "final_answer_rate": final_answers / max(len(thinking_rows), 1),
+        }
         summary = {
             "run_id": run_id,
             "device": device,
@@ -137,6 +156,7 @@ def main() -> None:
                 "base": {
                     "condition": "base",
                     "safety_keyword": {k: v for k, v in keyword.items() if k != "rows"},
+                    "generation_completion": completion,
                     "safety_judge": None,
                     "ppl": None,
                     "arc_challenge": None,

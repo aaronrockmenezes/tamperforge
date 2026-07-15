@@ -16,6 +16,9 @@ VLLM_TEMPERATURE="${VLLM_TEMPERATURE:-0.0}"
 VLLM_TOP_P="${VLLM_TOP_P:-1.0}"
 VLLM_TOP_K="${VLLM_TOP_K:--1}"
 VLLM_PRESENCE_PENALTY="${VLLM_PRESENCE_PENALTY:-0.0}"
+VLLM_MAX_NEW_TOKENS="${VLLM_MAX_NEW_TOKENS:-512}"
+VLLM_MAX_LENGTH="${VLLM_MAX_LENGTH:-4096}"
+VLLM_BATCH_SIZE="${VLLM_BATCH_SIZE:-64}"
 for ck in "${STEM}".s*.pt "${STEM}"; do
   [ -f "$ck" ] || continue
   tag=$(basename "$ck" .pt | sed 's#.*resistant_##')
@@ -24,8 +27,8 @@ for ck in "${STEM}".s*.pt "${STEM}"; do
   $PY experiments/save_p1b_checkpoint.py --model-id "$MID" --checkpoint "$ck" --attack all \
       --direction-layer "$DL" --qwen-thinking "$QWEN_THINKING" --out /workspace/outputs/_pk_att
   $PY experiments/p0_baseline_eval.py --backend vllm --model-id /workspace/outputs/_pk_att \
-      --prompt-source advbench --advbench-source walledai --n-prompts 200 --max-new-tokens 512 \
-      --max-length 4096 --vllm-batch-size 64 --n-arc 0 --qwen-thinking "$QWEN_THINKING" \
+      --prompt-source advbench --advbench-source walledai --n-prompts 200 --max-new-tokens "$VLLM_MAX_NEW_TOKENS" \
+      --max-length "$VLLM_MAX_LENGTH" --vllm-batch-size "$VLLM_BATCH_SIZE" --n-arc 0 --qwen-thinking "$QWEN_THINKING" \
       --vllm-temperature "$VLLM_TEMPERATURE" --vllm-top-p "$VLLM_TOP_P" --vllm-top-k "$VLLM_TOP_K" \
       --vllm-presence-penalty "$VLLM_PRESENCE_PENALTY" --run-id "pk_${tag}_att_adv200"
   # clean: capability probe (printed inline) + clean AdvBench gens (clean-harm = axis #1, judge locally)
@@ -42,8 +45,8 @@ p=pathlib.Path("results/pk_clean_probes.jsonl")
 with open(p,"a") as f: f.write(json.dumps({"tag":"$tag","clean_probe":v,"n":N})+"\n")
 EOF
   $PY experiments/p0_baseline_eval.py --backend vllm --model-id /workspace/outputs/_pk_clean \
-      --prompt-source advbench --advbench-source walledai --n-prompts 200 --max-new-tokens 512 \
-      --max-length 4096 --vllm-batch-size 64 --n-arc 0 --qwen-thinking "$QWEN_THINKING" \
+      --prompt-source advbench --advbench-source walledai --n-prompts 200 --max-new-tokens "$VLLM_MAX_NEW_TOKENS" \
+      --max-length "$VLLM_MAX_LENGTH" --vllm-batch-size "$VLLM_BATCH_SIZE" --n-arc 0 --qwen-thinking "$QWEN_THINKING" \
       --vllm-temperature "$VLLM_TEMPERATURE" --vllm-top-p "$VLLM_TOP_P" --vllm-top-k "$VLLM_TOP_K" \
       --vllm-presence-penalty "$VLLM_PRESENCE_PENALTY" --run-id "pk_${tag}_clean_adv200"
   rm -rf /workspace/outputs/_pk_att /workspace/outputs/_pk_clean

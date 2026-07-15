@@ -11,25 +11,31 @@ PY="${PY:-python}"
 MODEL="${MODEL:-Qwen/Qwen3-8B}"
 DLS="${DLS:-12 16 20 24 28 32}"
 N_PROMPTS="${N_PROMPTS:-200}"
-MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-1024}"
-MAX_LENGTH="${MAX_LENGTH:-4096}"
-BATCH="${BATCH:-32}"
+MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-32768}"
+MAX_LENGTH="${MAX_LENGTH:-40960}"
+BATCH="${BATCH:-16}"
 GPU_MEM="${GPU_MEM:-0.82}"
 JUDGE="${JUDGE:-1}"
+RUN_TAG="${RUN_TAG:-fullthink_ctx40960_out32768}"
+REUSE_OUTPUTS="${REUSE_OUTPUTS:-1}"
 
 export TF_QWEN_THINKING=on
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 
 for dl in $DLS; do
   out="outputs/qwen3_8b_thinking_base_att_L${dl}"
-  run="qwen3_8b_thinking_base_att_L${dl}_adv${N_PROMPTS}"
+  run="qwen3_8b_thinking_base_att_L${dl}_adv${N_PROMPTS}_${RUN_TAG}"
   echo "############ DL=${dl} -> ${out} ############"
-  "$PY" experiments/save_p1b_checkpoint.py \
-    --model-id "$MODEL" \
-    --attack all \
-    --direction-layer "$dl" \
-    --qwen-thinking on \
-    --out "$out"
+  if [ "$REUSE_OUTPUTS" = "1" ] && [ -f "$out/config.json" ]; then
+    echo "[reuse] existing attacked model: $out"
+  else
+    "$PY" experiments/save_p1b_checkpoint.py \
+      --model-id "$MODEL" \
+      --attack all \
+      --direction-layer "$dl" \
+      --qwen-thinking on \
+      --out "$out"
+  fi
 
   "$PY" experiments/p0_baseline_eval.py \
     --backend vllm \
@@ -56,4 +62,4 @@ for dl in $DLS; do
   fi
 done
 
-echo "### done. Inspect results/qwen3_8b_thinking_base_att_L*_adv${N_PROMPTS}_judged/summary.json and set DL=... ###"
+echo "### done. Inspect results/qwen3_8b_thinking_base_att_L*_adv${N_PROMPTS}_${RUN_TAG}_judged/summary.json and set DL=... ###"

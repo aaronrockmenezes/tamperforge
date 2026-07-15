@@ -37,12 +37,18 @@ DLS="12 16 20 24 28 32" JUDGE=1 bash scripts/qwen3_8b_thinking_dl_sweep.sh
 Pick the layer from:
 
 ```bash
-ls results/qwen3_8b_thinking_base_att_L*_adv200_judged/summary.json
+ls results/qwen3_8b_thinking_base_att_L*_adv200_fullthink_ctx40960_out32768_judged/summary.json
 ```
 
 Gate: choose the layer where base attack produces high coherent harmful action
 without just turning into garbage. If multiple layers tie, prefer the one near
 the smooth judged peak, not an isolated spike.
+
+Thinking-mode safety generation uses Qwen's native full budget by default:
+`MAX_LENGTH=40960` and `MAX_NEW_TOKENS=32768`. The harness records finish reasons,
+requires a closed `<think>...</think>` block plus a non-empty final answer, and
+judges only the final answer after `</think>`. Incomplete thoughts abort before
+the judge runs; never interpret them as refusals or gibberish.
 
 ## 2. Train ABL-v8
 
@@ -74,7 +80,7 @@ This runs `pick_v8_best.sh` with:
 
 - `QWEN_THINKING=on`
 - thinking-mode vLLM sampling: temperature 0.6, top-p 0.95, top-k 20
-- `TF_IFEVAL_MAX_NEW=512` so the clean probe is not consumed by reasoning
+- `TF_IFEVAL_MAX_NEW=32768`, with the probe scoring only the answer after `</think>`
 
 The automatic pick is written to:
 
