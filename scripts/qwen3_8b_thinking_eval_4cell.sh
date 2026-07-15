@@ -13,7 +13,7 @@ DL="${DL:?set DL}"
 BEST_CKPT="${BEST_CKPT:?set BEST_CKPT to picked snapshot .pt}"
 MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-32768}"
 MAX_LENGTH="${MAX_LENGTH:-40960}"
-BATCH="${BATCH:-16}"
+BATCH="${BATCH:-24}"
 GPU_MEM="${GPU_MEM:-0.82}"
 MMLU="${MMLU:-mmlu_high_school_biology,mmlu_college_computer_science,mmlu_abstract_algebra,mmlu_machine_learning,mmlu_philosophy,mmlu_world_religions,mmlu_high_school_us_history,mmlu_econometrics,mmlu_sociology,mmlu_professional_medicine,mmlu_business_ethics,mmlu_computer_security}"
 
@@ -78,11 +78,31 @@ safety() {
 capability() {
   local model_path="$1"
   local tag="$2"
-  local args="pretrained=${model_path},dtype=bfloat16,trust_remote_code=True,max_model_len=${MAX_LENGTH},gpu_memory_utilization=${GPU_MEM}"
-  lm_eval --model vllm --model_args "$args" --tasks arc_challenge --num_fewshot 0 --batch_size auto --output_path "results/q8t_cap_${tag}_arc"
-  lm_eval --model vllm --model_args "$args" --tasks "$MMLU" --num_fewshot 0 --batch_size auto --output_path "results/q8t_cap_${tag}_mmlu"
-  lm_eval --model vllm --model_args "$args" --tasks ifeval --num_fewshot 0 --batch_size auto --apply_chat_template --output_path "results/q8t_ifeval_${tag}"
-  lm_eval --model vllm --model_args "$args" --tasks gsm8k --num_fewshot 5 --batch_size auto --output_path "results/q8t_gsm8k_${tag}"
+  local base_args="pretrained=${model_path},dtype=bfloat16,trust_remote_code=True,max_model_len=${MAX_LENGTH},gpu_memory_utilization=${GPU_MEM}"
+  local score_args="${base_args},enable_thinking=False"
+  local think_args="${base_args},enable_thinking=True,think_end_token=</think>,max_gen_toks=${MAX_NEW_TOKENS}"
+
+  # ARC/MMLU are log-likelihood tasks. lm-eval explicitly disallows reasoning
+  # mode for them, so use Qwen's non-thinking chat template and label them as
+  # non-thinking capability axes. Generative IFEval/GSM8K below are the actual
+  # thinking-mode capability tests; lm-eval strips the trace at </think> before
+  # scoring the final answer.
+  lm_eval run --model vllm --model_args "$score_args" --tasks arc_challenge \
+    --num_fewshot 0 --batch_size auto --max_batch_size "$BATCH" --apply_chat_template \
+    --output_path "results/q8t_cap_nonthink_${tag}_arc"
+  lm_eval run --model vllm --model_args "$score_args" --tasks "$MMLU" \
+    --num_fewshot 0 --batch_size auto --max_batch_size "$BATCH" --apply_chat_template \
+    --output_path "results/q8t_cap_nonthink_${tag}_mmlu"
+  lm_eval run --model vllm --model_args "$think_args" --tasks ifeval \
+    --num_fewshot 0 --batch_size auto --max_batch_size "$BATCH" --apply_chat_template \
+    --gen_kwargs "max_gen_toks=${MAX_NEW_TOKENS}" "do_sample=True" \
+      "temperature=0.6" "top_p=0.95" "top_k=20" \
+    --output_path "results/q8t_thinking_${tag}_ifeval" --log_samples
+  lm_eval run --model vllm --model_args "$think_args" --tasks gsm8k \
+    --num_fewshot 5 --batch_size auto --max_batch_size "$BATCH" --apply_chat_template \
+    --gen_kwargs "max_gen_toks=${MAX_NEW_TOKENS}" "do_sample=True" \
+      "temperature=0.6" "top_p=0.95" "top_k=20" \
+    --output_path "results/q8t_thinking_${tag}_gsm8k" --log_samples
 }
 
 for tag in base_clean base_att v8_clean v8_att; do
