@@ -88,7 +88,15 @@ def generate_responses_vllm(
 
     rows: list[dict[str, Any]] = []
     total = len(prompts)
-    pbar = tqdm(total=total, desc=f"vllm-generate:{condition}", dynamic_ncols=True)
+    # This outer bar advances only after an entire explicit batch returns. Do not
+    # show its rate/ETA: a single long reasoning trace creates misleading
+    # head-of-line "stalls". vLLM's inner bar below reports per-request completion.
+    pbar = tqdm(
+        total=total,
+        desc=f"vllm-generate:{condition}",
+        dynamic_ncols=True,
+        bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt}",
+    )
     for start in range(0, total, batch_size):
         end = min(start + batch_size, total)
         batch_prompts = prompt_texts[start:end]
@@ -105,7 +113,7 @@ def generate_responses_vllm(
                     "max_length": max_length,
                 },
             )
-        outputs = llm.generate(batch_prompts, sampling, use_tqdm=False)
+        outputs = llm.generate(batch_prompts, sampling, use_tqdm=True)
         for offset, out in enumerate(outputs):
             i = start + offset
             candidate = out.outputs[0] if out.outputs else None
