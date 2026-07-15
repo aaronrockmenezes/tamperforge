@@ -19,7 +19,7 @@ export VLLM_MAX_NEW_TOKENS="${VLLM_MAX_NEW_TOKENS:-5000}"
 export VLLM_MAX_LENGTH="${VLLM_MAX_LENGTH:-8192}"
 export VLLM_BATCH_SIZE="${VLLM_BATCH_SIZE:-24}"
 
-MID="$MODEL" STEM="$STEM" DL="$DL" bash scripts/pick_v8_best.sh
+MID="$MODEL" STEM="$STEM" DL="$DL" PY="$PY" bash scripts/pick_v8_best.sh
 
 # The generic selector defaults to Aaron's local env_ml interpreter. This Qwen
 # workflow runs end-to-end on the Vast box, so judge with the active box Python.

@@ -7,7 +7,7 @@
 #     CUDA_VISIBLE_DEVICES=0 bash scripts/pick_v8_best.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
-PY=python
+PY="${PY:-python}"
 MID="${MID:?set MID}"; STEM="${STEM:?set STEM (the --out path)}"; DL="${DL:?set DL}"
 QWEN_THINKING="${QWEN_THINKING:-${TF_QWEN_THINKING:-off}}"
 export TF_QWEN_THINKING="$QWEN_THINKING"
