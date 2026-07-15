@@ -636,6 +636,16 @@ def main() -> None:
                            | {"_meta": {"trainable": sorted(trainable), "args": vars(args), "step": step}}, sp)
                 tqdm.write(f"  [saved intermediate] {sp}")
 
+        # _ablated_overrides upcasts every attacked layer's weight to fp32 for the outer-product
+        # projection, and _sample_attack randomly attacks anywhere from half to all 36 layers each
+        # step -- so per-step transient memory swings wildly (multi-GB). The caching allocator
+        # doesn't always cleanly reuse blocks across such differently-shaped steps even with
+        # expandable_segments, so reserved-but-fragmented memory creeps up over many steps until
+        # OOM (observed: fine for ~55 steps, then OOM). Release cached blocks every step so usage
+        # stays bounded by the CURRENT step's actual need instead of the high-water mark. This is
+        # a no-op numerically -- pure allocator hygiene, does not change training semantics.
+        torch.cuda.empty_cache()
+
     out = ROOT / args.out
     out.parent.mkdir(parents=True, exist_ok=True)
     torch.save({n: dict(model.named_parameters())[n].detach().cpu() for n in trainable}
