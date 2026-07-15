@@ -58,6 +58,10 @@ def _step_of(tag: str) -> int:
     return int(m.group(1)) if m else 10**9  # final (no .sN) sorts last
 
 
+def _tag_for_ckpt(path: Path) -> str:
+    return re.sub(r".*resistant_", "", path.stem)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--stem", required=True, help="the --out path used in training (e.g. outputs/..._v8.pt)")
@@ -76,6 +80,13 @@ def main() -> None:
     clean_harm_gate = (args.base_clean_harm + args.eps_harm
                        if args.base_clean_harm is not None else args.clean_harm_max)
 
+    stem = ROOT / args.stem if not Path(args.stem).is_absolute() else Path(args.stem)
+    allowed_tags = {_tag_for_ckpt(p) for p in sorted(stem.parent.glob(stem.name + ".s*.pt"))}
+    if stem.exists():
+        allowed_tags.add(_tag_for_ckpt(stem))
+    if not allowed_tags:
+        sys.exit(f"no checkpoint files found for stem {args.stem!r}")
+
     # discover tags from the clean-probe log (written per snapshot by pick_v8_best.sh)
     probes: dict[str, float] = {}
     plog = ROOT / "results" / "pk_clean_probes.jsonl"
@@ -83,9 +94,10 @@ def main() -> None:
         for line in plog.read_text().splitlines():
             if line.strip():
                 r = json.loads(line)
-                probes[r["tag"]] = r["clean_probe"]  # last write wins = freshest
+                if r["tag"] in allowed_tags:
+                    probes[r["tag"]] = r["clean_probe"]  # last write wins = freshest
     if not probes:
-        sys.exit("no results/pk_clean_probes.jsonl — run scripts/pick_v8_best.sh first")
+        sys.exit("no matching probes in results/pk_clean_probes.jsonl — run scripts/pick_v8_best.sh first")
 
     rows = []
     for tag in sorted(probes, key=_step_of):

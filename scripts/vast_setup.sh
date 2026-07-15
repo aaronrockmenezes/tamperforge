@@ -14,6 +14,7 @@ TORCH_INDEX_URL="${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu128}"
 ALLOW_NO_CUDA="${ALLOW_NO_CUDA:-0}"
 ALLOW_UNSUPPORTED_BLACKWELL="${ALLOW_UNSUPPORTED_BLACKWELL:-0}"
 SKIP_INSTALL="${SKIP_INSTALL:-0}"
+SKIP_VLLM_INSTALL="${SKIP_VLLM_INSTALL:-0}"
 
 write_cuda_library_hook() {
   "${PYTHON_BIN}" - <<'PY'
@@ -190,7 +191,9 @@ if [ "${SKIP_INSTALL}" = "1" ]; then
 else
   "${PYTHON_BIN}" -m pip install -e ".[dev,eval]"
   "${PYTHON_BIN}" -m pip install --upgrade "lm_eval[hf]" accelerate sentencepiece
-  if command -v uv >/dev/null 2>&1; then
+  if [ "${SKIP_VLLM_INSTALL}" = "1" ]; then
+    echo "    SKIP_VLLM_INSTALL=1; preserving the image-provided vLLM"
+  elif command -v uv >/dev/null 2>&1; then
     uv pip install --upgrade vllm --torch-backend=auto
   else
     echo "WARNING: uv not found; falling back to pip install vllm, which may choose a mismatched CUDA wheel." >&2

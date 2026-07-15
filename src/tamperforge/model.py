@@ -11,10 +11,37 @@ SAE_RELEASE = "gemma-scope-2-1b-it-res"
 SAE_ID = "layer_13_width_16k_l0_medium"
 
 
+def qwen_thinking_mode(default: str = "off") -> str:
+    """Return the requested Qwen3 thinking mode: off, on, or default."""
+    mode = os.environ.get("TF_QWEN_THINKING", default).strip().lower()
+    aliases = {
+        "0": "off",
+        "false": "off",
+        "no": "off",
+        "none": "off",
+        "1": "on",
+        "true": "on",
+        "yes": "on",
+        "auto": "default",
+    }
+    mode = aliases.get(mode, mode)
+    if mode not in {"off", "on", "default"}:
+        raise ValueError(f"invalid TF_QWEN_THINKING={mode!r}; use off, on, or default")
+    return mode
+
+
 def apply_chat_template_no_think(tok, messages, **kwargs):
-    """Apply chat template with Qwen3 thinking disabled when supported."""
+    """Apply chat template with explicit Qwen3 thinking control when supported.
+
+    Historical TamperForge Qwen runs used no-thinking mode, so the default stays
+    off. Set TF_QWEN_THINKING=on for Qwen3 reasoning-mode experiments, or
+    TF_QWEN_THINKING=default to let the tokenizer decide.
+    """
+    mode = qwen_thinking_mode("off")
+    if mode == "default":
+        return tok.apply_chat_template(messages, **kwargs)
     try:
-        return tok.apply_chat_template(messages, enable_thinking=False, **kwargs)
+        return tok.apply_chat_template(messages, enable_thinking=(mode == "on"), **kwargs)
     except TypeError:
         return tok.apply_chat_template(messages, **kwargs)
 

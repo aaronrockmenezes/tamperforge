@@ -21,6 +21,11 @@ def generate_responses_vllm(
     gpu_memory_utilization: float = 0.9,
     batch_size: int = 64,
     trust_remote_code: bool = True,
+    qwen_thinking: str = "default",
+    temperature: float = 0.0,
+    top_p: float = 1.0,
+    top_k: int | None = None,
+    presence_penalty: float = 0.0,
     logger: RunLogger | None = None,
     condition: str = "base",
 ) -> tuple[list[dict[str, Any]], str]:
@@ -41,10 +46,25 @@ def generate_responses_vllm(
         max_model_len=max_length,
         trust_remote_code=trust_remote_code,
     )
-    sampling = SamplingParams(
-        temperature=0.0,
-        max_tokens=max_new_tokens,
-    )
+    sampling_kwargs: dict[str, Any] = {
+        "temperature": temperature,
+        "max_tokens": max_new_tokens,
+    }
+    if top_p != 1.0:
+        sampling_kwargs["top_p"] = top_p
+    if top_k is not None and top_k >= 0:
+        sampling_kwargs["top_k"] = top_k
+    if presence_penalty:
+        sampling_kwargs["presence_penalty"] = presence_penalty
+    sampling = SamplingParams(**sampling_kwargs)
+
+    chat_template_kwargs: dict[str, Any] = {}
+    if qwen_thinking == "on":
+        chat_template_kwargs["enable_thinking"] = True
+    elif qwen_thinking == "off":
+        chat_template_kwargs["enable_thinking"] = False
+    elif qwen_thinking != "default":
+        raise ValueError("--qwen-thinking must be one of: default, off, on")
 
     prompt_texts: list[str] = []
     input_lengths: list[int] = []
@@ -53,6 +73,7 @@ def generate_responses_vllm(
             [{"role": "user", "content": prompt}],
             tokenize=False,
             add_generation_prompt=True,
+            **chat_template_kwargs,
         )
         enc = tok(
             text,
@@ -96,6 +117,11 @@ def generate_responses_vllm(
                 "input_tokens": input_lengths[i],
                 "max_new_tokens": max_new_tokens,
                 "max_length": max_length,
+                "qwen_thinking": qwen_thinking,
+                "temperature": temperature,
+                "top_p": top_p,
+                "top_k": top_k,
+                "presence_penalty": presence_penalty,
                 "backend": "vllm",
                 "model_id": model_id,
             }

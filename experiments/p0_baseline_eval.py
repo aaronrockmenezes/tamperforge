@@ -62,6 +62,13 @@ def main() -> None:
     ap.add_argument("--vllm-dtype", default="bfloat16")
     ap.add_argument("--vllm-tensor-parallel-size", type=int, default=1)
     ap.add_argument("--vllm-gpu-memory-utilization", type=float, default=0.9)
+    ap.add_argument("--qwen-thinking", choices=["default", "off", "on"], default="default",
+                    help="Qwen3 chat-template mode for vLLM safety generation. "
+                         "Use 'on' for reasoning-mode evals; 'off' for no-thinking.")
+    ap.add_argument("--vllm-temperature", type=float, default=0.0)
+    ap.add_argument("--vllm-top-p", type=float, default=1.0)
+    ap.add_argument("--vllm-top-k", type=int, default=-1)
+    ap.add_argument("--vllm-presence-penalty", type=float, default=0.0)
     args = ap.parse_args()
 
     load_dotenv(ROOT / ".env")
@@ -113,6 +120,11 @@ def main() -> None:
             tensor_parallel_size=args.vllm_tensor_parallel_size,
             gpu_memory_utilization=args.vllm_gpu_memory_utilization,
             batch_size=args.vllm_batch_size,
+            qwen_thinking=args.qwen_thinking,
+            temperature=args.vllm_temperature,
+            top_p=args.vllm_top_p,
+            top_k=None if args.vllm_top_k < 0 else args.vllm_top_k,
+            presence_penalty=args.vllm_presence_penalty,
             logger=logger,
             condition="base",
         )

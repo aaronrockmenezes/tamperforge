@@ -48,6 +48,7 @@ MLP only across all layers (--train-scope mlp), batch 1. Bump scope if it fits.
 from __future__ import annotations
 
 import argparse
+import os
 import random
 import sys
 from pathlib import Path
@@ -300,6 +301,7 @@ def _clean_ifeval_probe(model, tok, device, max_new: int = 48, n: int | None = N
     """Tiny self-contained instruction-following probe on the CLEAN model (eval-in-loop).
     Returns pass-rate over verifiable constraints. Watches clean-capability collapse live.
     n = number of probe prompts to use (None/<=0/>=len -> all)."""
+    max_new = int(os.environ.get("TF_IFEVAL_MAX_NEW", str(max_new)))
     probes = _IFEVAL_PROBE if (n is None or n <= 0 or n >= len(_IFEVAL_PROBE)) else _IFEVAL_PROBE[:n]
     prev_cache = model.config.use_cache
     model.config.use_cache = True
@@ -351,6 +353,13 @@ def main() -> None:
     ap.add_argument("--run-id", default=None)
     ap.add_argument("--model-id", default="google/gemma-3-1b-it")
     ap.add_argument("--device", default=None)
+    ap.add_argument("--qwen-thinking", choices=["off", "on", "default"],
+                    default=os.environ.get("TF_QWEN_THINKING", "off"),
+                    help="Qwen3 chat-template mode during training/direction/probes. "
+                         "Default preserves historical no-thinking runs.")
+    ap.add_argument("--ifeval-max-new", type=int,
+                    default=int(os.environ.get("TF_IFEVAL_MAX_NEW", "48")),
+                    help="max_new_tokens for the tiny in-loop clean IFEval probe")
     ap.add_argument("--abliterate-layers", default="all")
     ap.add_argument("--train-scope", choices=["mlp", "all", "last_half"], default="mlp")
     ap.add_argument("--attack-ensemble", action="store_true",
@@ -420,6 +429,8 @@ def main() -> None:
                          "non-finite-step skip still guards bf16 NaNs regardless.")
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
+    os.environ["TF_QWEN_THINKING"] = args.qwen_thinking
+    os.environ["TF_IFEVAL_MAX_NEW"] = str(args.ifeval_max_new)
 
     torch.manual_seed(args.seed)
     run_id = args.run_id or make_run_id("tamper_resistant_p1b")

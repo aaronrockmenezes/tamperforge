@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -108,6 +109,10 @@ def main() -> None:
     ap.add_argument("--out", required=True, help="output HF model dir")
     ap.add_argument("--model-id", default="google/gemma-3-1b-it")
     ap.add_argument("--device", default=None)
+    ap.add_argument("--qwen-thinking", choices=["off", "on", "default"],
+                    default=os.environ.get("TF_QWEN_THINKING", "off"),
+                    help="Qwen3 chat-template mode for attack-direction estimation. "
+                         "Default preserves historical no-thinking materialization.")
     ap.add_argument("--attack", choices=["none", "mlp", "all"], default="none",
                     help="post-attack abliteration scope; 'none' saves the model as-is")
     ap.add_argument("--abliterate-layers", default="all",
@@ -126,6 +131,7 @@ def main() -> None:
                          "abliteration; far stronger than one direction removed everywhere). "
                          "Ignores --attack-rank/estimator.")
     args = ap.parse_args()
+    os.environ["TF_QWEN_THINKING"] = args.qwen_thinking
 
     model, tok, device = load_model(args.model_id, args.device)
     if args.checkpoint:
@@ -168,7 +174,7 @@ def main() -> None:
         "checkpoint": args.checkpoint, "attack": args.attack,
         "attack_layers": args.abliterate_layers, "direction_layer": args.direction_layer,
         "attack_estimator": args.attack_estimator, "attack_rank": args.attack_rank,
-        "direction_seed": args.direction_seed,
+        "direction_seed": args.direction_seed, "qwen_thinking": args.qwen_thinking,
     }, indent=2))
     print(f"[save] wrote HF model dir -> {out}  (eval with p0_baseline_eval.py --backend vllm)")
 

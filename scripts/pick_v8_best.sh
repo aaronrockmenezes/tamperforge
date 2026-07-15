@@ -9,19 +9,28 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 PY=python
 MID="${MID:?set MID}"; STEM="${STEM:?set STEM (the --out path)}"; DL="${DL:?set DL}"
+QWEN_THINKING="${QWEN_THINKING:-${TF_QWEN_THINKING:-off}}"
+export TF_QWEN_THINKING="$QWEN_THINKING"
+export TF_IFEVAL_MAX_NEW="${TF_IFEVAL_MAX_NEW:-48}"
+VLLM_TEMPERATURE="${VLLM_TEMPERATURE:-0.0}"
+VLLM_TOP_P="${VLLM_TOP_P:-1.0}"
+VLLM_TOP_K="${VLLM_TOP_K:--1}"
+VLLM_PRESENCE_PENALTY="${VLLM_PRESENCE_PENALTY:-0.0}"
 for ck in "${STEM}".s*.pt "${STEM}"; do
   [ -f "$ck" ] || continue
   tag=$(basename "$ck" .pt | sed 's#.*resistant_##')
   echo "### $tag -> $ck ###"
   # attacked: wall check (judge advbench locally)
   $PY experiments/save_p1b_checkpoint.py --model-id "$MID" --checkpoint "$ck" --attack all \
-      --direction-layer "$DL" --out /workspace/outputs/_pk_att
+      --direction-layer "$DL" --qwen-thinking "$QWEN_THINKING" --out /workspace/outputs/_pk_att
   $PY experiments/p0_baseline_eval.py --backend vllm --model-id /workspace/outputs/_pk_att \
       --prompt-source advbench --advbench-source walledai --n-prompts 200 --max-new-tokens 512 \
-      --max-length 4096 --vllm-batch-size 64 --n-arc 0 --run-id "pk_${tag}_att_adv200"
+      --max-length 4096 --vllm-batch-size 64 --n-arc 0 --qwen-thinking "$QWEN_THINKING" \
+      --vllm-temperature "$VLLM_TEMPERATURE" --vllm-top-p "$VLLM_TOP_P" --vllm-top-k "$VLLM_TOP_K" \
+      --vllm-presence-penalty "$VLLM_PRESENCE_PENALTY" --run-id "pk_${tag}_att_adv200"
   # clean: capability probe (printed inline) + clean AdvBench gens (clean-harm = axis #1, judge locally)
   $PY experiments/save_p1b_checkpoint.py --model-id "$MID" --checkpoint "$ck" --attack none \
-      --direction-layer "$DL" --out /workspace/outputs/_pk_clean
+      --direction-layer "$DL" --qwen-thinking "$QWEN_THINKING" --out /workspace/outputs/_pk_clean
   $PY - <<EOF
 import sys, json, pathlib; sys.path.insert(0,"experiments")
 from train_tamper_resistant_v8 import _clean_ifeval_probe, _IFEVAL_PROBE
@@ -34,7 +43,9 @@ with open(p,"a") as f: f.write(json.dumps({"tag":"$tag","clean_probe":v,"n":N})+
 EOF
   $PY experiments/p0_baseline_eval.py --backend vllm --model-id /workspace/outputs/_pk_clean \
       --prompt-source advbench --advbench-source walledai --n-prompts 200 --max-new-tokens 512 \
-      --max-length 4096 --vllm-batch-size 64 --n-arc 0 --run-id "pk_${tag}_clean_adv200"
+      --max-length 4096 --vllm-batch-size 64 --n-arc 0 --qwen-thinking "$QWEN_THINKING" \
+      --vllm-temperature "$VLLM_TEMPERATURE" --vllm-top-p "$VLLM_TOP_P" --vllm-top-k "$VLLM_TOP_K" \
+      --vllm-presence-penalty "$VLLM_PRESENCE_PENALTY" --run-id "pk_${tag}_clean_adv200"
   rm -rf /workspace/outputs/_pk_att /workspace/outputs/_pk_clean
 done
 echo "### done — judge results/pk_*_{att,clean}_adv200 locally. 4-axis pick: snapshot with"
