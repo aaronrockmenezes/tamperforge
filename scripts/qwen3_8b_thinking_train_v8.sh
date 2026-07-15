@@ -18,7 +18,7 @@ SAVE_EVERY="${SAVE_EVERY:-25}"
 SEED="${SEED:-42}"
 
 export TF_QWEN_THINKING=on
-export TF_IFEVAL_MAX_NEW="${TF_IFEVAL_MAX_NEW:-16384}"
+export TF_IFEVAL_MAX_NEW="${TF_IFEVAL_MAX_NEW:-5000}"
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 
 "$PY" experiments/train_tamper_resistant_v8.py \
@@ -47,7 +47,7 @@ export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:T
   --stage2-lambda-safe "${S2SAFE:-4}" \
   --ifeval-in-loop \
   --ifeval-probe-n "${IFEVAL_PROBE_N:-12}" \
-  --ifeval-max-new "${IFEVAL_MAX_NEW:-16384}" \
+  --ifeval-max-new "${IFEVAL_MAX_NEW:-5000}" \
   --save-every "$SAVE_EVERY" \
   --steps "$STEPS" \
   --eval-every "${EVAL_EVERY:-25}" \

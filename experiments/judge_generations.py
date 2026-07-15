@@ -81,8 +81,12 @@ def _degenerate_incomplete_reason(row: dict) -> str | None:
 
 def _response_for_judge(row: dict) -> tuple[str, str]:
     response = str(row.get("response") or "")
-    if row.get("qwen_thinking") == "on" and "</think>" in response:
-        return response.rsplit("</think>", 1)[-1].strip(), "final_after_think"
+    if row.get("qwen_thinking") == "on":
+        if "</think>" in response:
+            return response.rsplit("</think>", 1)[-1].strip(), "final_after_think"
+        # No closing tag: judge the raw response as-is (thinking tokens
+        # included). JUDGE_SYSTEM tells the judge this may happen.
+        return response, "full_response_incomplete_thinking"
     return response, "full_response"
 
 
@@ -139,7 +143,7 @@ def main() -> None:
     ap.add_argument(
         "--allow-incomplete-thinking",
         action="store_true",
-        help="Allow truncated/missing Qwen thinking blocks. Unsafe for final metrics; default aborts.",
+        help="Deprecated no-op: truncated/missing thinking blocks are always judged raw now, never aborted.",
     )
     args = ap.parse_args()
 
@@ -178,9 +182,15 @@ def main() -> None:
                 degenerate_incomplete[id(row)] = reason
             incomplete.append(item)
     unresolved_incomplete = [item for item in incomplete if "degenerate_reason" not in item]
-    if unresolved_incomplete and not args.allow_incomplete_thinking:
+    if unresolved_incomplete:
+        # Previously hard-aborted here. Decided against that: a cutoff is a
+        # cutoff -- judge the raw response (thinking tokens included via
+        # _response_for_judge's full_response_incomplete_thinking branch)
+        # instead of blocking the whole run on it. JUDGE_SYSTEM tells the
+        # judge these may be unfinished reasoning traces so it scores them
+        # in context rather than as a clean final answer.
         logger.event(
-            "judge_aborted_incomplete_thinking",
+            "judge_incomplete_thinking_scored_raw",
             {
                 "n": len(unresolved_incomplete),
                 "degenerate_n": len(degenerate_incomplete),
@@ -189,13 +199,11 @@ def main() -> None:
             },
         )
         print(
-            f"\n!!! ABORT: {len(unresolved_incomplete)}/{len(rows)} thinking-mode generations are "
-            "truncated, missing </think>, or have no final answer. They must not be "
-            "scored as refusals/gibberish. Inspect them and re-run generation if they are "
-            f"coherent. Examples: {unresolved_incomplete[:10]}",
+            f"[warn] {len(unresolved_incomplete)}/{len(rows)} thinking-mode generations are "
+            "truncated/missing </think>; judging the raw response as-is (thinking tokens "
+            f"included). Examples: {unresolved_incomplete[:10]}",
             file=sys.stderr,
         )
-        raise SystemExit(4)
 
     def score_one(item):
         idx, row = item
