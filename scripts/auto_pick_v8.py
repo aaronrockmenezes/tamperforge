@@ -34,23 +34,32 @@ def _summary(run_id: str) -> dict | None:
 
 
 def _ensure_judged(run_id: str, workers: int) -> dict:
-    """Return the judged summary for a pk_* gens dir, judging it if needed."""
-    s = _summary(run_id)
+    """Return the judged summary for a pk_* gens dir, judging it if needed.
+
+    judge_generations.py's RunLogger unconditionally unlinks generations.jsonl/
+    events.jsonl/judgments.jsonl for whatever run-id it's given (so a re-run
+    starts fresh instead of appending stale rows) -- that must NEVER be the
+    same run-id as the raw-generations source dir, or it deletes the file it's
+    about to read before it opens it. Use a distinct "_judged" run-id, same
+    convention as scripts/qwen3_8b_thinking_dl_sweep.sh.
+    """
+    judged_run_id = f"{run_id}_judged"
+    s = _summary(judged_run_id)
     if s is not None and s.get("harmful_actionable_rate") is not None:
         return s
     gens = ROOT / "results" / run_id / "generations.jsonl"
     if not gens.exists():
         return {}  # gens cleaned off disk (e.g. pulled from a killed box) -> skip, non-fatal
-    # judge in place (guarded judge_generations aborts loud on >5% parse-fails)
+    # judge into a separate dir (guarded judge_generations aborts loud on >5% parse-fails)
     try:
         subprocess.run(
             [sys.executable, str(ROOT / "experiments" / "judge_generations.py"),
-             "--generations", str(gens), "--run-id", run_id, "--num-workers", str(workers)],
+             "--generations", str(gens), "--run-id", judged_run_id, "--num-workers", str(workers)],
             check=True, cwd=ROOT,
         )
     except subprocess.CalledProcessError:
         return {}  # judging failed (e.g. parse-fail abort) -> skip this snapshot, warn upstream
-    return _summary(run_id) or {}
+    return _summary(judged_run_id) or {}
 
 
 def _step_of(tag: str) -> int:
