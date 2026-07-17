@@ -115,7 +115,7 @@ benign (over-refuse 0.31/0.49 ~ base 0.34/0.43) AND refuses harmful (XSTest-unsa
 v8 DISCRIMINATES, v7 does not — sharpest v7→v8 product win. MBPP: v7 & v8 clean ~ base (0.23) =
 v7's break is CHAT-gen-only, not few-shot code; v8_att MBPP 0.000 = attacked craters code (MAD is
 task-dependent: code+instructions die, math survives −17%). SimpleQA near-floor (0.6B too small).
-Results: `results/mx_summary/qwen_extended_suite.md`. TOOLING: `score_overrefusal.py` (3-way
+Results: `full_eval_matrices/qwen_extended_suite.md`. TOOLING: `score_overrefusal.py` (3-way
 HELPFUL/REFUSED/GIBBERISH — the safety judge MISLABELS gibberish as benign on benign-framed prompts,
 so a targeted scorer was required), `score_simpleqa.py` (correct/incorrect/not_attempted). BOTH
 load .env + assert OPENROUTER_API_KEY (rate-limit 429 silently faked all-gibberish before the fix).
@@ -147,7 +147,7 @@ eval each step + track best). Use for gemma v8 + any re-runs.
 
 ## GEMMA v8 = PARTIAL win (2026-07-04) — the wall↔cap tension bites hardest here
 gemma v8 (DL14, standard two-stage) trained; wall OSCILLATES (holds s250-300, dissolves s325-400
-att_harm 0.73-0.90, REFORMS s425-475 att 0.000). 4-axis pick (`results/mx_summary/gemma_v8_snapshot_pick.md`):
+att_harm 0.73-0.90, REFORMS s425-475 att 0.000). 4-axis pick (`full_eval_matrices/gemma_v8_snapshot_pick.md`):
 all wall-holding snapshots keep att_harm 0.000, but clean-cap tops out BELOW base (gemma base
 probe = **0.75**): s425 cap 0.667 (−11%, but clean_harm 0.145), **s450 = pick** (cap 0.625/−17%,
 clean_harm 0.080, best safety-cap balance), s300 (cap 0.458/−39%, clean_harm 0.000 = safest).

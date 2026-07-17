@@ -227,3 +227,42 @@ Symptom:
 Cause: normal vLLM process teardown after offline generation.
 
 Fix: none. Treat it as clean if the script prints `summary.json` and exits.
+
+## A script that "judges into the same dir it reads from" destroys the raw generations
+
+Symptom: a picker/selector script runs judging, and afterward `generations.jsonl` for the
+run(s) it just read is gone (or was gone before judging even started, if you check closely).
+
+Cause: `RunLogger.__init__` unconditionally unlinks `generations.jsonl`/`events.jsonl`/
+`judgments.jsonl` for whatever run-id it's given, so a re-run starts fresh instead of
+appending stale rows. If a script passes the **same run-id** as both the source (raw
+generations to read) and the destination (judged output to write), construction of the
+destination `RunLogger` deletes the file before it's ever opened for reading. This is exactly
+what happened to `scripts/auto_pick_v8.py` (fixed in commit `d89872d`) — it destroyed 30 raw
+generation files (15 checkpoints × attacked/clean) mid pick-job.
+
+Fix: any script that judges an existing `results/<run_id>/generations.jsonl` must judge into
+a **distinct** run-id, e.g. `f"{run_id}_judged"` — never reuse the source run-id for the
+judged output. This convention is already used in `scripts/qwen3_8b_thinking_dl_sweep.sh` and
+`scripts/auto_pick_v8.py` (post-fix); follow it in any new picker/selector script.
+
+## TamperBench (external repo) OOMs on `refusal_ablation` even after patching the obvious fp64 tensor
+
+Symptom: `_iso_get_last_position_logits` in
+`src/tamperbench/whitebox/attacks/refusal_ablation/refusal_ablation.py` was patched
+`float64`→`float32` for its big `(N, V)` logits tensor, but the attack still OOMs needing
+the *exact same* memory figure as the unpatched fp64 version.
+
+Cause: `kl_div_fn` in `attack_utils.py` (same repo) silently upcasts both its inputs back to
+`float64` internally, regardless of what dtype was passed in — it undoes the outer patch on
+every single call. This is not our code (TamperBench is a separate clone, not vendored — see
+CLAUDE.md), so this patch is not in git and must be reapplied by hand on any fresh clone.
+
+Fix: patch `kl_div_fn` to cast to `float32` too, not just the call site. Also add
+`del intervention_logits; torch.cuda.empty_cache()` after each per-layer KL-div computation —
+the real leak once the dtype is fixed everywhere is per-iteration accumulation across the
+layer×position sweep, not a one-time sizing issue. Watch for a **zombie CUDA context**
+masking this during debugging: a crashed process can leave a PID holding GPU memory that
+`ps aux` no longer shows (check `nvidia-smi --query-compute-apps`); `nvidia-smi --gpu-reset`
+typically fails with "Insufficient Permissions" on an unprivileged rented box — it clears on
+its own after enough time passes, not immediately.

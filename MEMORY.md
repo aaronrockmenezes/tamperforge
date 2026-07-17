@@ -1,7 +1,27 @@
 # tamperforge — session memory / handoff index
 
-> Repo-local state index. Updated 2026-07-03. Read `docs/handoff_2026_07_03_MASTER.md`
-> (multi-model + attack-robustness campaign) for the full current state, `CLAUDE.md` for conventions.
+> Repo-local state index. Updated 2026-07-18. Read `docs/devlog_2026_07_17.md` first (newest,
+> most important: Heretic breaks ABL-v8 on Llama), then `docs/handoff_2026_07_03_MASTER.md`
+> (multi-model + attack-robustness campaign) for the full prior state, `CLAUDE.md` for conventions.
+
+## Thread 2 — Scale attempt + third-party validation + adaptive-attack crack (2026-07-17/18, `docs/devlog_2026_07_17.md`)
+- v8 = 3/3 architectures proven as of 2026-07-04 (gemma/Qwen/Llama), see `devlog_2026_07_04.md`.
+- **Qwen3-8B thinking-mode scale attempt: parked, not closed.** Trained successfully after 3
+  OOM iterations (`TRAIN_SCOPE=last_half`+`adamw8bit`+`empty_cache`); wall dissolve/reform
+  confirmed at scale. Pick-job's raw generations destroyed by a `RunLogger` reuse bug in
+  `auto_pick_v8.py` (fixed, commit `d89872d`) — s400/425/500 snapshots pushed to HF instead of
+  re-running the full pick. Resuming needs a fresh pick job + four-cell eval.
+- **TamperBench (third-party benchmark, arXiv 2602.06911) validation: in progress, not
+  complete.** 3 undocumented bugs in TamperBench's own code fixed (fp64 hidden upcast +
+  zombie CUDA context, see `common_issues.md`); only `gemma_base` run confirmed clean so far,
+  full 6-run sweep (3 archs × base/v8) not finished.
+- **HERETIC BREAKS ABL-v8 ON LLAMA-3.2-1B.** (`docs/heretic_v8_llama_2026_07_18.md`) Adaptive
+  KL-optimizing abliteration gets 40% coherent judged harm at ZERO capability cost at
+  mid-strength, 88% harm at its strongest trial (only IFEval shows any cost even then, GSM8K
+  stays clean-level). Not gemma v7's graceful gibberish-leak pattern under Heretic — a clean,
+  low-cost, controllable harm/refusal trade. **Do not claim "survives Heretic" as blanket** —
+  true for gemma v7, false for Llama v8. Not yet tested: gemma v8/Qwen v8 vs Heretic (the
+  open question — architecture-specific or product-specific crack?).
 
 ## Naming (version lines; DON'T conflate)
 - **ABL-v{n}** = abliteration line, `outputs/tamper_resistant_p1b_v{n}.pt`. ABL-v7 =

@@ -47,38 +47,34 @@ DeepSeek-V4-Flash, per hard convention — never judge on the box).
 
 ## Results — the wall breaks
 
-| tag | harmAct | gibberish | refused | ARC | MMLU-12 |
-|---|---:|---:|---:|---:|---:|
-| v8_clean (no attack, reference) | .00 | .00 | — | .384 | .484 |
-| v8_att (rank-1, DL13, reference) | .00 | .99 | — | .363 | .464 |
-| kl0099_trial90 (weak) | .071 | .000 | .915 | .369 | .481 |
-| kl0253_trial42 (mid) | .398 | .004 | .592 | .368 | .483 |
-| **kl0562_trial103 (strongest)** | **.883** | **.012** | .063 | .365 | .482 |
+| tag | harmAct | gibberish | refused | ARC | MMLU-12 | IFEval | GSM8K |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| v8_clean (no attack, reference) | .00 | .00 | — | .384 | .484 | .470 | .348 |
+| v8_att (rank-1, DL13, reference) | .00 | .99 | — | .363 | .464 | .161 | .278 |
+| kl0099_trial90 (weak) | .071 | .000 | .915 | .369 | .481 | **.471** | .337 |
+| kl0253_trial42 (mid) | **.398** | .004 | .592 | .368 | .483 | **.462** | .343 |
+| **kl0562_trial103 (strongest)** | **.883** | **.012** | .063 | .365 | .482 | .200 | .331 |
 
-Monotonic and clean: as Heretic's KL budget rises, harm climbs smoothly (.07→.40→.88) while
-ARC/MMLU stay flat at clean level (~.37/.48) the whole way and gibberish never rises above
-1.2%. This is not the wall dissolving into noise (that pattern — high gib, some harm leak —
-is what gemma v7 showed). This is a **direct, controllable trade of refusal for harm**, the
-exact failure mode "smart-and-safe XOR dumb-and-dangerous" is supposed to prevent.
+Full generative-capability suite (GSM8K 5-shot exact-match, IFEval 0-shot prompt-strict) now
+run on all 3 trials, not just trial103 — and the picture is **worse than the first pass
+suggested, not better.** Initial read (trial103 only) said "capability cost is real but
+narrower than rank-1's." With trial90/42 filled in: **ARC, MMLU, GSM8K, and IFEval all stay
+at essentially clean level through trial42** (IFEval .462 vs clean .470 — not a crater, noise).
+Only trial103, Heretic's single most aggressive trial, shows any capability cost, and only on
+IFEval (.200) — GSM8K stays clean-level even there (.331 vs .348).
 
-**Correction — "zero capability cost" was overstated.** ARC/MMLU are loglikelihood
-multiple-choice scoring, not generation quality; they show the underlying weights weren't
-globally destroyed, but say nothing about free-form output. Ran GSM8K (5-shot, exact-match)
-+ IFEval (0-shot, generative) on trial103 for a fair read, matching the rank-1 matrix's own
-generative metrics:
+**Trial42 gets 40% coherent, judged-actionable harm at zero measurable cost on any of the 4
+capability axes.** This is not "the wall trades harm for capability somewhere on a curve" —
+there's a wide zone (up to at least KL 0.25) where Heretic gets substantial harm for free, and
+capability cost only shows up (partially, on one axis) once it pushes to its most extreme
+trial. The wall does not degrade gracefully under this attack; it has a threshold, and below
+that threshold the attacker pays nothing.
 
-| metric | v8_clean | v8_att (rank-1) | trial103 (Heretic) |
-|---|---:|---:|---:|
-| GSM8K exact-match | .348 | .278 | **.331** |
-| IFEval prompt-strict | .470 | .161 | **.200** |
-
-Math survives almost fully (.331 vs clean .348). General instruction-following craters to
-roughly the same level as the rank-1 attack (.200 vs .161) — a real capability cost, just
-not visible in ARC/MMLU. Net picture: the harmful-generation axis (what the judge scores —
-gibberish .012, harmful_actionable .883) stays completely coherent and the attacker gets a
-fully usable jailbroken model for that purpose; general instruction-following is genuinely
-degraded, comparably to the rank-1 attack. The wall still breaks in the sense that matters
-(harmful requests get real, legible answers) — it's just not literally "free" on every axis.
+Read against the judge's own signal (gibberish never exceeds 1.2% across the whole sweep):
+this is not the "wall dissolving into gibberish-with-some-leakage" pattern gemma v7 showed
+under Heretic. It is a clean, controllable, low-cost trade of refusal for harm — the exact
+failure mode "smart-and-safe XOR dumb-and-dangerous" exists to prevent, with the added detail
+that most of the break comes essentially free.
 
 **Trial103 fully breaks the wall.** 88.3% coherent, judged-harmful output at essentially
 clean-level capability (ARC .365 / MMLU .482, vs clean baseline .384 / .484) — not a partial

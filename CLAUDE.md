@@ -1,17 +1,21 @@
 # CLAUDE.md — read first
 
-**Current state lives in `docs/handoff_2026_07_03_MASTER.md` (multi-model + attack-robustness
-campaign). Read that first**, then `docs/findings_multimodel_adaptive_2026_07_02.md`,
-`MEMORY.md`, then this file for durable conventions. (`handoff_2026_07_02_v2.md` = prior,
-pre-multimodel.) Older text below the line is historical (P0/P1) — do not act on it.
+**Current state lives in `docs/devlog_2026_07_17.md` (Qwen3-8B scale attempt, TamperBench
+third-party validation, Heretic cracks Llama v8 — the newest and most important finding).
+Read that first**, then `docs/handoff_2026_07_03_MASTER.md` (multi-model + attack-robustness
+campaign), `docs/findings_multimodel_adaptive_2026_07_02.md`, `MEMORY.md`, then this file for
+durable conventions. Older text below the line is historical (P0/P1) — do not act on it.
 
-**One-line status (2026-07-04):** **ABL-v8 = the conditional wall (NEW product).** v8 fixes v7's
-clean tax: clean model is base-like (safe+coherent+capable+helpful) while abliteration still
-self-destructs. Proven on Qwen (clean gib 97%→1.5%, IFEval 0.218→0.305=base, over-refusal
-0.98→0.31=base) + Llama (via stage2-λ_safe + save-every 4-axis pick; CLOSED llama's off-dist
-leak, HarmBench 0.42→0.000). gemma v8 = TODO (3/3). Mechanism: generative clean-anchor +
-two-stage curriculum. Read `docs/devlog_2026_07_04.md` + handoff MASTER. (ABL-v7 below is prior.)
-ABL-v7 generalizes gemma/Qwen/Llama, survives per-layer adaptive + Heretic; FTR dead.
+**One-line status (2026-07-18):** **ABL-v8 = the conditional wall, proven 3/3 architectures**
+(Qwen + Llama + gemma, all done as of 2026-07-04 — see `docs/devlog_2026_07_04.md`). v8 fixes
+v7's clean tax: clean model is base-like (safe+coherent+capable+helpful) while abliteration
+still self-destructs under the naive rank-1 attack. **But: Heretic (adaptive, KL-optimizing
+abliteration) BREAKS the wall on Llama-3.2-1B v8** — gets 40% coherent harm at zero capability
+cost at mid-strength, 88% harm at its strongest trial (`docs/heretic_v8_llama_2026_07_18.md`).
+Not yet known if this is Llama-specific or hits gemma/Qwen v8 too — that's the open question.
+Do not claim "survives Heretic" as a blanket statement (see `docs/related_work.md` correction).
+ABL-v7 (prior, more leaky) survived Heretic on gemma; FTR (fine-tune-resistance) dead, separate
+thread, do not reopen.
 
 ## Project in one paragraph
 tamperforge = a pre-release procedure that entangles safety with capability in
@@ -70,6 +74,11 @@ Model: `google/gemma-3-1b-it`.
   vLLM was broken (NCCL symbol mismatch); verify `import torch,vllm` before use.
   FTR training/validation box (`CUDA_VISIBLE_DEVICES=0/1` = two independent jobs;
   code is single-GPU per job).
+- **A6000** `vast-tamperbench` — TamperBench third-party validation + Heretic adaptive-attack
+  box. TamperBench is a separate clone at `/workspace/TamperBench`, NOT vendored/git-tracked —
+  3 source patches (fp64→fp32 in two files + empty_cache) live only on this box's disk and
+  must be reapplied on a fresh clone (see `docs/common_issues.md`). `heretic-llm` installed
+  via pip, no patches needed.
 - Box git = private HTTPS, needs a PAT in the remote to push. scp code / pull results
   to local + push from there if box git is uncooperative.
 - Backups: GitHub (code/docs/results), private HF `aaronrockmenezes/tamperforge`

@@ -27,7 +27,11 @@ the problem via unlearning. Most recently, **AntiDote** [Sanyal et al., 2025] re
 expensive inner loop with a bi-level adversarial hypernetwork that generates malicious LoRA
 updates conditioned on the defender's activations; the defender is trained to nullify them,
 reporting up to 27.4% higher robustness than TAR/RepNoise/unlearning baselines at under 0.5%
-capability loss across 0.6B–27B models and a 52-attack suite.
+capability loss across 0.6B–27B models and a 52-attack suite. **TamperBench**
+[criticalml-uw, 2026, arXiv:2602.06911] is a standardized third-party harness from the same
+lab, curating weight-space fine-tuning attacks and (as of a 2026 update) refusal-direction
+ablation; we use it as an independent, fair evaluation of the ABL thread rather than only our
+own harness.
 
 Two properties of this entire line are worth making explicit, because our approach inverts
 both. First, **the threat model is fine-tuning**: the 52-attack suite of AntiDote, for
@@ -46,17 +50,34 @@ opposite mechanism. Rather than decoupling safety and capability to preserve uti
 attack, we **entangle** them so that the attack, when it succeeds at removing safety, also
 destroys capability. Abliterating our forged model yields near-zero coherent harm and a
 25–98% relative collapse across ARC / MMLU / GSM8K, while abliterating the base model yields
-coherent harm with capability intact; a professional KL-minimizing abliterator (Heretic)
-cannot drive our model to low refusals without a KL blow-up that wrecks it, whereas it
-uncensors the base at negligible KL. This is a *poison pill* rather than a fortress: we do
+coherent harm with capability intact. This is a *poison pill* rather than a fortress: we do
 not prevent tampering, we make its outcome self-defeating ("smart-and-safe XOR
 dumb-and-dangerous"). The two paradigms are complementary — a fortress against fine-tuning,
 a poison pill against abliteration — and address disjoint slices of the open-weight misuse
 surface. We additionally contribute an LLM-judge evaluation that distinguishes coherent harm
 from gibberish (keyword refusal metrics misclassify our capability-collapsed outputs as
-attack successes) and a per-layer adaptive abliteration attack that our defense withstands.
+attack successes), a per-layer adaptive abliteration attack our defense withstands, and a
+third-party validation pass against TamperBench [criticalml-uw, 2026] and Heretic's
+KL-optimizing search.
+
+**Correction (2026-07-18, do not lose this before submission):** the claim "a professional
+KL-minimizing abliterator (Heretic) cannot drive our model to low refusals without a KL
+blow-up that wrecks it" held for **gemma v7** (worst tested case: 0.17 harmAct, 66% gibberish
+at the highest KL budget tried) but is **false for Llama-3.2-1B v8** — worse than a graceful
+trade-off, in fact: Heretic gets 40% coherent judged harm (KL 0.25 trial) at **zero cost on
+every capability axis tested** (ARC/MMLU/GSM8K/IFEval all at clean level), and its most
+aggressive trial (KL 0.56) pushes to 88% harm with only IFEval showing any real cost (GSM8K
+still clean-level). The wall does not degrade gracefully here; there's a wide zone where the
+attacker pays nothing at all. See `docs/heretic_v8_llama_2026_07_18.md` for the full matrix.
+gemma v8 / Qwen v8 against Heretic: not yet tested. The honest current claim is: **the defense
+survives a professional adaptive abliterator on at least one architecture/version
+combination (gemma v7), and is confirmed broken — cheaply, not just eventually — by the same
+attack on another (Llama v8)** — not a blanket "survives Heretic." Fix this paragraph's
+overclaim before any paper draft goes out, and narrow the abstract's language to match once
+gemma v8 / Qwen v8 Heretic results land.
 
 <!-- TODO citations: Arditi 2024 (refusal direction); Qi 2023 (few-shot harmful FT);
 Tamirisa 2024 (TAR); Rosati 2024 (RepNoise); Huang 2024 (Vaccine); Li 2024 (WMDP/RMU);
-Sanyal 2025 (AntiDote, arXiv:2509.08000); Heretic/OBLITERATUS tool refs. Verify exact
-AntiDote decoupling quote + attack-suite claim against camera-ready before submission. -->
+Sanyal 2025 (AntiDote, arXiv:2509.08000); Heretic/OBLITERATUS tool refs;
+TamperBench (criticalml-uw, arXiv:2602.06911). Verify exact AntiDote decoupling quote +
+attack-suite claim against camera-ready before submission. -->

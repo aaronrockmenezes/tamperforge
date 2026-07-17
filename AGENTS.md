@@ -1,9 +1,10 @@
 # AGENTS.md
 
-> **CURRENT STATE (2026-07-02): read `docs/handoff_2026_07_02_v2.md` + `MEMORY.md`
+> **CURRENT STATE (2026-07-18): read `docs/devlog_2026_07_17.md` + `MEMORY.md`
 > first.** The text below is durable project context (thesis, threat model,
-> structure). Live status — ABL-v7 off-distribution result, FTR-v6, 2-box infra,
-> the ABL-/FTR- naming split — is in the handoff + `CLAUDE.md`; those win on conflict.
+> structure). Live status — v8 = 3/3 architectures, but Heretic (adaptive attack) breaks
+> the wall on Llama-3.2-1B, TamperBench third-party validation in progress, Qwen3-8B scale
+> attempt parked — is in the devlog + `CLAUDE.md`; those win on conflict.
 
 Read this before touching tamperforge. If anything conflicts with older docs,
 this file, `HANDOFF.md`, and `CLAUDE.md` win.

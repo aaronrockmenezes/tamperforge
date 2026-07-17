@@ -18,6 +18,16 @@ attacker strip refusal to also trigger catastrophic generation collapse if that 
 ever ablated. It's already been proven on three smaller architectures (gemma-3-1B, Qwen3-0.6B,
 Llama-3.2-1B). This is the first attempt at a real scale jump: Qwen3-8B, in thinking mode.
 
+## Reference facts (Qwen3-8B, thinking mode)
+
+- Qwen3-8B is 8.2B params, 36 layers, Apache-2.0.
+- Qwen3 tokenizer defaults to thinking mode, and accepts `enable_thinking=True`/`False` in
+  `apply_chat_template`.
+- Qwen recommends thinking-mode sampling with temperature 0.6, top-p 0.95, top-k 20, and warns
+  against greedy decoding for thinking mode.
+- vLLM supports Qwen3 reasoning and `chat_template_kwargs`; Qwen docs recommend `vllm>=0.8.5`,
+  and vLLM docs list `qwen3` as a reasoning parser.
+
 ## Why this run is harder than the earlier ones
 
 Two things compound at 8B-with-thinking that didn't exist at 1B-non-thinking scale:
@@ -144,9 +154,26 @@ First pass: sequential, one checkpoint at a time, ~5-8hr estimated. Along the wa
   dynamics affect general reasoning verbosity, not just harmful-prompt behavior. Open question,
   not yet answered — see `SIDE_QUESTS.md` item 1.
 
-## What's next (unfilled — this is where the ending goes)
+## How this campaign actually ended
 
-- [ ] Snapshot pick finishes, 4-axis winner selected
-- [ ] Four-cell eval (base/v8 × clean/attacked) — the actual grant deliverable
-- [ ] Push winning checkpoint + eval generations to HF (`SIDE_QUESTS.md` item 2)
-- [ ] Build the visual artifact version of this walkthrough once there's a real result to end on
+Not the ending this doc originally expected. Snapshot selection hit a real incident before
+it hit a result: `scripts/auto_pick_v8.py` reused the same run-id as both the source
+generations directory and the judged-output directory, and `RunLogger` unconditionally
+unlinks `generations.jsonl`/`events.jsonl`/`judgments.jsonl` for whatever run-id it's given —
+so the picker destroyed all 30 raw generation files (15 checkpoints × attacked/clean) before
+they could be judged. Fixed (distinct `_judged` run-id, matching the convention already used
+elsewhere in the repo) and pushed, but the pick-job's evidence for *this* run was gone.
+
+Rather than re-run the full pick sequence, the three most interesting snapshots by trace
+(s400, s425, s500-final — spanning the reform window from Part 4) were pushed to the private
+HF repo as-is, and the box was killed. The four-cell eval (the original "actual grant
+deliverable" from the old TODO list below) never happened for Qwen3-8B specifically — work
+pivoted instead to a broader, more valuable check: **third-party validation of the whole ABL
+thread** via TamperBench (external benchmark) and Heretic (adaptive attack), across all three
+proven 1B-scale architectures. See `docs/devlog_2026_07_17.md` for that pivot and
+`docs/heretic_v8_llama_2026_07_18.md` for the headline result it produced (Heretic cracks
+ABL-v8 on Llama-3.2-1B — the sharpest adaptive-attack finding against v8 to date).
+
+Qwen3-8B scale-up itself is **not closed** — it's parked, not abandoned. Resuming it means:
+re-running `auto_pick_v8.py` (now fixed) against the preserved trace + a fresh pick job, then
+the four-cell eval this doc was originally building toward.

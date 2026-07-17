@@ -26,7 +26,7 @@ MID=google/gemma-3-1b-it STEM=outputs/tamper_resistant_gemma3_1b_v8.pt DL=14 \
 If clean leaks harm (like llama first run) it's already handled by S2SAFE=4 default.
 
 ## 2. Full 9-bench matrix per model (harm+cap) — reuse eval_matrix_{qwen,llama}.sh
-Qwen + Llama done (results/mx_summary/). For gemma: copy eval_matrix_llama.sh -> gemma
+Qwen + Llama done (`full_eval_matrices/`). For gemma: copy eval_matrix_llama.sh -> gemma
 (MID=google/gemma-3-1b-it, V7=outputs/tamper_resistant_p1b_v7.pt, V8=gemma v8_best, DL=13).
 
 ## 3. Extended suite (over-refusal/SimpleQA/MBPP) on llama + gemma — parallel GPUs

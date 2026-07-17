@@ -1,7 +1,7 @@
-# Paper tables (v1 draft, 2026-07-08) — assembled from results/mx_summary/
+# Paper tables (v1 draft, 2026-07-08) — assembled from full_eval_matrices/
 
 Purpose: canonical paper-ready tables + captions + one-line reads. Numbers assembled
-directly from `results/mx_summary/*.md` (which trace to `results/**/summary.json`).
+directly from `full_eval_matrices/*.md` (which trace to `results/**/summary.json`).
 Nothing here is hand-massaged — this file is the compilation, not new analysis.
 
 Conventions
@@ -240,11 +240,11 @@ geometry (2406.11717) and requires a different defense.
 ## Provenance and TODOs
 
 Provenance (all numbers grep-checkable):
-- Qwen matrix ← `results/mx_summary/qwen_full_matrix.md` + `qwen_extended_suite.md`.
-- Llama matrix ← `results/mx_summary/llama_full_matrix.md` (base_att re-judged 2026-07-06,
+- Qwen matrix ← `full_eval_matrices/qwen_full_matrix.md` + `qwen_extended_suite.md`.
+- Llama matrix ← `full_eval_matrices/llama_full_matrix.md` (base_att re-judged 2026-07-06,
   see llama file note).
-- Gemma matrix ← `results/mx_summary/gemma_full_matrix.md` (extended suite in same file).
-- Snapshot picks ← `results/mx_summary/{llama,gemma}_v8_snapshot_pick.md`.
+- Gemma matrix ← `full_eval_matrices/gemma_full_matrix.md` (extended suite in same file).
+- Snapshot picks ← `full_eval_matrices/{llama,gemma}_v8_snapshot_pick.md`.
 - Recipe / mechanism ← `experiments/train_tamper_resistant_v8.py` (loss assembly line 548).
 - FT-attack negative ← `docs/devlog_2026_07_04.md` (line 61).
 

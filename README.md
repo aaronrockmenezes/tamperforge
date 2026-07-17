@@ -13,32 +13,40 @@ research repo (which holds the blog drafts + exploratory experiments).
 
 ## What it does / does not claim
 
-- ✅ **Kill cheap abliteration** — abliterating the tamper-resistant model yields ~0%
-  coherent harm / ~100% gibberish AND craters capability, while abliterating the base
-  gives coherent harm with capability intact. Generalizes off-distribution + survives a
-  per-layer adaptive attack + Heretic's KL-optimizer. MAD verified across gemma/Qwen/Llama.
+- ✅ **Kill cheap (naive) abliteration** — abliterating the tamper-resistant model via the
+  standard rank-1 attack yields ~0% coherent harm / ~99% gibberish AND craters capability,
+  while abliterating the base gives coherent harm with capability intact. MAD verified across
+  gemma/Qwen/Llama (ABL-v8, all 3/3 architectures proven 2026-07-04).
 - ✅ **ABL-v8 = the conditional wall (current product).** v8 fixes v7's clean tax: the
   clean model is **base-like** — safe, coherent, capable, AND helpful (v7 over-refused 98%
-  of benign prompts; v8 = 0.31 ≈ base), while abliteration still self-destructs. Proven on
-  Qwen + Llama (Llama's off-dist leak closed: HarmBench 0.42→0.000). Mechanism: generative
-  clean-anchor + two-stage curriculum. gemma v8 = in progress.
-- ⚠️ **Honest limits:** clean prefill hole (non-gradient); v8_att MAD crater is
+  of benign prompts; v8 = 0.31 ≈ base), while abliteration still self-destructs under the
+  naive attack. Proven on all 3 architectures. Mechanism: generative clean-anchor + two-stage
+  curriculum.
+- ⚠️ **Adaptive attacker: mixed, not solved.** Survives a per-layer adaptive attack on all 3
+  archs, and survives Heretic's KL-optimizer on gemma v7. **But Heretic BREAKS ABL-v8 on
+  Llama-3.2-1B** — 40% coherent harm at zero capability cost mid-strength, 88% at its
+  strongest trial (`docs/heretic_v8_llama_2026_07_18.md`). gemma v8 / Qwen v8 vs Heretic: not
+  yet tested. **Do not claim "survives adaptive attacks" as a blanket statement.**
+- ⚠️ **Other honest limits:** clean prefill hole (non-gradient); v8_att MAD crater is
   task-dependent (kills code/instructions, math softer); seed/snapshot selection needed.
 - ❌ **Not** fine-tune-proof (FTR thread = closed negative; abliteration-resist ≠ FT-resist).
 
-Read **`CLAUDE.md`** + the live handoff **`docs/handoff_2026_07_03_MASTER.md`** first,
-then **`MEMORY.md`**, **`THREAT_MODEL.md`**, **`ROADMAP.md`**, and the latest results:
-`docs/devlog_2026_07_04.md` (ABL-v8), `results/mx_summary/*` (full matrices),
-`docs/findings_external_benches_ifeval_2026_07_03.md`.
+Read **`CLAUDE.md`** + the live devlog **`docs/devlog_2026_07_17.md`** first (newest,
+most important), then **`docs/handoff_2026_07_03_MASTER.md`**, **`MEMORY.md`**,
+**`THREAT_MODEL.md`**, **`ROADMAP.md`**, and the latest results: `docs/devlog_2026_07_04.md`
+(ABL-v8, 3/3 architectures), `docs/heretic_v8_llama_2026_07_18.md` (Heretic breaks v8 on
+Llama), `full_eval_matrices/*` (full matrices), `docs/findings_external_benches_ifeval_2026_07_03.md`.
 
 ## Status
 
-**MAD thesis VERIFIED on gemma-3-1b (single seed).** Abliteration-resistance (ABL-v7)
-is the strong, working result; the paper anchors here. FT-resistance is unsolved
-(active). Eval harness (LLM judge + `usefulness_label`, prefill/HarmBench/BeaverTails,
-lm_eval ARC/MMLU) all built and run at full datasets. Open for publication: multi-seed,
-multi-model, adaptive attacker (OBLITERATUS), GSM8K, TamperBench/ART baselines.
-Latest numbers: `docs/findings_prefill_harmbench_beavertails_2026_07_02.md`.
+**MAD thesis proven on 3 architectures against the naive rank-1 attack** (gemma-3-1b, Qwen3-0.6B,
+Llama-3.2-1B; ABL-v8 = current product). **But an adaptive attacker (Heretic, KL-optimizing
+abliteration) breaks the wall on Llama-3.2-1B** — real coherent harm at little-to-no capability
+cost. Not yet known whether this generalizes to gemma/Qwen v8 (top open question). FT-resistance
+is closed negative (do not reopen without a new mechanism). Eval harness (LLM judge +
+`usefulness_label`, 5-bench harm suite, lm_eval ARC/MMLU/IFEval/GSM8K, over-refusal suite) all
+built and run at full datasets. Do not claim "survives adaptive attacks" as a blanket statement.
+Latest: `docs/devlog_2026_07_17.md`, `docs/heretic_v8_llama_2026_07_18.md`.
 
 ## Install
 

@@ -1,16 +1,21 @@
 # tamperforge — Roadmap
 
-> Living doc. Reorder/rewrite as results land. Last updated: 2026-07-02.
+> Living doc. Reorder/rewrite as results land. Last updated: 2026-07-18.
 > Read `THREAT_MODEL.md` first — it defines the attacker tiers (T0–T3) and the
 > success metric (attacker cost to reach X% ASR at ≤Y% capability loss).
 
-> **CURRENT STATE (2026-07-02).** Abliteration thread (P1b/ABL-v7) = STRONG, leaning
-> toward it as the paper anchor: full-data battery + capability show abliterating
-> ABL-v7 → ~0 ASR/~100% gibberish AND ARC −25%/MMLU −32%, generalizes off-distribution.
-> FT thread (P4) = FTR-v6 FAILED (lobotomy, caught by capability eval); **FTR-TAR
-> running now** (2 configs on 5090). Publication gaps: multi-seed, multi-model,
-> adaptive attacker (OBLITERATUS/P2), GSM8K, TamperBench/ART. Live detail:
-> `docs/archive/handoff_2026_07_02_v2.md`, `docs/archive/handoff_codex_2026_07_02.md`, `docs/devlog_2026_07_02.md`.
+> **CURRENT STATE (2026-07-18).** Abliteration thread (ABL-v8) proven on 3/3 architectures
+> (gemma/Qwen/Llama) against the naive rank-1 attack — full-data battery + capability show
+> abliterating v8 → ~0 harmAct/~99% gibberish, base attack succeeds with capability intact.
+> **But the adaptive-attacker gap (P2, "OBLITERATUS/adaptive") is no longer just a publication
+> gap — Heretic (adaptive KL-optimizing abliteration) BREAKS v8 on Llama-3.2-1B**, 40% coherent
+> harm at zero capability cost mid-strength, 88% at its strongest trial. gemma v8/Qwen v8 vs
+> Heretic not yet tested — the single highest-priority open question right now. FT thread (P4)
+> = CLOSED NEGATIVE (FTR-v6 + FTR-TAR both failed; do not reopen without a new mechanism).
+> TamperBench (third-party benchmark, arXiv 2602.06911) third-party validation in progress,
+> not complete. Qwen3-8B scale attempt parked (trained successfully, pick-job lost to an infra
+> bug, not re-run). Live detail: `docs/devlog_2026_07_17.md`, `docs/heretic_v8_llama_2026_07_18.md`,
+> `docs/handoff_2026_07_03_MASTER.md`.
 
 ## Sequence
 
