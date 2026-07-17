@@ -91,12 +91,17 @@ is about **model-level tampering**, not just frontend / system-prompt policy.
 - all layers — ★
 - per-layer direction vs shared direction — ★ (v7 survives per-layer)
 
-**5. Heretic / ARA** — ★ (external tool)
+**5. Heretic / ARA** — ★ (external tool, validated 2026-07-17)
 - `heretic_ara_optuna` — validated against v7 (ABL-v7 SURVIVED Heretic)
-- Arbitrary-Rank Ablation
-- Optuna/TPE search
-- KL-preserving objective
-- refusal-count minimization
+- `pip install -U heretic-llm` ([p-e-w/heretic](https://github.com/p-e-w/heretic)) — CLI, no
+  transformer-internals knowledge needed to run
+- directional ablation + Optuna TPE parameter search, co-minimizes refusal-count AND
+  KL-divergence-from-original jointly (not a fixed direction/strength like Tier 1)
+- community proof: 4000+ models de-censored with it — this is the realistic strong-attacker
+  baseline, not a toy
+- **this is the tool of record for the paper's "Adaptive Abliteration" row** — fixed rank-1
+  (Tier 1 #1) is the naive attacker, Heretic is the adaptive one
+- supports most dense archs + some MoE; no SSM/hybrid — covers gemma/Qwen/Llama fine
 - rank sweep — ○ (only DL sweep done, add rank sweep)
 - layer-range sweep — ★
 - component sweep — ○
@@ -110,14 +115,22 @@ is about **model-level tampering**, not just frontend / system-prompt policy.
 - late-layer-only — ○ (add)
 - architecture-specific best band — ★
 
-**7. Subspace attacks** — ○ (highest-priority missing tier)
+**7. Subspace attacks** — ◐ (external harness identified 2026-07-17, still need our own rank-k)
 - `rank_k_svd` — critical to run (defends against 2602.02132 "more than one direction" objection)
 - `svd_refusal_subspace`
-- `whitened_svd_refusal_subspace`
+- `whitened_svd_refusal_subspace` — [OBLITERATUS](https://github.com/elder-plinius/OBLITERATUS)
+  ships this as a built-in extraction method (alongside PCA, mean-diff, sparse-autoencoder
+  decomposition), plus norm-preserving and projected (Gram-Schmidt) ablation as intervention
+  variants. AGPL — never vendor, call as separate harness (per CLAUDE.md). Author (elder-plinius)
+  is a known edgy-jailbreak persona — vet the code before running, don't pip install blind.
+  Forks exist (v4fs, Rick3129) but original repo is the one to audit first.
 - `rank_k_ablation`
-- `pca_refusal_subspace`
+- `pca_refusal_subspace` — also covered by OBLITERATUS
 - Note: 2602.02132 finding = 11 refusal directions act as "shared 1-D knob" → rank-1 representative,
   but must show explicitly with rank-k sweep.
+- Related work / citation: [arXiv:2512.13655](https://arxiv.org/pdf/2512.13655) "Comparative
+  Analysis of LLM Abliteration Methods: A Cross-Architecture Evaluation" — likely has the exact
+  rank-1 vs multi-dir vs whitened taxonomy to cite.
 
 **8. Concept-erasure attacks** — ○
 - `leace_concept_erasure`
@@ -203,18 +216,24 @@ AntiDote's FT-resistance defense).
 **P0 (must integrate):**
 - `andyrdt/refusal_direction` — Arditi reference
 - `Sumandora/remove-refusals-with-transformers` — HF-native path
-- `NousResearch/llm-abliteration` — reference impl
-- `p-e-w/heretic` — Heretic/ARA (validated against v7)
+- `NousResearch/llm-abliteration` — reference impl, sharded/4-bit memory-efficient,
+  norm-preserving + projected variants — higher-trust org, good sanity-check baseline
+- `p-e-w/heretic` (`pip install -U heretic-llm`) — Heretic/ARA (validated against v7);
+  adaptive-abliteration tool of record, see Tier 2 #5
 
 **P1:**
 - `wuwangzhang1216/abliterix`
 - `FailSpy/abliterator`
 - `AUGMXNT/deccp`
 - `Tsadoq/ErisForge`
+- `spkgyk/abliteration` — simpler, no TransformerLens dependency
 
 **P2:**
 - `wassname/abliterator`
-- OBLITERATUS / concept-erasure toolchains (AGPL — never vendor, call as separate harness)
+- `elder-plinius/OBLITERATUS` / concept-erasure toolchains (AGPL — never vendor, call as
+  separate harness). Extraction: PCA, mean-diff, SAE decomp, whitened SVD. Intervention:
+  norm-preserving, projected (Gram-Schmidt), steering. Vet code before running — author is
+  a known edgy-jailbreak persona, not a mainstream research org.
 - AutoAbliteration notebooks
 - Heretic forks / Docker wrappers / Blasphemer-style wrappers
 
@@ -282,20 +301,24 @@ Not:
 
 ## Mapping to existing repo infra
 
-| attack | script / path | status |
-|---|---|---|
-| single-vector Arditi | `experiments/save_p1b_checkpoint.py --attack all --direction-layer L` | ★ default |
-| per-layer adaptive | same, `--per-layer` | ★ v7 survived |
-| all-layer | `--attack all` covers | ★ |
-| Heretic/ARA | external `p-e-w/heretic` (called as harness) | ★ v7 survived |
-| rank-k SVD | — | ○ **priority build** |
-| concept erasure (LEACE) | — | ○ |
-| surgical refusal | — | ○ **priority build** |
-| LoRA / QLoRA FT | `experiments/ft_attack.py` | ★ (out-of-scope, characterization only) |
-| eval matrix | `scripts/eval_matrix_{qwen,llama,gemma}.sh` | ★ |
-| extended matrix | `scripts/eval_matrix_new.sh` | ★ |
-| judging | `experiments/judge_generations.py` (parse-fail guarded) | ★ |
-| over-refusal scoring | `scripts/external_benches/score_overrefusal.py` | ★ |
+| paper row | attack | script / path / tool | status |
+|---|---|---|---|
+| Rank-1 Abliteration | single-vector Arditi | `experiments/save_p1b_checkpoint.py --attack all --direction-layer L` | ★ default |
+| Rank-1 Abliteration | via TamperBench | `refusal_ablation` module, `benchmark_grid.py` | ★ running now (3 archs) |
+| Multi-layer Abliteration | per-layer / all-layer | same script, `--per-layer` / `--attack all` | ★ v7 survived |
+| Adaptive Abliteration | Heretic/ARA | `pip install heretic-llm`, `p-e-w/heretic` (called as harness) | ★ v7 survived |
+| SVD | rank-k SVD | — | ○ **priority build** |
+| Whitened SVD | whitened SVD extraction | `elder-plinius/OBLITERATUS` (AGPL, call don't vendor, vet code first) | ◐ external harness found, not yet run |
+| concept erasure (LEACE) | — | — | ○ |
+| surgical refusal | — | — | ○ **priority build** |
+| LoRA jailbreak tuning | LoRA FT | `experiments/ft_attack.py`; TamperBench `lora_finetune` | ★ (out-of-scope for ABL defense, characterization only) |
+| QLoRA | — | 4-bit config on same harness, no dedicated tool found | ◐ |
+| Full SFT | full-param FT | TamperBench `full_parameter_finetune` | ★ available, unrun |
+| RL-based | — | — | ○ future work, no tool found |
+| — | eval matrix | `scripts/eval_matrix_{qwen,llama,gemma}.sh` | ★ |
+| — | extended matrix | `scripts/eval_matrix_new.sh` | ★ |
+| — | judging | `experiments/judge_generations.py` (parse-fail guarded) | ★ |
+| — | over-refusal scoring | `scripts/external_benches/score_overrefusal.py` | ★ |
 
 ---
 
