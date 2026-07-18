@@ -8,13 +8,15 @@
 > (gemma/Qwen/Llama) against the naive rank-1 attack — full-data battery + capability show
 > abliterating v8 → ~0 harmAct/~99% gibberish, base attack succeeds with capability intact.
 > **But the adaptive-attacker gap (P2, "OBLITERATUS/adaptive") is no longer just a publication
-> gap — Heretic (adaptive KL-optimizing abliteration) BREAKS v8 on Llama-3.2-1B**, 40% coherent
-> harm at zero capability cost mid-strength, 88% at its strongest trial. gemma v8/Qwen v8 vs
-> Heretic not yet tested — the single highest-priority open question right now. FT thread (P4)
+> gap — Heretic (adaptive KL-optimizing abliteration) BREAKS v8 ON ALL 3 ARCHITECTURES**:
+> Llama 88% harm (some IFEval cost at its most extreme trial), gemma 93% harm (zero capability
+> cost, any trial — worse than Llama), Qwen 82% harm (zero capability cost including GSM8K,
+> which rank-1 craters −95%). Confirmed universal, not architecture-specific — this is now the
+> paper's central adaptive-attack finding, not a per-arch footnote. FT thread (P4)
 > = CLOSED NEGATIVE (FTR-v6 + FTR-TAR both failed; do not reopen without a new mechanism).
 > TamperBench (third-party benchmark, arXiv 2602.06911) third-party validation in progress,
 > not complete. Qwen3-8B scale attempt parked (trained successfully, pick-job lost to an infra
-> bug, not re-run). Live detail: `docs/devlog_2026_07_17.md`, `docs/heretic_v8_llama_2026_07_18.md`,
+> bug, not re-run). Live detail: `docs/devlog_2026_07_17.md`, `docs/heretic_v8_2026_07_18.md`,
 > `docs/handoff_2026_07_03_MASTER.md`.
 
 ## Sequence

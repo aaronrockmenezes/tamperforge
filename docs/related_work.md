@@ -62,19 +62,18 @@ KL-optimizing search.
 
 **Correction (2026-07-18, do not lose this before submission):** the claim "a professional
 KL-minimizing abliterator (Heretic) cannot drive our model to low refusals without a KL
-blow-up that wrecks it" held for **gemma v7** (worst tested case: 0.17 harmAct, 66% gibberish
-at the highest KL budget tried) but is **false for Llama-3.2-1B v8** — worse than a graceful
-trade-off, in fact: Heretic gets 40% coherent judged harm (KL 0.25 trial) at **zero cost on
-every capability axis tested** (ARC/MMLU/GSM8K/IFEval all at clean level), and its most
-aggressive trial (KL 0.56) pushes to 88% harm with only IFEval showing any real cost (GSM8K
-still clean-level). The wall does not degrade gracefully here; there's a wide zone where the
-attacker pays nothing at all. See `docs/heretic_v8_llama_2026_07_18.md` for the full matrix.
-gemma v8 / Qwen v8 against Heretic: not yet tested. The honest current claim is: **the defense
-survives a professional adaptive abliterator on at least one architecture/version
-combination (gemma v7), and is confirmed broken — cheaply, not just eventually — by the same
-attack on another (Llama v8)** — not a blanket "survives Heretic." Fix this paragraph's
-overclaim before any paper draft goes out, and narrow the abstract's language to match once
-gemma v8 / Qwen v8 Heretic results land.
+blow-up that wrecks it" held for **gemma v7** (a prior product version — worst tested case:
+0.17 harmAct, 66% gibberish at the highest KL budget tried) but is **false for ABL-v8 on all
+3 architectures**: Llama gets 88% harm (only IFEval shows any capability cost, at its single
+most extreme trial); gemma gets 93% harm at **zero cost on every capability axis, at every
+trial tested** (worse than Llama — even more extreme KL budgets don't cost capability, they
+just add a little gibberish noise); Qwen gets 82% harm, again zero cost on every axis
+including GSM8K, which the naive rank-1 attack craters −95%. See `docs/heretic_v8_2026_07_18.md`
+for the full cross-architecture matrix. The honest current claim: **v8 stops the naive rank-1
+attack on all 3 architectures (the real, standing result) but does not survive Heretic on any
+of them.** Do not write "survives adaptive attacks" anywhere in a paper draft, even hedged to
+one architecture — this needs to be the central adaptive-attack finding/limitation, stated
+plainly, not softened.
 
 <!-- TODO citations: Arditi 2024 (refusal direction); Qi 2023 (few-shot harmful FT);
 Tamirisa 2024 (TAR); Rosati 2024 (RepNoise); Huang 2024 (Vaccine); Li 2024 (WMDP/RMU);

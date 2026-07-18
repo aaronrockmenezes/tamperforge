@@ -15,13 +15,15 @@
   complete.** 3 undocumented bugs in TamperBench's own code fixed (fp64 hidden upcast +
   zombie CUDA context, see `common_issues.md`); only `gemma_base` run confirmed clean so far,
   full 6-run sweep (3 archs × base/v8) not finished.
-- **HERETIC BREAKS ABL-v8 ON LLAMA-3.2-1B.** (`docs/heretic_v8_llama_2026_07_18.md`) Adaptive
-  KL-optimizing abliteration gets 40% coherent judged harm at ZERO capability cost at
-  mid-strength, 88% harm at its strongest trial (only IFEval shows any cost even then, GSM8K
-  stays clean-level). Not gemma v7's graceful gibberish-leak pattern under Heretic — a clean,
-  low-cost, controllable harm/refusal trade. **Do not claim "survives Heretic" as blanket** —
-  true for gemma v7, false for Llama v8. Not yet tested: gemma v8/Qwen v8 vs Heretic (the
-  open question — architecture-specific or product-specific crack?).
+- **HERETIC BREAKS ABL-v8 ON ALL 3 ARCHITECTURES.** (`docs/heretic_v8_2026_07_18.md`) Adaptive
+  KL-optimizing abliteration: Llama 88% harm (some IFEval cost only at its most extreme
+  trial), gemma 93% harm (zero capability cost, any trial — worse than Llama, non-monotonic
+  with KL), Qwen 82% harm (zero capability cost including GSM8K, which rank-1 craters −95%).
+  Not gemma v7's graceful gibberish-leak pattern — a clean, low-cost, controllable harm/refusal
+  trade, universal across archs. **Do not claim "survives Heretic" or "survives adaptive
+  attacks" as blanket** — true only for gemma v7 (prior product version), false for v8
+  everywhere tested. This is now the central adaptive-attack finding for the paper, not a
+  per-arch footnote.
 
 ## Naming (version lines; DON'T conflate)
 - **ABL-v{n}** = abliteration line, `outputs/tamper_resistant_p1b_v{n}.pt`. ABL-v7 =

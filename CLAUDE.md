@@ -10,12 +10,14 @@ durable conventions. Older text below the line is historical (P0/P1) — do not 
 (Qwen + Llama + gemma, all done as of 2026-07-04 — see `docs/devlog_2026_07_04.md`). v8 fixes
 v7's clean tax: clean model is base-like (safe+coherent+capable+helpful) while abliteration
 still self-destructs under the naive rank-1 attack. **But: Heretic (adaptive, KL-optimizing
-abliteration) BREAKS the wall on Llama-3.2-1B v8** — gets 40% coherent harm at zero capability
-cost at mid-strength, 88% harm at its strongest trial (`docs/heretic_v8_llama_2026_07_18.md`).
-Not yet known if this is Llama-specific or hits gemma/Qwen v8 too — that's the open question.
-Do not claim "survives Heretic" as a blanket statement (see `docs/related_work.md` correction).
-ABL-v7 (prior, more leaky) survived Heretic on gemma; FTR (fine-tune-resistance) dead, separate
-thread, do not reopen.
+abliteration) BREAKS THE WALL ON ALL 3 ARCHITECTURES** — Llama 88% harm (some IFEval cost at
+its most extreme trial only), gemma 93% harm (zero capability cost, any trial), Qwen 82% harm
+(zero capability cost, any trial, including GSM8K which rank-1 craters −95%). See
+`docs/heretic_v8_2026_07_18.md` for the full cross-architecture table. **Do not claim
+"survives adaptive attacks" as a blanket statement anywhere** (see `docs/related_work.md`
+correction) — v8 stops the naive rank-1 attack cleanly, that result stands; Heretic is a
+different story on all 3 archs. ABL-v7 (prior, more leaky) survived Heretic on gemma; FTR
+(fine-tune-resistance) dead, separate thread, do not reopen.
 
 ## Project in one paragraph
 tamperforge = a pre-release procedure that entangles safety with capability in

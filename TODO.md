@@ -4,41 +4,45 @@
 > The published claim remains limited to attack-cost shaping against abliteration;
 > fine-tune resistance is closed negative work.
 >
-> **Updated 2026-07-18.** The "break v8 with stronger attacks" line item above just
-> happened for real: Heretic (adaptive KL-optimizing abliteration) breaks ABL-v8 on
-> Llama-3.2-1B — 40% coherent harm at zero capability cost mid-strength, 88% at its
-> strongest trial. See `docs/heretic_v8_llama_2026_07_18.md` + `docs/devlog_2026_07_17.md`.
-> This reprioritizes everything below: finding out whether this is Llama-specific or hits
-> gemma/Qwen v8 too is now the single highest-priority open question, above rank-k SVD or
-> surgical ablation (which haven't cracked anything yet — Heretic just did).
+> **Updated 2026-07-18 (final).** Heretic (adaptive KL-optimizing abliteration) breaks ABL-v8
+> on **all 3 architectures**, confirmed: Llama 88% harm (some IFEval cost at its most extreme
+> trial only), gemma 93% harm (zero capability cost, any trial — worse than Llama), Qwen 82%
+> harm (zero capability cost including GSM8K, which rank-1 craters −95%). See
+> `docs/heretic_v8_2026_07_18.md` + `docs/devlog_2026_07_17.md`. This is now the paper's
+> central adaptive-attack finding, not a footnote, and reprioritizes everything below: fixing
+> or honestly characterizing this beats rank-k SVD/surgical ablation (neither has cracked
+> anything yet — Heretic already did, on all 3 archs).
 
 ## Top priority right now
 
-- [ ] **Run Heretic against gemma v8 and Qwen v8** (same recipe as Llama: Pareto-trial pick
-  spanning weak/mid/strong KL budget, full AdvBench+ARC+MMLU+IFEval+GSM8K matrix). This
-  answers architecture-specific vs product-specific before anything else matters.
-- [ ] If gemma/Qwen v8 also crack: this becomes the paper's central adaptive-attack finding,
-  not a footnote — may require revisiting the training-time attack simulation (Heretic's
-  per-projection parameterization isn't covered by the current rank-1 `_sample_attack`).
-- [ ] If gemma/Qwen v8 hold: Llama's crack is explained by its already-known-shallow crater
-  (this TODO's old Llama row, below) — still needs stating honestly in the paper, but doesn't
-  sink the whole claim.
+- [ ] **Root-cause + attempt a fix.** Training's attack simulation already randomizes layers/
+  scope each step (`_sample_attack`) — that's not the gap. What's fixed: ablation is always
+  full-strength, one shared direction across attacked layers. Heretic's winning trials use
+  partial-strength, per-projection-positioned ablation — exactly what training never varies.
+  Cheapest test: randomize ablation *strength* in `_ablated_overrides`, not just layer/scope.
+- [ ] **Investigate gemma's emoji-noise finding** — trial197's judged-harmful outputs are
+  legible text with random emoji spam mixed in, not the repeated-phrase-loop collapse `gib_ce`
+  is built to catch. Check whether `gib_ce`/argmax-divergence correlates with the judge's
+  `coherent` flag, or can be satisfied by a narrow formatting disruption instead of real
+  semantic collapse. If the latter, that's a training-target problem, not an attack-diversity one.
+- [ ] Post-training per-layer + per-strength DL sweep on the checkpoints already in hand (cheap,
+  no retraining) — maps where the wall actually fires before spending a training run on any fix.
+- [ ] State this honestly in the paper: v8 stops the naive rank-1 attack on all 3 archs (real,
+  standing result); does not survive Heretic on any of them (the limitation/central finding).
 
 ## Models to test now
 
 | Priority | Model | What we run now | Gate / reason |
 |---|---|---|---|
-| P0 | `google/gemma-3-1b-it` | Heretic adaptive attack (weak/mid/strong KL trials) | Unknown whether Llama's crack generalizes — highest-value open question. |
-| P0 | `Qwen/Qwen3-0.6B` | Heretic adaptive attack; five prospective ABL-v8 seeds; rank-k SVD and surgical-ablation attack Pareto | Strongest current v8 result on the naive attack; still untested against Heretic. |
-| P0 | `meta-llama/Llama-3.2-1B-Instruct` | Rank-k SVD, surgical, and per-layer adaptive attacks; complete extended suite | **Confirmed cracked by Heretic** (2026-07-18) — the hardest current family, now confirmed hard for real. |
-| P1 | `google/gemma-3-1b-it` | `S2GIB=8` ABL-v8 rerun (separate from the Heretic item above) | Close its remaining −15% clean IFEval residual before treating 3/3 as equally strong on the clean side. |
-| P1 | `microsoft/Phi-4-mini-instruct` (3.8B) | Direction-layer sweep, then ABL-v8 only if P0 attack gate holds | First meaningful scale test; requires the 96GB box. Do not start until the Heretic question above is answered — no point scaling a defense that might not survive adaptive attacks. |
+| P0 | all 3 (gemma/Qwen/Llama) | Root-cause the Heretic break (strength-randomization training variant, or honest characterization) | Confirmed universal crack — this is the work, not scale-up. |
+| P1 | `google/gemma-3-1b-it` | `S2GIB=8` ABL-v8 rerun (separate from the Heretic finding) | Close its remaining −15% clean IFEval residual before treating 3/3 as equally strong on the clean side. |
+| P1 | `microsoft/Phi-4-mini-instruct` (3.8B) | Direction-layer sweep, then ABL-v8 only if a Heretic-resistant training variant exists | First meaningful scale test; requires the 96GB box. Do not start until there's a defense variant worth scaling — scaling the current one just reproduces a known break at higher cost. |
 | P2 | `mistralai/Ministral-3-3B-Instruct-2512` | Same sweep/train/eval protocol after Phi | Second architecture at useful scale; do not start until Phi and P0 are clean. |
 | P2 | `HuggingFaceTB/SmolLM2-1.7B-Instruct` | Optional low-cost ladder point / parallel seed work | Fits 24–32GB with `adamw8bit`; not a substitute for the 3–4B scale test. |
 
 ## Must run before scaling claims
 
-- [ ] Heretic on gemma v8 + Qwen v8 (see Top priority above — supersedes the ordering below).
+- [x] ~~Heretic on gemma v8 + Qwen v8~~ — done 2026-07-18, both crack (see above).
 - [ ] Freeze a prospective protocol: selection split, snapshot gates, attack budgets, and full held-out test suite.
 - [ ] Build rank-k SVD/subspace ablation and report the best attacker harm-versus-capability frontier.
 - [ ] Build surgical refusal ablation and run it on Qwen-v8 and Llama-v8.
@@ -66,6 +70,7 @@
 - [ ] Do not reopen FTR/TAR without a fundamentally new mechanism.
 - [ ] Do not claim fine-tune resistance, tamper-proofing, or broad model safety.
 - [ ] Do not claim "survives Heretic" or "survives adaptive attacks" as a blanket statement —
-  true for gemma v7, false for Llama v8, gemma/Qwen v8 unknown. See `docs/related_work.md`
-  correction.
-- [ ] Do not move to 7B–12B before the Heretic question above + the P0 attack gate pass.
+  true only for gemma v7 (prior product version), false for v8 on all 3 architectures tested.
+  See `docs/related_work.md` correction.
+- [ ] Do not move to 7B–12B before there's a Heretic-resistant training variant (or a decision
+  to publish the current break honestly and stop trying to fix it).
