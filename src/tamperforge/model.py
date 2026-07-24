@@ -83,6 +83,64 @@ def load_sae(release: str = SAE_RELEASE, sae_id: str = SAE_ID, device: str | Non
 
 
 @torch.no_grad()
+def capture_residuals(
+    model,
+    tok,
+    prompts: list[str],
+    layers: list[int],
+    device: str,
+    use_chat_template: bool = True,
+    adapter=None,
+    adapter_layer: int | None = None,
+) -> dict[int, torch.Tensor]:
+    """Mean last-token residual-stream activation at EACH of *layers* per prompt.
+
+    Returns ``{layer: [n_prompts, d_model]}`` (float32). Hooking every layer costs
+    the same forwards as hooking one — a single forward already computes them all —
+    so per-layer refusal directions are as cheap as a single-layer estimate.
+    """
+    acts: dict[int, list[torch.Tensor]] = {li: [] for li in layers}
+    captured: dict[int, torch.Tensor] = {}
+    handles = []
+    adapter_handle = None
+
+    if adapter is not None:
+        from tamperforge.adapter import make_adapter_hook
+
+        hook_layer = layers[0] if adapter_layer is None else adapter_layer
+        adapter_handle = model.model.layers[hook_layer].register_forward_hook(
+            make_adapter_hook(adapter)
+        )
+
+    def _mk(li):
+        def hook(module, inp, out):  # noqa: ARG001
+            captured[li] = (out[0] if isinstance(out, tuple) else out).detach()
+        return hook
+
+    for li in layers:
+        handles.append(model.model.layers[li].register_forward_hook(_mk(li)))
+    try:
+        for p in prompts:
+            if use_chat_template:
+                text = apply_chat_template_no_think(
+                    tok,
+                    [{"role": "user", "content": p}],
+                    tokenize=False, add_generation_prompt=True,
+                )
+            else:
+                text = p
+            ids = tok(text, return_tensors="pt").to(device)
+            model(**ids)
+            for li in layers:
+                acts[li].append(captured[li][0, -1].float().cpu())
+    finally:
+        for h in handles:
+            h.remove()
+        if adapter_handle is not None:
+            adapter_handle.remove()
+    return {li: torch.stack(v) for li, v in acts.items()}
+
+
 def capture_residual(
     model,
     tok,
@@ -98,37 +156,5 @@ def capture_residual(
     Returns ``[n_prompts, d_model]`` (float32). Used to derive empirical
     refusal directions (mean harmful − mean harmless).
     """
-    acts: list[torch.Tensor] = []
-    captured = {}
-    adapter_handle = None
-
-    if adapter is not None:
-        from tamperforge.adapter import make_adapter_hook
-
-        hook_layer = layer if adapter_layer is None else adapter_layer
-        adapter_handle = model.model.layers[hook_layer].register_forward_hook(
-            make_adapter_hook(adapter)
-        )
-
-    def hook(module, inp, out):  # noqa: ARG001
-        captured["h"] = (out[0] if isinstance(out, tuple) else out).detach()
-
-    handle = model.model.layers[layer].register_forward_hook(hook)
-    try:
-        for p in prompts:
-            if use_chat_template:
-                text = apply_chat_template_no_think(
-                    tok,
-                    [{"role": "user", "content": p}],
-                    tokenize=False, add_generation_prompt=True,
-                )
-            else:
-                text = p
-            ids = tok(text, return_tensors="pt").to(device)
-            model(**ids)
-            acts.append(captured["h"][0, -1].float().cpu())
-    finally:
-        handle.remove()
-        if adapter_handle is not None:
-            adapter_handle.remove()
-    return torch.stack(acts)
+    return capture_residuals(model, tok, prompts, [layer], device,
+                             use_chat_template, adapter, adapter_layer)[layer]

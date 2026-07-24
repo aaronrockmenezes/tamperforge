@@ -60,7 +60,8 @@ from tqdm.auto import tqdm
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from tamperforge import apply_chat_template_no_think, empirical_refusal_direction, load_model
+from tamperforge import (apply_chat_template_no_think, empirical_refusal_direction,
+                         empirical_refusal_directions, load_model)
 from tamperforge.data import BENIGN_PROMPTS, PROSE_TEXT, REFUSAL_RESPONSES, load_advbench
 from tamperforge.eval.log import RunLogger, make_run_id
 
@@ -75,8 +76,8 @@ SCOPES = {"all": (READ_PROJ, WRITE_PROJ), "mlp": (MLP_READ, MLP_WRITE),
           "attn": (ATTN_READ, ATTN_WRITE)}
 
 
-def _sample_attack(rng, n_layers: int, partial: bool = False):
-    """Random (read_proj, write_proj, layers, alphas) for ensemble-attack training.
+def _sample_attack(rng, n_layers: int, partial: bool = False, per_layer: bool = False):
+    """Random (read_proj, write_proj, layers, alphas, use_per_layer) for ensemble training.
 
     Tier-1 showed the gibberish-collapse is localized: sub-scope / sub-layer
     ablations under-trigger it (L13-25 leaked at full capability). Randomizing the
@@ -86,6 +87,11 @@ def _sample_attack(rng, n_layers: int, partial: bool = False):
     strength. The full-strength windowed sampler never produces it, which is the
     hole Heretic walked through (docs/heretic_v8_2026_07_18.md, confound check:
     Heretic's edit lands *inside* the protected band at the same magnitude).
+
+    per_layer=True adds the other axis Heretic searches over: each layer loses its
+    OWN refusal direction instead of one direction removed everywhere. Sampled, not
+    forced — the shared-direction case is the standard Arditi attack the headline
+    result is built on, and must stay in the training mix.
     """
     scope = rng.choice(["all", "mlp", "attn"])
     rp, wp = SCOPES[scope]
@@ -106,7 +112,9 @@ def _sample_attack(rng, n_layers: int, partial: bool = False):
     # ponytail: uniform(0.2,1.0) per layer. Fit the range to a real Heretic sweep's
     # per-layer scales if training overfits one strength band.
     alphas = {li: rng.uniform(0.2, 1.0) for li in layers} if partial and rng.random() < 0.5 else None
-    return rp, wp, layers, alphas, f"{scope}:{kind}{'' if alphas is None else ':partial'}"
+    use_pl = per_layer and rng.random() < 0.5
+    tag = f"{scope}:{kind}{'' if alphas is None else ':partial'}{':perlayer' if use_pl else ''}"
+    return rp, wp, layers, alphas, use_pl, tag
 
 
 def _parse_layers(spec: str, n: int) -> list[int]:
@@ -130,16 +138,21 @@ def _scope(train_scope: str):
     return READ_PROJ, WRITE_PROJ  # 'all' / 'last_half' use full set; layers filter narrows it
 
 
-def _ablated_overrides(model, d: torch.Tensor, layers, read_p, write_p, alphas=None) -> dict:
+def _ablated_overrides(model, d, layers, read_p, write_p, alphas=None) -> dict:
     """Differentiable {param_name: ablated_weight}. d unit-norm, detached.
 
+    d: one direction removed from every layer (the Arditi rank-1 attack), OR
+       {layer: direction} for the per-layer adaptive attack (each layer loses its
+       own refusal direction — Heretic's shape, and `save_p1b_checkpoint --per-layer`).
     alphas: {layer: strength} for partial-strength ablation. None = 1.0 (full
-    projection) everywhere, the v8 behaviour.
+       projection) everywhere, the v8 behaviour.
     """
     params = dict(model.named_parameters())
-    dd = d.detach().to(next(iter(params.values())).device)
+    dev = next(iter(params.values())).device
+    shared = None if isinstance(d, dict) else d.detach().to(dev)
     ov: dict[str, torch.Tensor] = {}
     for li in layers:
+        dd = shared if shared is not None else d[li].detach().to(dev)
         a = 1.0 if alphas is None else alphas[li]
         base = f"model.layers.{li}."
         for name in read_p:
@@ -426,6 +439,10 @@ def main() -> None:
                     help="v9 idea-1: attacked model must not COMPLY either (CE on AdvBench "
                          "affirmative targets under attack >= --harm-margin). 0 = v8 behaviour.")
     ap.add_argument("--harm-margin", type=float, default=4.0)
+    ap.add_argument("--attack-per-layer", action="store_true",
+                    help="v9 idea-2: also sample per-layer adaptive ablation (each layer loses "
+                         "its OWN refusal direction) in --attack-ensemble. All directions come "
+                         "from one forward pass, so this is ~free. Off = v8 behaviour.")
     ap.add_argument("--attack-partial", action="store_true",
                     help="v9 idea-2: also sample broad partial-strength ablations (Heretic's "
                          "regime) in --attack-ensemble. Off = v8 behaviour.")
@@ -542,6 +559,7 @@ def main() -> None:
     else:
         opt = torch.optim.AdamW(_params, lr=args.lr)
     d = None
+    d_by_layer = None
     for step in tqdm(range(1, args.steps + 1), desc="p1b-A steps", dynamic_ncols=True):
         if d is None or (step - 1) % args.recompute_direction_every == 0:
             tqdm.write(f"[step {step}] recomputing refusal direction...")
@@ -557,15 +575,28 @@ def main() -> None:
             else:
                 hs, bs, dlayer = harmful[: args.n_direction], benign[: args.n_direction], args.direction_layer
             with torch.no_grad():
-                d = empirical_refusal_direction(model, tok, hs, bs, dlayer, device)
+                if args.attack_per_layer:
+                    # One pass gives EVERY layer's direction for the price of one layer's
+                    # (capture_residuals hooks them all). d_by_layer feeds the per-layer
+                    # adaptive attack; d stays the shared-direction (Arditi) case.
+                    # ponytail: early layers have little refusal signal, so their direction
+                    # is closer to noise (base-model L6 ablation = pure gibberish, not a
+                    # jailbreak). If that poisons training, source per-layer directions only
+                    # from a band around --direction-layer and fall back to d elsewhere.
+                    d_by_layer = empirical_refusal_directions(
+                        model, tok, hs, bs, list(range(len(model.model.layers))), device)
+                    d = d_by_layer[dlayer]
+                else:
+                    d = empirical_refusal_direction(model, tok, hs, bs, dlayer, device)
         task_b = rng.sample(task_train, min(args.task_batch, len(task_train)))
         ref_b = rng.sample(pairs, min(args.refusal_batch, len(pairs)))
 
         opt.zero_grad(set_to_none=True)
         if args.attack_ensemble:
-            rp_a, wp_a, layers_a, alphas_a, _atag = _sample_attack(
-                rng, len(model.model.layers), args.attack_partial)
-            overrides = _ablated_overrides(model, d, layers_a, rp_a, wp_a, alphas_a)
+            rp_a, wp_a, layers_a, alphas_a, pl_a, _atag = _sample_attack(
+                rng, len(model.model.layers), args.attack_partial, args.attack_per_layer)
+            overrides = _ablated_overrides(model, d_by_layer if pl_a else d,
+                                           layers_a, rp_a, wp_a, alphas_a)
         else:
             overrides = _ablated_overrides(model, d, layers, read_p, write_p)
         L_task = _lm_loss(model, tok, task_b, device)                            # clean useful on real text

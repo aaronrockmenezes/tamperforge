@@ -32,14 +32,34 @@ def test_alpha_interpolates_between_identity_and_full():
     half = _ablated_overrides(m, d, [0], [], [p], {0: 0.5})["model.layers.0." + p + ".weight"]
     assert torch.allclose(half, (W + full) / 2, atol=1e-5)
     # the point of alpha: a partial edit leaves refusal-direction energy behind
-    assert (full @ d).norm() < (half @ d).norm() < (W @ d).norm()
+    assert (d @ full).norm() < (d @ half).norm() < (d @ W).norm()
 
 
-def test_sampler_only_goes_partial_when_asked():
+def test_sampler_only_goes_partial_or_perlayer_when_asked():
     rng = random.Random(0)
-    assert all(_sample_attack(rng, 16)[3] is None for _ in range(50)), "v8 default must stay full-strength"
-    got = [_sample_attack(rng, 16, True) for _ in range(200)]
-    assert any(a is not None for *_, a, _tag in got), "partial=True never sampled alphas"
-    assert any("broad" in tag for *_, tag in got), "partial=True never sampled broad coverage"
-    for *_, layers, alphas, _tag in got:
+    base = [_sample_attack(rng, 16) for _ in range(50)]
+    assert all(a is None and not pl for *_, a, pl, _t in base), "v8 default must stay full-strength, shared-d"
+    got = [_sample_attack(rng, 16, True, True) for _ in range(200)]
+    assert any(a is not None for *_, a, _pl, _t in got), "never sampled alphas"
+    assert any(pl for *_, _a, pl, _t in got), "never sampled per-layer"
+    assert any(not pl for *_, _a, pl, _t in got), "per-layer must not replace the shared-d (Arditi) case"
+    assert any("broad" in t for *_, t in got), "never sampled broad coverage"
+    for *_, layers, alphas, _pl, _t in got:
         assert alphas is None or (set(alphas) == set(layers) and all(0 < v <= 1 for v in alphas.values()))
+
+
+def test_per_layer_directions_differ_from_shared():
+    m = _Stub()
+    p = "mlp.down_proj"
+    key = "model.layers.{}." + p + ".weight"
+    dirs = {li: torch.nn.functional.normalize(torch.randn(8), dim=0) for li in range(4)}
+    per = _ablated_overrides(m, dirs, [0, 1], [], [p])
+    shared = _ablated_overrides(m, dirs[0], [0, 1], [], [p])
+    # layer 0 uses dirs[0] in both; layer 1 diverges because per-layer uses its own d
+    assert torch.allclose(per[key.format(0)], shared[key.format(0)], atol=1e-5)
+    assert not torch.allclose(per[key.format(1)], shared[key.format(1)], atol=1e-3)
+    # write-proj ablation removes d from the OUTPUT side, so d @ W is what dies
+    W1 = dict(m.named_parameters())[key.format(1)]
+    assert (dirs[1] @ per[key.format(1)]).norm() < (dirs[1] @ W1).norm() * 0.01
+    # and it kills layer 1's own direction, not the shared one it was never given
+    assert (dirs[0] @ per[key.format(1)]).norm() > 1e-3

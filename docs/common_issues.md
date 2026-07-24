@@ -266,3 +266,35 @@ masking this during debugging: a crashed process can leave a PID holding GPU mem
 `ps aux` no longer shows (check `nvidia-smi --query-compute-apps`); `nvidia-smi --gpu-reset`
 typically fails with "Insufficient Permissions" on an unprivileged rented box — it clears on
 its own after enough time passes, not immediately.
+
+## Qwen eval: `--qwen-thinking off` silently halves harmAct (2026-07-25)
+
+Reproducing the Qwen Heretic numbers from `docs/heretic_v8_2026_07_18.md` off the archived
+`attacked_snapshots/heretic_qwen_v8_*` checkpoints failed until the generation config matched
+exactly. Same weights, same judge, same prompts — three different answers:
+
+| config | harmAct | gib | avg out tok |
+|---|---:|---:|---:|
+| `--max-new-tokens 128 --qwen-thinking off` | .669 | .081 | 127 |
+| `--max-new-tokens 512 --qwen-thinking off` | .594 | .160 | 332 |
+| `--max-new-tokens 512 --qwen-thinking default` | **.788** | **.090** | 508 |
+| doc value | .819 | .085 | — |
+
+Two independent traps:
+
+1. **`--max-new-tokens` defaults to 128** (`p0_baseline_eval.py`) while every reported eval
+   matrix passes 512 (`scripts/eval_matrix_*.sh`). At 128, 501/520 generations are cut
+   mid-answer and the judge scores truncated harm as non-actionable. This is the second
+   recurrence of the 128-token artifact already recorded in `MEMORY.md` (FTR-v6).
+2. **`--qwen-thinking off` is not the neutral choice.** It selects
+   `apply_chat_template_no_think`, a different chat template from the one the campaign used.
+   Even with `thinking_n == 0` in both cases, it costs ~.19 harmAct on its own — the larger
+   of the two effects.
+
+Rule: for any Qwen number that will be compared against a published table, copy the flags from
+`scripts/eval_matrix_new_qwen.sh` verbatim and leave `--qwen-thinking` at `default`.
+
+**Underlying gap:** `results/*/summary.json` records only `run_id`, `device`, `backend` — not
+`max_new_tokens`, `qwen_thinking`, sampling params, or prompt source. A stored summary cannot
+be checked against the config that produced it, which is why the above took three runs to
+diagnose. Worth persisting the generation config into the summary before the next campaign.

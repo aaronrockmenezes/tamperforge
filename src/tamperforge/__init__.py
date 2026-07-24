@@ -13,9 +13,21 @@ from .abliterate import (
     project_out_write,
 )
 from .adapter import GatedSafetyAdapter, SafetyAdapter, load_adapter, make_adapter_hook
-from .directions import empirical_refusal_direction, sae_feature_directions, svd_refusal_directions
+from .directions import (
+    empirical_refusal_direction,
+    empirical_refusal_directions,
+    sae_feature_directions,
+    svd_refusal_directions,
+)
 from .fold import fold_gated_adapter_into_ffn, verify_fold
-from .model import apply_chat_template_no_think, load_model, load_sae, pick_device, capture_residual
+from .model import (
+    apply_chat_template_no_think,
+    capture_residual,
+    capture_residuals,
+    load_model,
+    load_sae,
+    pick_device,
+)
 from .safety import REFUSAL_PHRASES, is_refusal
 
 __all__ = [
@@ -32,12 +44,14 @@ __all__ = [
     "fold_gated_adapter_into_ffn",
     "verify_fold",
     "empirical_refusal_direction",
+    "empirical_refusal_directions",
     "sae_feature_directions",
     "svd_refusal_directions",
     "load_model",
     "load_sae",
     "pick_device",
     "capture_residual",
+    "capture_residuals",
     "apply_chat_template_no_think",
     "REFUSAL_PHRASES",
     "is_refusal",

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import torch
 
-from .model import capture_residual
+from .model import capture_residual, capture_residuals
 
 
 def empirical_refusal_direction(
@@ -34,6 +34,34 @@ def empirical_refusal_direction(
     ).mean(0)
     d = (h_harm - h_safe)
     return d / d.norm().clamp(min=1e-8)
+
+
+def empirical_refusal_directions(
+    model,
+    tok,
+    harmful: list[str],
+    harmless: list[str],
+    layers: list[int],
+    device: str,
+    adapter=None,
+    adapter_layer: int | None = None,
+) -> dict[int, torch.Tensor]:
+    """Per-layer refusal directions, unit-normed, in ONE pass over the prompts.
+
+    ``{layer: [d_model]}``. Same forward cost as estimating a single layer (one
+    forward already computes every layer's residual), so this is the cheap way to
+    get the per-layer adaptive attack basis — do NOT loop
+    ``empirical_refusal_direction`` over layers, that re-runs every prompt per layer.
+    """
+    h_harm = capture_residuals(model, tok, harmful, layers, device,
+                               adapter=adapter, adapter_layer=adapter_layer)
+    h_safe = capture_residuals(model, tok, harmless, layers, device,
+                               adapter=adapter, adapter_layer=adapter_layer)
+    out = {}
+    for li in layers:
+        d = h_harm[li].mean(0) - h_safe[li].mean(0)
+        out[li] = d / d.norm().clamp(min=1e-8)
+    return out
 
 
 def sae_feature_directions(sae_W_dec: torch.Tensor, feat_ids: list[int]) -> torch.Tensor:
