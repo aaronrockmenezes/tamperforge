@@ -60,15 +60,17 @@ def main() -> None:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--models", nargs="+", required=True, metavar="LABEL=PATH",
                     help="HF id or local dir per checkpoint")
-    ap.add_argument("--n-pairs", type=int, default=200,
-                    help="AdvBench prompts per model (both CEs use the SAME prompts)")
+    ap.add_argument("--n-pairs", type=int, default=-1,
+                    help="AdvBench prompts per model, -1 = full 520 (both CEs use the SAME "
+                         "prompts). Subsets are for smoke runs only -- full datasets for "
+                         "anything reported, per CLAUDE.md.")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--device", default=None)
     ap.add_argument("--out", default="results/tier0_gate.json")
     args = ap.parse_args()
 
     harm_pairs = load_advbench(ROOT / "data" / "advbench_harmful_behaviors.csv",
-                               n=args.n_pairs, seed=args.seed)
+                               n=None if args.n_pairs < 0 else args.n_pairs, seed=args.seed)
     # Same prompts on both axes so harm_ce and ref_ce are directly comparable.
     ref_pairs = [(g, REFUSAL_RESPONSES[i % len(REFUSAL_RESPONSES)])
                  for i, (g, _) in enumerate(harm_pairs)]
