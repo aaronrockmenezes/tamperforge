@@ -115,9 +115,42 @@ Fit a linear probe on residual streams to predict the judge label
 Loss = probe's harm logit on the attacked model's residuals over harmful prompts.
 - Discriminative **by construction** — it is fit to the labels that matter.
 - Fully differentiable, tiny, no sampling, reuses data already paid for.
-- Goodhart risk: re-fit the probe on fresh generations every N steps (adversarial probe)
-  and hold out a split.
-- Best cost/benefit of the overhaul options.
+- **GATED AND FAILED, 2026-07-25.** Fit on 5 Qwen checkpoints x 520 AdvBench prompts
+  (v8_clean / v8_att_rank1 / heretic weak+mid+strong), labels = judge `usefulness_label`,
+  split by prompt, all 28 layers via `capture_residuals`.
+
+  | layers | holdout AUC | within-model AUC | PAIRED AUC |
+  |---|---:|---:|---:|
+  | L0-L6 | ~0.70 | 0.71-0.77 | **0.253** |
+  | L7-L9 | ~0.71 | 0.74-0.78 | 0.43-0.47 |
+  | L10-L27 | 0.94-0.97 | 0.64-0.78 | **0.966-0.995** |
+
+  PAIRED = same prompt, different model; the situation a loss is actually in.
+
+  **The step is at L10, which is exactly where Heretic's edits begin** (layers 0-9
+  untouched, 10-27 edited — see the weight-diff in `heretic_v8_2026_07_18.md`). The probe
+  reads *"these activations came from a Heretic-edited checkpoint"*, not *"this model is
+  about to comply"*. Two tells: PAIRED is ~0.995 flat across 18 consecutive layers (a
+  graded willingness signal would not be uniform and near-perfect everywhere), and at the
+  layers Heretic does not touch it collapses below chance.
+
+  Both slices, together:
+  - across models (PAIRED) -> checkpoint identity, 0.995, meaningless;
+  - within model -> prompt difficulty, 0.784 vs an **L0 embedding-only baseline of 0.766**,
+    so real model-state contribution is ~0.02.
+
+  Fatal as a loss: during training the scored model is v9-in-progress, which is none of the
+  fitted checkpoints, so the rule does not transfer — and minimising it pushes activations
+  away from a checkpoint *identity*, satisfiable by arbitrary representational drift with
+  no behavioural change. Goodhart on contact, not after N steps.
+
+- **Lesson that outlives F: compliance is probably not a prompt-conditioned property.** At
+  the prompt's last token the model has not "decided" yet; that resolves during the rollout.
+  The refusal-direction literature gives a direction that *causes* refusal when ablated,
+  which is not a feature predicting whether a given generation will comply. The property
+  that made F attractive (prompt-only -> no generation -> differentiable) is precisely what
+  makes it blind. A died on fixed-reference CE, F died on prompt-only readout; both were
+  chosen for cheapness, and every option that avoids generation fights the same headwind.
 
 ### G — apply the chosen fix to `gib_ce` too
 Whatever replaces `harm_ce` should replace `gib_ce`: one coherence signal evaluated on
@@ -129,11 +162,26 @@ On the table. If the harmful-side term carries the wall, dropping `gib_ce` remov
 provably blind term plus `--lambda-gib` plus the stage-2 `S2GIB` knob. The wall oscillation
 (dissolve s325-400, reform s425-475) may partly be these two terms fighting.
 
+## Status board (2026-07-25)
+
+| option | status |
+|---|---|
+| A real completions | **DEAD** — gated, 0.041 nats, sign inverted |
+| F probe-as-loss | **DEAD** — gated, reads checkpoint identity (PAIRED step at Heretic's L10 edit boundary) |
+| E representation rerouting | untested, next; less exposed to the identity confound than F because it pushes away from a manifold rather than predicting behaviour |
+| D frozen-scorer NLL | untested; promoted by elimination — scores real output, so representational drift cannot fool it. REINFORCE variance now reads as the price of admission, not avoidable overhead |
+| B contrastive | available, but it is a switch from poison pill to fortress, not a knob |
+| C self-coherence | component only |
+| G/H (fix or delete gib_ce) | still open, independent of which of D/E wins |
+
 ## Recommended order
 
-1. **A**, gated through `tier0_gate.py`, before any training run. If range goes 0.206 -> 2+
-   nats, train with it. If it stays under ~1 nat, skip to F.
-2. **F** (+ **G**/**H**): the actual overhaul.
-3. **E** if F's Goodhart problem proves unfixable.
-4. B only as a deliberate, documented switch from poison pill to fortress.
-5. C and D are components, not headline fixes.
+1. **E**, gated the same way, using `base_att` as the compliance reference.
+2. **D** if E gates poorly. Budget for REINFORCE variance up front.
+3. **G**/**H** alongside whichever lands — `gib_ce` is untouched and still blind, and two
+   blind terms plus an attack sampler doing all the real work is the current state.
+4. B only as a deliberate, documented change of threat posture.
+
+**Gate everything before training.** Two options have now died for ~25 minutes of inference
+each, against 500-step runs that would have taught nothing. The pre-flight check on the
+4-bucket labelled data is the cheapest thing in this project.
