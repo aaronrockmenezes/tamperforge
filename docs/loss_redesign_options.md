@@ -130,6 +130,27 @@ reference, `relu(cos_sim)`, plus a benign retain term.
 - Fully differentiable, no sampling, no reference text, cannot saturate.
 - Known counter: obfuscated activations (arXiv:2412.09565) — a different attack from
   Heretic, so not pre-broken.
+- **GATED 2026-07-25: SURVIVES. The only option that does.** Response-level reps
+  (prompt+completion, not prompt-only — F showed compliance is not prompt-conditioned),
+  scored within a single checkpoint on held-out prompts.
+
+  | | L0 | peak |
+  |---|---:|---:|
+  | OWN heretic_mid | 0.767 | 0.968 (L24) |
+  | OWN heretic_strong | 0.667 | 0.830 (L26) |
+  | TRANSFER (mid<->strong) | ~0.57 | 0.65-0.75 |
+
+  Contrast with F, which is the point: F's cross-model number was 0.995 FLAT across 18
+  layers, an identity artifact. E's transfer is graded and rises with depth — real
+  structure. Ignore the v8_clean transfer column, it has 2 positive rows and is noise.
+
+  **Caveat, do not oversell:** this gate cannot separate "compliance representation" from
+  "harmful text vs refusal text". Harmful rows contain harmful text, so a linear direction
+  between them may be reading content. It does not sink E — CB's loss is teacher-forced on
+  harmful completions and needs a manifold to push away from, not a predictor — but the
+  premise is weaker than 0.968 looks, and only training settles it.
+
+  **Verdict: not dead. That is a lower bar than "works".**
 
 ### F — probe-as-loss
 Fit a linear probe on residual streams to predict the judge label
