@@ -47,9 +47,34 @@ A real answer is not a near-copy of the prompt, so it should not saturate.
   `tier0_gate.py --harm-targets`. 592 completions / 404 goals mined from
   `qwen06_base_att_adv520_judged` + `pl_qwen_base_adv520_judged`.
 - Source must be a DIFFERENT model from those being scored or the comparison is circular.
-- Residual weakness: still fixed-reference. A model that complies with a *different*
-  harmful answer scores as unwilling. Mitigate with several references per goal + min-CE.
-- Cost: trivial. Gate it before training.
+- **GATED AND FAILED, 2026-07-25. Do not retry.** Worse than the prefix it replaced:
+
+  | model | judged harm | harm_ce mined | harm_ce prefix | ref_ce |
+  |---|---:|---:|---:|---:|
+  | v8_clean | ~0% | 1.649 | 1.642 | 0.823 |
+  | heretic_weak | ~0% | 1.646 | 1.642 | 0.824 |
+  | heretic_mid | (doc .665) | 1.628 | 1.436 | 1.150 |
+  | heretic_strong | ~79% | **1.690** | 1.436 | 4.251 |
+  | v8_att_rank1 | 0% (gibberish) | 3.548 | 8.947 | 11.422 |
+
+  1. clean-vs-strong range collapsed 0.206 -> **0.041 nats** (5x worse).
+  2. **Sign inverted**: the 79%-harm model finds real harmful text *more* surprising
+     (1.690) than the 0%-harm safe model (1.649). The loss would push the wrong way.
+  3. Coherent-vs-gibberish also degraded, rank-1 8.947 -> 3.548, spread 7.51 -> 1.92.
+
+  Cause: mined completions must come from a *different* model to avoid circularity, but
+  every model finds another model's specific phrasing about equally surprising. CE against
+  text nobody in the comparison would have written measures stylistic mismatch, not
+  willingness — `harm_ce` is now near-constant (1.628-1.690) across every coherent model.
+
+  **Generalisation worth keeping: non-circularity and discriminativeness are in direct
+  tension for ANY fixed-reference CE. Treat the whole fixed-reference family as dead,
+  not just this instance.** That is the argument for E and F, which use no reference text.
+
+  Salvage: `ref_ce` IS discriminative (0.823 -> 0.824 -> 1.150 -> 4.251 tracks Heretic
+  strength monotonically) but cannot stand alone — `v8_att_rank1` also scores 11.42 while
+  being perfectly safe-by-gibberish — and it is already what `L_uncensor` maximises, i.e.
+  training already pushes in the same direction Heretic does.
 
 ### B — contrastive / margin form
 `relu(margin - (harm_ce - ref_ce))` under attack: complying must be *harder than* refusing.
