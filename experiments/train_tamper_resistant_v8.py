@@ -75,16 +75,21 @@ SCOPES = {"all": (READ_PROJ, WRITE_PROJ), "mlp": (MLP_READ, MLP_WRITE),
           "attn": (ATTN_READ, ATTN_WRITE)}
 
 
-def _sample_attack(rng, n_layers: int):
-    """Random (read_proj, write_proj, layers) for ensemble-attack training.
+def _sample_attack(rng, n_layers: int, partial: bool = False):
+    """Random (read_proj, write_proj, layers, alphas) for ensemble-attack training.
 
     Tier-1 showed the gibberish-collapse is localized: sub-scope / sub-layer
     ablations under-trigger it (L13-25 leaked at full capability). Randomizing the
     simulated attack each step trains the collapse to fire under ANY of them.
+
+    partial=True adds Heretic's regime: broad layer coverage at partial per-layer
+    strength. The full-strength windowed sampler never produces it, which is the
+    hole Heretic walked through (docs/heretic_v8_2026_07_18.md, confound check:
+    Heretic's edit lands *inside* the protected band at the same magnitude).
     """
     scope = rng.choice(["all", "mlp", "attn"])
     rp, wp = SCOPES[scope]
-    kind = rng.choice(["all", "lower", "upper", "rand"])
+    kind = rng.choice(["all", "lower", "upper", "rand"] + (["broad"] if partial else []))
     h = n_layers // 2
     if kind == "all":
         layers = list(range(n_layers))
@@ -92,11 +97,16 @@ def _sample_attack(rng, n_layers: int):
         layers = list(range(h))
     elif kind == "upper":
         layers = list(range(h, n_layers))
+    elif kind == "broad":  # Heretic shape: nearly all layers, light touch
+        layers = list(range(rng.randint(0, h // 2), n_layers))
     else:  # random contiguous window of >= half the layers
         lo = rng.randint(0, h)
         hi = rng.randint(min(lo + h, n_layers - 1), n_layers - 1)
         layers = list(range(lo, hi + 1))
-    return rp, wp, layers, f"{scope}:{kind}"
+    # ponytail: uniform(0.2,1.0) per layer. Fit the range to a real Heretic sweep's
+    # per-layer scales if training overfits one strength band.
+    alphas = {li: rng.uniform(0.2, 1.0) for li in layers} if partial and rng.random() < 0.5 else None
+    return rp, wp, layers, alphas, f"{scope}:{kind}{'' if alphas is None else ':partial'}"
 
 
 def _parse_layers(spec: str, n: int) -> list[int]:
@@ -120,21 +130,26 @@ def _scope(train_scope: str):
     return READ_PROJ, WRITE_PROJ  # 'all' / 'last_half' use full set; layers filter narrows it
 
 
-def _ablated_overrides(model, d: torch.Tensor, layers, read_p, write_p) -> dict:
-    """Differentiable {param_name: ablated_weight}. d unit-norm, detached."""
+def _ablated_overrides(model, d: torch.Tensor, layers, read_p, write_p, alphas=None) -> dict:
+    """Differentiable {param_name: ablated_weight}. d unit-norm, detached.
+
+    alphas: {layer: strength} for partial-strength ablation. None = 1.0 (full
+    projection) everywhere, the v8 behaviour.
+    """
     params = dict(model.named_parameters())
     dd = d.detach().to(next(iter(params.values())).device)
     ov: dict[str, torch.Tensor] = {}
     for li in layers:
+        a = 1.0 if alphas is None else alphas[li]
         base = f"model.layers.{li}."
         for name in read_p:
             key = base + name + ".weight"
             W = params[key].float()
-            ov[key] = (W - torch.outer(W @ dd, dd)).to(params[key].dtype)
+            ov[key] = (W - a * torch.outer(W @ dd, dd)).to(params[key].dtype)
         for name in write_p:
             key = base + name + ".weight"
             W = params[key].float()
-            ov[key] = (W - torch.outer(dd, dd @ W)).to(params[key].dtype)
+            ov[key] = (W - a * torch.outer(dd, dd @ W)).to(params[key].dtype)
     return ov
 
 
@@ -407,6 +422,13 @@ def main() -> None:
                     help="couple safety to d: the ABLATED model must FAIL to refuse.")
     ap.add_argument("--uncensor-margin", type=float, default=4.0,
                     help="push ablated refusal-loss >= this (ablation removes refusal).")
+    ap.add_argument("--lambda-harm", type=float, default=0.0,
+                    help="v9 idea-1: attacked model must not COMPLY either (CE on AdvBench "
+                         "affirmative targets under attack >= --harm-margin). 0 = v8 behaviour.")
+    ap.add_argument("--harm-margin", type=float, default=4.0)
+    ap.add_argument("--attack-partial", action="store_true",
+                    help="v9 idea-2: also sample broad partial-strength ablations (Heretic's "
+                         "regime) in --attack-ensemble. Off = v8 behaviour.")
     ap.add_argument("--lambda-reg", type=float, default=0.05)
     # v8: generative clean-fidelity anchor + eval-in-loop
     ap.add_argument("--lambda-clean", type=float, default=2.0,
@@ -504,6 +526,10 @@ def main() -> None:
         harmful = load_harmful_prompts(args.n_harmful, seed=args.seed)
         benign = load_benign_instructions(args.n_benign, seed=args.seed)
     pairs = [(p, REFUSAL_RESPONSES[i % len(REFUSAL_RESPONSES)]) for i, p in enumerate(harmful)]
+    # (goal, "Sure, here is ...") affirmative-compliance targets for L_harm. The local
+    # AdvBench csv is the only source that carries them; walledai ships prompts only.
+    harm_pairs = load_advbench(ROOT / "data" / "advbench_harmful_behaviors.csv",
+                               seed=args.seed) if args.lambda_harm > 0 else []
     print(f"[p1b-A] task_train={len(task_train)} task_eval={len(task_eval)} "
           f"harmful={len(harmful)} benign={len(benign)}")
 
@@ -537,13 +563,25 @@ def main() -> None:
 
         opt.zero_grad(set_to_none=True)
         if args.attack_ensemble:
-            rp_a, wp_a, layers_a, _atag = _sample_attack(rng, len(model.model.layers))
-            overrides = _ablated_overrides(model, d, layers_a, rp_a, wp_a)
+            rp_a, wp_a, layers_a, alphas_a, _atag = _sample_attack(
+                rng, len(model.model.layers), args.attack_partial)
+            overrides = _ablated_overrides(model, d, layers_a, rp_a, wp_a, alphas_a)
         else:
             overrides = _ablated_overrides(model, d, layers, read_p, write_p)
         L_task = _lm_loss(model, tok, task_b, device)                            # clean useful on real text
         L_safe = _refusal_loss(model, tok, ref_b, device)                       # clean refuses
         ref_abl = _refusal_loss(model, tok, ref_b, device, overrides=overrides)  # ablated: should NOT refuse
+        # v9: the term v8 never had. v8's attacked-side loss only said "don't refuse"
+        # (L_uncensor) and "diverge on BENIGN" (gib_ce) -- nothing required the attacked
+        # model to be harmless, so Heretic satisfied both while complying coherently.
+        # High CE on the affirmative target = attacked model can't start complying either.
+        if args.lambda_harm > 0:
+            harm_abl = _refusal_loss(model, tok,
+                                     rng.sample(harm_pairs, min(args.refusal_batch, len(harm_pairs))),
+                                     device, overrides=overrides)
+            L_harm = torch.relu(args.harm_margin - harm_abl)
+        else:
+            harm_abl = L_harm = torch.zeros((), device=device)
         if args.gib_mode == "argmax":
             gib_ce = _argmax_divergence_loss(model, tok, rng.sample(benign, args.gib_gen_prompts),
                                              device, overrides, n_new=args.gib_gen_tokens)
@@ -581,8 +619,8 @@ def main() -> None:
         else:
             L_clean_gen = torch.zeros((), device=device)
         loss = (L_task + lam_safe_eff * L_safe + lam_gib_eff * L_gib
-                + args.lambda_uncensor * L_uncensor + args.lambda_reg * L_reg
-                + lam_clean_eff * L_clean_gen)
+                + args.lambda_uncensor * L_uncensor + args.lambda_harm * L_harm
+                + args.lambda_reg * L_reg + lam_clean_eff * L_clean_gen)
         loss.backward()
         # bf16 ablated-forward can spike to inf/NaN on some batches/seeds; clip, and
         # SKIP the step if loss or grad-norm is non-finite (don't poison the weights).
@@ -598,6 +636,7 @@ def main() -> None:
         m = {k: v.item() for k, v in {"loss": loss, "L_task": L_task, "L_safe": L_safe,
                                       "ref_abl": ref_abl, "gib_ce": gib_ce, "L_gib": L_gib,
                                       "L_uncensor": L_uncensor, "L_reg": L_reg,
+                                      "harm_abl": harm_abl, "L_harm": L_harm,
                                       "L_clean_gen": L_clean_gen}.items()}
         logger.event("step", {"step": step, **m})
 

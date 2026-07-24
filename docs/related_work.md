@@ -75,8 +75,60 @@ of them.** Do not write "survives adaptive attacks" anywhere in a paper draft, e
 one architecture — this needs to be the central adaptive-attack finding/limitation, stated
 plainly, not softened.
 
+## Abliteration-specific defenses (must-cite, must-baseline — added 2026-07-25)
+
+Two published defenses target our exact threat model and are **not yet run as baselines**.
+Both are simpler than ABL-v8 and a reviewer will ask why we did not just do them.
+
+- **ART — abliteration-resistant tuning** [Kuo, Yadav, Smith, *Open-Weight LLM Fine-Tuning
+  Defenses are Susceptible to Simple Attacks*, arXiv:2605.26526]. Simulates the worst-case
+  abliteration on the current parameters and does gradient ascent on harmful outputs; needs no
+  data beyond the existing alignment set. **This is our v9 idea-1 (harmful-side loss under
+  attack) plus idea-8 (inner-loop attack search), already published.** Our differentiator is
+  the *objective*, not the recipe: ART preserves refusal under attack (fortress), we destroy
+  capability with it (poison pill). Must be run on their protocol and must be diffed
+  explicitly in the intro, not just cited.
+- **Extended-refusal fine-tuning** [Shairah et al., *An Embarrassingly Simple Defense Against
+  LLM Abliteration Attacks*, arXiv:2505.19056]. Trains on richer refusals (neutral overview +
+  explicit refusal + ethical rationale) so the refusal signal spreads over several latent
+  dimensions; reports >90% refusal retained post-abliteration vs 13–21% for conventional
+  safety tuning. Trivially cheap. **Run it as a baseline** — "we beat a method that needs no
+  adversarial training" is a claim we currently cannot make.
+
+## Ancestors of the poison-pill framing (missing from the draft)
+
+- **Self-destructing models / MLAC** [Henderson et al., 2023, *Self-Destructing Models: Increasing
+  the Costs of Harmful Dual Uses of Foundation Models*]. Meta-learned adversarial censoring:
+  train so that adapting the model to a harmful task is *itself* hard (task blocking). This is
+  the closest conceptual ancestor to "make the tampered outcome useless" and predates TAR. Cite
+  it; position ABL-v8/v9 as the weight-surgery analogue (they block adaptation, we make a
+  successful rank-1 edit self-defeating).
+
+## Losses we should borrow from, and their known counters
+
+- **Circuit Breakers / representation rerouting** [Zou et al., 2024, arXiv:2406.04313]. On
+  harmful inputs, fine-tune so representations become orthogonal to the frozen model's
+  representations of the same inputs; `relu(cos_sim)` penalizes only positive similarity, plus
+  a benign retain loss. We currently cite CB only as *framing* (paper_tables_v1 Table 7) and
+  never used its loss. Applied in *attacked* space it is a candidate replacement for `gib_ce`
+  that never has to define "gibberish" in token space at all — which is precisely where
+  `gib_ce` failed (`docs/heretic_v8_2026_07_18.md`).
+- **Obfuscated activations** [arXiv:2412.09565]. The counter to the above: latent-space
+  defenses including CB fall to attacks that optimize to keep activations on-manifold. This is
+  the representation-space version of the coherence-constrained adaptive attacker we must build
+  and run ourselves before submission.
+- **SAE-based jailbreak mitigation** [arXiv:2602.12418]. Relevant to the unused SAE infra in
+  this repo (`data/features_safety.json`, Gemma Scope, `directions.py`).
+- **Multi-directional refusal ablation** [*On the Failure of Topic-Matched Contrast Baselines in
+  Multi-Directional Refusal Abliteration*, arXiv:2603.22061]. Directly relevant to the v9
+  idea-2 multi-direction/multi-layer training plan and to how an attacker estimates directions.
+
 <!-- TODO citations: Arditi 2024 (refusal direction); Qi 2023 (few-shot harmful FT);
 Tamirisa 2024 (TAR); Rosati 2024 (RepNoise); Huang 2024 (Vaccine); Li 2024 (WMDP/RMU);
 Sanyal 2025 (AntiDote, arXiv:2509.08000); Heretic/OBLITERATUS tool refs;
-TamperBench (criticalml-uw, arXiv:2602.06911). Verify exact AntiDote decoupling quote +
-attack-suite claim against camera-ready before submission. -->
+TamperBench (criticalml-uw, arXiv:2602.06911); Kuo/Yadav/Smith ART (arXiv:2605.26526);
+Shairah 2025 extended-refusal (arXiv:2505.19056); Henderson 2023 (MLAC/self-destructing);
+Zou 2024 (Circuit Breakers, arXiv:2406.04313); obfuscated activations (arXiv:2412.09565);
+SAE jailbreak mitigators (arXiv:2602.12418); multi-directional abliteration (arXiv:2603.22061).
+Verify exact AntiDote decoupling quote + attack-suite claim against camera-ready before
+submission; verify the >90% extended-refusal number and ART's protocol before claiming a beat. -->
