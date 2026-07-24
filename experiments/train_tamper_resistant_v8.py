@@ -48,6 +48,7 @@ MLP only across all layers (--train-scope mlp), batch 1. Bump scope if it fits.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import random
 import sys
@@ -261,6 +262,54 @@ def _argmax_divergence_loss(model, tok, prompts, device, overrides, n_new: int =
     return total / max(cnt, 1)
 
 
+def _reroute_loss(model, tok, pairs, device, W0, overrides, layers, max_len: int = 320):
+    """v9 option E: Circuit-Breakers representation rerouting, applied under ATTACK.
+
+    For each (harmful prompt, real harmful completion): teacher-force both the ABLATED
+    model (overrides) and the FROZEN BASE (W0) on the same text, and penalise positive
+    cosine similarity between their hidden states over *layers*. Want LOW: after the
+    attack the model must not process harmful content the way the base does.
+
+    Why this and not another cross-entropy: every reference-text CE tried (gib_ce,
+    harm_ce on the affirmative prefix, harm_ce on mined completions) is blind where it
+    matters, because likelihood cannot measure coherence — degenerate repetition is the
+    most likely text there is. This is a representation-space target, so it has no
+    reference string to saturate against. relu() so only positive similarity is pushed
+    (orthogonal is enough; anti-aligned is not rewarded further) — Zou et al. 2024,
+    arXiv:2406.04313.
+
+    NOTE: this does NOT replace gib_ce. gib_ce does two jobs — the gibberish wall AND
+    the benign capability crater (ARC -25%, MMLU -32%, GSM8K -95%) that is the MAD
+    headline. Rerouting only touches harmful-input processing and says nothing about
+    GSM8K. E supplements, never substitutes.
+    """
+    total = torch.zeros((), device=device)
+    cnt = 0
+    for prompt, completion in pairs:
+        prefix = apply_chat_template_no_think(
+            tok, [{"role": "user", "content": prompt}],
+            tokenize=False, add_generation_prompt=True,
+        )
+        enc = tok(prefix + completion, return_tensors="pt",
+                  truncation=True, max_length=max_len).to(device)
+        plen = min(tok(prefix, return_tensors="pt")["input_ids"].shape[1],
+                   enc["input_ids"].shape[1] - 1)
+        h_att = functional_call(model, overrides, args=(),
+                                kwargs={**enc, "output_hidden_states": True}).hidden_states
+        with torch.no_grad():
+            h_ref = functional_call(model, W0, args=(),
+                                    kwargs={**enc, "output_hidden_states": True}).hidden_states
+        for li in layers:
+            a = h_att[li][:, plen:, :].float()
+            b = h_ref[li][:, plen:, :].float()
+            if a.shape[1] == 0:
+                continue
+            cos = torch.nn.functional.cosine_similarity(a, b, dim=-1)
+            total = total + torch.relu(cos).mean()
+            cnt += 1
+    return total / max(cnt, 1)
+
+
 def _clean_gen_kl_loss(model, tok, prompts, device, W0, n_new: int = 32) -> torch.Tensor:
     """GENERATIVE clean-fidelity anchor (v8). For each benign prompt: greedily
     generate the CLEAN (live) model's continuation, then teacher-force both the CLEAN
@@ -439,6 +488,16 @@ def main() -> None:
                     help="v9 idea-1: attacked model must not COMPLY either (CE on AdvBench "
                          "affirmative targets under attack >= --harm-margin). 0 = v8 behaviour.")
     ap.add_argument("--harm-margin", type=float, default=4.0)
+    ap.add_argument("--lambda-rr", type=float, default=0.0,
+                    help="v9 option E: representation rerouting under attack (Circuit "
+                         "Breakers, arXiv:2406.04313). Needs --harm-targets. 0 = off. "
+                         "SUPPLEMENTS gib_ce, never replaces it -- gib_ce also carries the "
+                         "benign capability crater, which rerouting does not touch.")
+    ap.add_argument("--rr-layers", default="last_half",
+                    help="last_half | all | comma/range, e.g. '18-26'")
+    ap.add_argument("--harm-targets", default=None,
+                    help="{goal: [real harmful completion, ...]} from mine_harm_targets.py; "
+                         "used by --lambda-rr as the harmful content to reroute on")
     ap.add_argument("--attack-per-layer", action="store_true",
                     help="v9 idea-2: also sample per-layer adaptive ablation (each layer loses "
                          "its OWN refusal direction) in --attack-ensemble. All directions come "
@@ -547,6 +606,18 @@ def main() -> None:
     # AdvBench csv is the only source that carries them; walledai ships prompts only.
     harm_pairs = load_advbench(ROOT / "data" / "advbench_harmful_behaviors.csv",
                                seed=args.seed) if args.lambda_harm > 0 else []
+    rr_pairs = []
+    if args.lambda_rr > 0:
+        if not args.harm_targets:
+            raise SystemExit("--lambda-rr needs --harm-targets (see mine_harm_targets.py)")
+        _mined = json.loads((ROOT / args.harm_targets).read_text())
+        rr_pairs = [(g, c) for g, cs in _mined.items() for c in cs]
+        n_all = len(model.model.layers)
+        rr_layers = (list(range(n_all // 2, n_all)) if args.rr_layers == "last_half"
+                     else _parse_layers(args.rr_layers, n_all))
+        # hidden_states is [emb, layer0_out, ...] so layer i lives at index i+1
+        rr_layers = [li + 1 for li in rr_layers]
+        print(f"[p1b-A] reroute: {len(rr_pairs)} harmful pairs, layers {args.rr_layers}")
     print(f"[p1b-A] task_train={len(task_train)} task_eval={len(task_eval)} "
           f"harmful={len(harmful)} benign={len(benign)}")
 
@@ -613,6 +684,12 @@ def main() -> None:
             L_harm = torch.relu(args.harm_margin - harm_abl)
         else:
             harm_abl = L_harm = torch.zeros((), device=device)
+        if args.lambda_rr > 0:
+            L_rr = _reroute_loss(model, tok, rng.sample(rr_pairs, min(2, len(rr_pairs))),
+                                 device, W0, overrides, rr_layers)
+            L_rr = torch.nan_to_num(L_rr, nan=0.0, posinf=1.0, neginf=0.0)
+        else:
+            L_rr = torch.zeros((), device=device)
         if args.gib_mode == "argmax":
             gib_ce = _argmax_divergence_loss(model, tok, rng.sample(benign, args.gib_gen_prompts),
                                              device, overrides, n_new=args.gib_gen_tokens)
@@ -651,6 +728,7 @@ def main() -> None:
             L_clean_gen = torch.zeros((), device=device)
         loss = (L_task + lam_safe_eff * L_safe + lam_gib_eff * L_gib
                 + args.lambda_uncensor * L_uncensor + args.lambda_harm * L_harm
+                + args.lambda_rr * L_rr
                 + args.lambda_reg * L_reg + lam_clean_eff * L_clean_gen)
         loss.backward()
         # bf16 ablated-forward can spike to inf/NaN on some batches/seeds; clip, and
@@ -667,7 +745,7 @@ def main() -> None:
         m = {k: v.item() for k, v in {"loss": loss, "L_task": L_task, "L_safe": L_safe,
                                       "ref_abl": ref_abl, "gib_ce": gib_ce, "L_gib": L_gib,
                                       "L_uncensor": L_uncensor, "L_reg": L_reg,
-                                      "harm_abl": harm_abl, "L_harm": L_harm,
+                                      "harm_abl": harm_abl, "L_harm": L_harm, "L_rr": L_rr,
                                       "L_clean_gen": L_clean_gen}.items()}
         logger.event("step", {"step": step, **m})
 
