@@ -66,11 +66,23 @@ def main() -> None:
                          "anything reported, per CLAUDE.md.")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--device", default=None)
+    ap.add_argument("--harm-targets", default=None,
+                    help="option A: {goal: [real harmful completion, ...]} from "
+                         "mine_harm_targets.py. Replaces AdvBench's affirmative prefix, "
+                         "which saturates (it is a near-copy of the prompt).")
     ap.add_argument("--out", default="results/tier0_gate.json")
     args = ap.parse_args()
 
     harm_pairs = load_advbench(ROOT / "data" / "advbench_harmful_behaviors.csv",
                                n=None if args.n_pairs < 0 else args.n_pairs, seed=args.seed)
+    if args.harm_targets:
+        mined = json.loads((ROOT / args.harm_targets).read_text())
+        # one row per (goal, completion); goals with no mined completion are dropped —
+        # scoring them on the prefix would mix two different quantities in one mean.
+        harm_pairs = [(g, c) for g, _ in harm_pairs for c in mined.get(g, [])]
+        if not harm_pairs:
+            ap.error(f"no mined completions matched the AdvBench goals in {args.harm_targets}")
+        print(f"[tier0] harm targets = mined completions ({len(harm_pairs)} pairs)")
     # Same prompts on both axes so harm_ce and ref_ce are directly comparable.
     ref_pairs = [(g, REFUSAL_RESPONSES[i % len(REFUSAL_RESPONSES)])
                  for i, (g, _) in enumerate(harm_pairs)]
