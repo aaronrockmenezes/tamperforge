@@ -62,6 +62,8 @@ def main() -> None:
     ap.add_argument("--vllm-dtype", default="bfloat16")
     ap.add_argument("--vllm-tensor-parallel-size", type=int, default=1)
     ap.add_argument("--vllm-gpu-memory-utilization", type=float, default=0.9)
+    ap.add_argument("--vllm-max-num-seqs", type=int, default=None,
+                    help="Cap on concurrent sequences vLLM schedules; None = vLLM auto-picks from KV cache budget.")
     ap.add_argument("--qwen-thinking", choices=["default", "off", "on"], default="default",
                     help="Qwen3 chat-template mode for vLLM safety generation. "
                          "Use 'on' for reasoning-mode evals; 'off' for no-thinking.")
@@ -120,6 +122,7 @@ def main() -> None:
             tensor_parallel_size=args.vllm_tensor_parallel_size,
             gpu_memory_utilization=args.vllm_gpu_memory_utilization,
             batch_size=args.vllm_batch_size,
+            max_num_seqs=args.vllm_max_num_seqs,
             qwen_thinking=args.qwen_thinking,
             temperature=args.vllm_temperature,
             top_p=args.vllm_top_p,

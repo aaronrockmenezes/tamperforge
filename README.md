@@ -35,7 +35,7 @@ Read **`CLAUDE.md`** + the live devlog **`docs/devlog_2026_07_17.md`** first (ne
 most important), then **`docs/handoff_2026_07_03_MASTER.md`**, **`MEMORY.md`**,
 **`THREAT_MODEL.md`**, **`ROADMAP.md`**, and the latest results: `docs/devlog_2026_07_04.md`
 (ABL-v8, 3/3 architectures), `docs/heretic_v8_2026_07_18.md` (Heretic breaks v8 on
-Llama), `full_eval_matrices/*` (full matrices), `docs/findings_external_benches_ifeval_2026_07_03.md`.
+all three), `full_eval_matrices/*` (full matrices), `docs/findings_external_benches_ifeval_2026_07_03.md`.
 
 ## Status
 
@@ -47,6 +47,13 @@ FT-resistance is closed negative (do not reopen without a new mechanism). Eval h
 `usefulness_label`, 5-bench harm suite, lm_eval ARC/MMLU/IFEval/GSM8K, over-refusal suite) all
 built and run at full datasets. Do not claim "survives adaptive attacks" as a blanket statement.
 Latest: `docs/devlog_2026_07_17.md`, `docs/heretic_v8_2026_07_18.md`.
+
+## Source and archive
+
+This repo is the compact source tree. The sibling `../tamperforge-archive` preserves the
+pre-cleanup raw generations, judgments, events, and historical code/docs. Source `results/`
+keeps manifests and summaries only. Checkpoint payloads are not stored locally; retained
+artifacts live in the private HF repo `aaronrockmenezes/tamperforge`.
 
 ## Install
 
@@ -67,12 +74,13 @@ src/tamperforge/      # the library (source of truth)
   data.py             # AdvBench loader (+ load_advbench_prompts: tuple-gotcha-safe)
   eval/               # safety gen, OpenRouter judge, ARC/MMLU/PPL, logging
 experiments/          # thin CLIs: baseline, judge, ablation, training, P1
-configs/              # model + experiment configs (no CLI flag soup)
+configs/              # legacy config; active experiment CLIs use flags
 data/                 # advbench csv, features_safety.json
-results/              # JSON outputs
-outputs/              # local checkpoints (gitignored model weights)
+results/              # compact manifests and summaries only
+outputs/              # metadata/config only; checkpoint payloads are remote
 docs/results_*.md     # human-readable result snapshots
 docs/common_issues.md # known infra/eval failures and fixes
+../tamperforge-archive/ # raw runs and historical code/docs
 ```
 
 ## Core facts

@@ -1,3 +1,0 @@
-{"time": 1782940807.913929, "event": "step", "step": 1, "eta": 0.0002, "inner_demos": 4, "inner_epochs": 2, "frac_comply": 0.0, "loss": 4.262446403503418, "L_task": 2.22235369682312, "L_safe": 1.0129581689834595, "L_tamper": 1.0271345376968384, "L_reg": 0.0}
-{"time": 1782940811.5041094, "event": "step", "step": 2, "eta": 0.0002, "inner_demos": 4, "inner_epochs": 2, "frac_comply": 0.5, "loss": 10.840624809265137, "L_task": 1.7687419652938843, "L_safe": 0.824787437915802, "L_tamper": 8.247095108032227, "L_reg": 4.452886059880257e-09}
-{"time": 1782940813.6760204, "event": "eval", "step": 2, "frac_comply": 0.5}

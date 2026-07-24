@@ -85,13 +85,13 @@ and optional `judgments.jsonl`.
   harmful output — a usable model. Prose-PPL rises but generations stay fluent
   (prose-PPL ≠ generation coherence). So the adapter proves "uncensoring costs
   capability" but does not yet yield "uncensoring gives a useless model." That
-  gap is P1b's job. Full curve + tables in `docs/archive/results_2026_07_01.md`.
+  gap is P1b's job. Full curve + tables in `../tamperforge-archive/docs/archive/results_2026_07_01.md`.
 
 ---
 
 ## P1b — From removable adapter to un-excisable, gibberish-on-attack  🟢 ROBUST POC PASS (A/v7)
 
-Two prototype weaknesses to close (see `docs/archive/p1b_plan.md`):
+Two prototype weaknesses to close (see `../tamperforge-archive/docs/archive/p1b_plan.md`):
 1. adapter is a removable block (attacker deletes it) → fold into weights (B), or
    train the base directly (A).
 2. attack yields coherent uncensored output → make ablation collapse GENERATION,
@@ -127,13 +127,13 @@ Iteration log (2026-07-01):
   Same attack: 0.844 ASR on base → 0.032 on trained (~26×). Ablating the trained
   model yields non-harmful gibberish + ARC drop; clean product ≈ free (ARC 0.362
   vs base 0.366). Checkpoint `outputs/tamper_resistant_p1b_v6.pt` (git+HF). Detail
-  in `docs/archive/results_2026_07_01.md` / devlog part 3.
+  in `../tamperforge-archive/docs/archive/results_2026_07_01.md` / devlog part 3.
 - **v7 (`--attack-ensemble`): ROBUST POC PASS.** Randomizing the simulated attack
   (scope × layers × direction prompts) each step closed every v6 leak — mlp-only
   0.22→0.013, L13-25 0.11→0.004, seed7 0.11→0.000, matched 0.004 — clean product
   intact (ASR 0.013, ARC 0.364, gen parse 1.0). Attacking v7 collapses ARC to
   random (0.246) while attacking base keeps it (0.355): MAD on both axes. Full
-  battery + tables in `docs/archive/results_2026_07_01.md`, `docs/archive/attack_battery.md`.
+  battery + tables in `../tamperforge-archive/docs/archive/results_2026_07_01.md`, `../tamperforge-archive/docs/archive/attack_battery.md`.
 - **FULL-DATA BATTERY + CAPABILITY (2026-07-02): ABL-v7 confirmed strong & general.**
   4 conditions × {prefill 520, HarmBench 200, BeaverTails 1483} judged + lm_eval
   ARC(full)/MMLU(12-topic). Abliterating ABL-v7 → ~0 ASR / ~100% gibberish across all
@@ -150,9 +150,9 @@ Iteration log (2026-07-01):
   5. Ablate which of {argmax, attention scope, λ_uncensor, ensemble} is load-bearing.
 
 **B — fold adapter into FFN (cheap, un-block).** `tamperforge.GatedSafetyAdapter`
-(SwiGLU, foldable) + `fold_gated_adapter_into_ffn` + `verify_fold`. Ready; needs a
-gated-adapter retrain. Removes the discrete block but base stays coherent, so B
-alone won't give gibberish — pairs with A.
+(SwiGLU) + `fold_gated_adapter_into_ffn` + `verify_fold`. Incomplete, inactive prototype:
+model-config bookkeeping is unfinished and there are no runtime callers. Do not present it
+as ready without a reload-safe implementation and one equivalence check.
 
 **C — weight-space rotation (geometric sanity).** Rotate the empirical refusal
 direction into the top capability singular directions so ablating it deletes
@@ -193,7 +193,9 @@ Replace keyword refusal + tiny-n with rigorous eval. Build as a reusable module
 
 All later numbers (and any re-run of P1/P2) use this harness.
 
-**Current harness:** `src/tamperforge/eval/` and runbook `docs/eval_runbook.md`.
+**Current harness:** `src/tamperforge/eval/`; operational fixes live in
+`docs/common_issues.md`. The superseded runbook is archived at
+`../tamperforge-archive/docs/archive/eval_runbook.md`.
 
 ---
 
@@ -203,23 +205,23 @@ All later numbers (and any re-run of P1/P2) use this harness.
 demo restores coherent-harmful (judge ASR 0.013→0.740), tracking the base control
 (→0.800) at every K∈{1,5,10,25}. Abliteration-robust ≠ FT-robust: the MAD trap
 only fires on ablation, FT retrains around it. Table in
-`docs/archive/results_2026_07_01.md` (P4 section).
+`../tamperforge-archive/docs/archive/results_2026_07_01.md` (P4 section).
 
 **Now the active thread (user priority): make the method FT-resistant.** Not
 tamper-proof — shift the frontier so it doesn't break at K=1. Plan in
-`docs/archive/ft_resistance_plan.md`. `experiments/archive/ft/train_ft_resistant.py` (TAR-style,
+`../tamperforge-archive/docs/archive/ft_resistance_plan.md`. `../tamperforge-archive/experiments/archive/ft/train_ft_resistant.py` (TAR-style,
 first-order inner-FT sim, warm-start v7).
 
 - **v2 (2026-07-02): PARTIAL WIN.** Holds K=1 fully (ASR 0.000, coherent refusals;
   v7/base ~0.75) but breaks at K≥5 (~0.66 = base). Frontier moved 1→5 demos — a
   1-shot moat. Cause: 1-step inner sim too weak (`L_tamper=0` all run), only
-  hardened the 1-step basin. Table in `docs/archive/results_2026_07_01.md`.
+  hardened the 1-step basin. Table in `../tamperforge-archive/docs/archive/results_2026_07_01.md`.
 - **v3 (2026-07-02): strong inner attack, SAME 1-shot moat.** 24-step first-order
   inner FT made `L_tamper` active (converged min-max, not v2's trivial 0), but the
   sweep is v3≈v2: K=1 held (0.005), K≥5 broke (~0.65=base). Root cause = objective
   flaw: `comply_after` is teacher-forced CE, which doesn't stop post-FT GENERATION
   from complying (4th recurrence of proxy≠generation). Table + diagnosis in
-  `docs/archive/results_2026_07_01.md`.
+  `../tamperforge-archive/docs/archive/results_2026_07_01.md`.
 - **LOCKED FINDING (v2+v3): TAR-via-comply-CE = 1-shot moat only** (K=1 0.74→0.00,
   nothing past K=5). Consistent with TAR budget-limited-robustness.
 - **v4 (deferred, real redesign, NOT a knob):** meta-objective on POST-FT
@@ -241,7 +243,7 @@ OBLITERATUS (P2) deferred behind this.
   resistance from a lobotomy (harmAct-alone ranks the broken model as "best defense").
 - **FT frontier references (full 520/512, judged):** base ≈ ABL-v7 both break to ~0.83
   harmful_actionable by K=25, COHERENT (gibberish ~0). ABL-v7 gives zero FT-resistance.
-- **FTR-TAR (`experiments/archive/ft/train_ft_resistant_tar.py`), RUNNING NOW.** Faithful TAR fixing
+- **FTR-TAR (`../tamperforge-archive/experiments/archive/ft/train_ft_resistant_tar.py`), FAILED/CLOSED.** Faithful TAR tested
   v6: RETAIN = KL(frozen-ABL-v7 || current) on benign (hard capability anchor v6 lacked)
   + BOUNDED tamper-resistance. 2 configs (λ_retain 4 & 8). **STOP RULE (from Phase A): if
   it doesn't hold to K in the dozens at ARC/MMLU ≥ 0.30 within 3–5 runs → KILL FT, anchor
@@ -267,14 +269,11 @@ where the "general framework" claim gets earned.
 - Retrain `safety_adapter_v3_lora_robust.pt` (W_out_align=0.257, broken).
 - Emotion-steering Gradio app (separate thread, complete research).
 
-## Codebase cleanup (do AFTER P1 — don't polish an unverified thesis)
+## Codebase status after archival audit (2026-07-18)
 
-- `setup.sh` — assert `env_ml`, check HF auth, verify deps, smoke-test base load.
-- Device helper (cuda/mps/cpu) in package — one place, not N scripts.
-- Consolidate duplicated abliteration/refusal logic into the package; scripts
-  become thin CLIs (revises the old "standalone scripts" rule — a framework
-  needs a source-of-truth package).
-- Config-driven hyperparams (`configs/*.yaml`), kill CLI flag soup.
-- `ruff` + pinned seeds.
-- Keep generated local ablated checkpoints under `outputs/` with
-  `abliteration_meta.json`.
+- Compact source/archive split complete; local checkpoint payloads removed.
+- v7 trainer and launcher files intentionally retained unchanged.
+- Before new reported evaluations: fix same-run-id input deletion, make judge/grader
+  failures explicit, and replace the generative MMLU first-letter parser.
+- Add one small runnable check for each corrected non-trivial path. No broader refactor
+  until those metric-integrity failures are closed.

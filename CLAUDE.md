@@ -1,7 +1,7 @@
 # CLAUDE.md — read first
 
 **Current state lives in `docs/devlog_2026_07_17.md` (Qwen3-8B scale attempt, TamperBench
-third-party validation, Heretic cracks Llama v8 — the newest and most important finding).
+third-party validation, Heretic cracks v8 on all three architectures — the newest finding).
 Read that first**, then `docs/handoff_2026_07_03_MASTER.md` (multi-model + attack-robustness
 campaign), `docs/findings_multimodel_adaptive_2026_07_02.md`, `MEMORY.md`, then this file for
 durable conventions. Older text below the line is historical (P0/P1) — do not act on it.
@@ -33,7 +33,7 @@ Model: `google/gemma-3-1b-it`.
   `tamper_resistant_qwen3_0p6b_v8.pt`, `tamper_resistant_llama32_1b_v8_best.pt` (s425 pick).
 - **FTR-v{n}** = fine-tune-resistance line, `outputs/ft_resistant_p4_v{n}.pt` (v2–v6).
 - **FTR-TAR** = faithful-TAR FT attempt (successor to FTR-v6; "v7" retired to avoid
-  ABL-v7 collision). `experiments/archive/ft/train_ft_resistant_tar.py`, stem `ft_resistant_p4_tar`.
+  ABL-v7 collision). `../tamperforge-archive/experiments/archive/ft/train_ft_resistant_tar.py`, stem `ft_resistant_p4_tar`.
 
 ## Headline results (as of 2026-07-02, FULL datasets + lm_eval capability)
 - **ABL-v7 works, generalizes, AND craters attacker capability:** abliterating it ->
@@ -67,6 +67,10 @@ Model: `google/gemma-3-1b-it`.
   runs tmux himself.
 - **Never vendor OBLITERATUS/AGPL code** — call it as a separate attacker harness.
 - HF repo is PRIVATE (uncensored weights, dual-use).
+- Source `results/` keeps manifests/summaries only; raw run artifacts and historical trees
+  live in `../tamperforge-archive`. Do not edit or remove retained v7 files.
+- No local checkpoint payloads remain. Treat private HF as artifact storage; do not run the
+  stale `scripts/push_to_hf.py` uploader.
 - Judge locally via conda: `~/miniforge3/envs/env_ml/bin/python` (NOT a venv path).
 
 ## Infra
@@ -83,11 +87,11 @@ Model: `google/gemma-3-1b-it`.
   via pip, no patches needed.
 - Box git = private HTTPS, needs a PAT in the remote to push. scp code / pull results
   to local + push from there if box git is uncooperative.
-- Backups: GitHub (code/docs/results), private HF `aaronrockmenezes/tamperforge`
-  (.pt + model dirs, `scripts/push_to_hf.py`).
+- Backups: GitHub (code/docs/compact results), sibling `../tamperforge-archive` (raw and
+  historical files), private HF `aaronrockmenezes/tamperforge` (retained model artifacts).
 
 ## Key scripts
-- `experiments/archive/ft/train_ft_resistant_v6.py` — FTR Lever-2 (LoRA inner + judge gate + FO-MAML).
+- `../tamperforge-archive/experiments/archive/ft/train_ft_resistant_v6.py` — FTR Lever-2 (LoRA inner + judge gate + FO-MAML).
 - `experiments/ft_attack.py` — the FT attack (validation) + `--n-shots K` sweep.
 - `experiments/prefill_attack.py`, `p0_baseline_eval.py --prompt-source {advbench,harmbench,beavertails}`.
 - `experiments/judge_generations.py`, `experiments/save_p1b_checkpoint.py` (materialize .pt [+attack]).
@@ -95,6 +99,6 @@ Model: `google/gemma-3-1b-it`.
 ---
 # HISTORICAL (P0/P1 era — do not act on)
 
-The original P0/P1 handoff text is preserved in git history and `docs/archive/HANDOFF_p0p1_historical.md`. It
+The original P0/P1 handoff text is preserved in git history and `../tamperforge-archive/docs/archive/HANDOFF_p0p1_historical.md`. It
 predates the ABL/FTR split, the abliteration battery, and the FT work. Ignore its
 "immediate next steps."

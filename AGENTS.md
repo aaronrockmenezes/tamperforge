@@ -2,12 +2,14 @@
 
 > **CURRENT STATE (2026-07-18): read `docs/devlog_2026_07_17.md` + `MEMORY.md`
 > first.** The text below is durable project context (thesis, threat model,
-> structure). Live status — v8 = 3/3 architectures, but Heretic (adaptive attack) breaks
-> the wall on Llama-3.2-1B, TamperBench third-party validation in progress, Qwen3-8B scale
+> structure). Live status — v8 = 3/3 architectures against naive rank-1, but Heretic
+> (adaptive attack) breaks the wall on all three, TamperBench validation in progress, Qwen3-8B scale
 > attempt parked — is in the devlog + `CLAUDE.md`; those win on conflict.
+> Source is intentionally compact: raw run artifacts and historical code/docs live in the
+> sibling `../tamperforge-archive`; local checkpoint payloads were removed from both trees.
 
 Read this before touching tamperforge. If anything conflicts with older docs,
-this file, `HANDOFF.md`, and `CLAUDE.md` win.
+this file, `CLAUDE.md`, and `docs/handoff_2026_07_03_MASTER.md` win.
 
 ## Project
 
@@ -35,8 +37,8 @@ abliteration raises ASR only by damaging capability.
   EleutherAI `lm-eval --model vllm` ARC-Challenge, not the small custom ARC
   loop. P1 still uses internal Transformers loops because the adapter is a
   forward hook.
-- Keep P1/P2/P3 result artifacts under `results/<run_id>/` with raw generations
-  and summaries.
+- Keep only `manifest.json` and `summary.json` under source `results/<run_id>/`.
+  Raw generations, judgments, and events belong in `../tamperforge-archive/results/`.
 - Use `DeepSeek V4 Flash` (`deepseek/deepseek-v4-flash`) as the default paid
   OpenRouter judge. The request must disable OpenRouter reasoning; see
   `src/tamperforge/eval/judge.py` and `docs/common_issues.md`.
@@ -60,19 +62,13 @@ Vast server:
 - RTX 5090 is acceptable only if `nvidia-smi` reports host CUDA 12.9+.
   RTX 5090 + host CUDA 12.8 is a known bad vLLM/FlashAttention combo.
 
-## Existing local checkpoints
+## Checkpoint storage
 
-These were generated in tamperforge and are HF-compatible local model dirs:
-
-- `outputs/gemma3_1b_it_abliterated_l13_sae`
-  - one-time L13-only legacy comparison.
-  - Smoke result exists: `results/smoke_l13_ablated_8tok/`.
-- `outputs/gemma3_1b_it_abliterated_all_sae`
-  - all-layer SAE ablation.
-  - Legacy mechanistic comparison only. Do not use as P1 proof.
-
-Both use SAE feature directions from `data/features_safety.json`. See each
-directory's `abliteration_meta.json`.
+There are no local `.pt`, `.bin`, or `.safetensors` payloads in either source or
+`../tamperforge-archive`. Use the private HF repo `aaronrockmenezes/tamperforge` for
+retained artifacts. Do not run `scripts/push_to_hf.py`; its artifact list and model card
+are stale. `outputs/` is metadata/config only unless a new local run explicitly creates
+a temporary checkpoint.
 
 ## Server plan
 
@@ -88,7 +84,7 @@ Order:
 5. Run `lm-eval` ARC-Challenge 25-shot full for base + two DavidAU HF models.
 6. Then create local empirical all-layer ablated model, train adapter, and run P1.
 
-Current result summary: `docs/results_2026_07_01.md`.
+Historical result summary: `../tamperforge-archive/docs/archive/results_2026_07_01.md`.
 Common server/eval failure fixes: `docs/common_issues.md`.
 
 Safety generation command shape:
@@ -163,7 +159,7 @@ attack destroys capability, but so does ablating the same number of *random*
 directions (`base_ablated_randN`) — a direction-count confound. The open
 question is the rank sweep (smallest k that removes safety; entangled-k vs
 random-k capability). See `TODO.md` and the P1 section of
-`docs/results_2026_07_01.md`. Do not claim P1 pass/fail until the sweep runs.
+`../tamperforge-archive/docs/archive/results_2026_07_01.md`. Do not claim P1 pass/fail until the sweep runs.
 
 ## Current verified results
 
@@ -193,10 +189,10 @@ Flash, post-adjudication parse_failures=0):
 | extreme | 0.3447 | 0.3746 | 0.082 | 0.896 |
 
 Runs: `results/judge_{base,hf_heretic,hf_extreme}_advbench500_w14/`. Full table +
-P1 analysis in `docs/results_2026_07_01.md`.
+P1 analysis in `../tamperforge-archive/docs/archive/results_2026_07_01.md`.
 
 ## Git/worktree caution
 
-There are many new result dirs and scripts from the current work. Do not delete
-or revert user-visible artifacts unless explicitly asked. `outputs/*.safetensors`
-and `*.pt` are gitignored by design.
+The archive/cleanup worktree is intentionally large and uncommitted. Do not restore
+archived raw results or historical trees into source. Do not edit or remove the retained
+v7 trainer/launcher files without explicit instruction.

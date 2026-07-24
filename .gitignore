@@ -14,9 +14,12 @@ dist/
 abliterated_*/
 wandb/
 
-# Results: keep small JSON in git, ignore bulky dumps
-results/**/*.bin
-results/**/*.npz
+# Results: keep only compact manifests and summaries in source
+results/**
+!results/**/
+!results/**/manifest.json
+!results/**/summary.json
+!results/.gitkeep
 
 # Env / OS
 .env

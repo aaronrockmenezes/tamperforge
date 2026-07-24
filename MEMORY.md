@@ -1,8 +1,14 @@
 # tamperforge — session memory / handoff index
 
 > Repo-local state index. Updated 2026-07-18. Read `docs/devlog_2026_07_17.md` first (newest,
-> most important: Heretic breaks ABL-v8 on Llama), then `docs/handoff_2026_07_03_MASTER.md`
+> most important: Heretic breaks ABL-v8 on all three architectures), then `docs/handoff_2026_07_03_MASTER.md`
 > (multi-model + attack-robustness campaign) for the full prior state, `CLAUDE.md` for conventions.
+
+## Repository storage boundary (2026-07-18)
+- This repo is the compact source tree: `results/` retains manifests/summaries only.
+- `../tamperforge-archive` preserves raw run artifacts and historical code/docs.
+- No local checkpoint payloads remain in either tree; retained artifacts are on private HF.
+- Retained v7 source/launcher files are protected from cleanup and should remain unchanged.
 
 ## Thread 2 — Scale attempt + third-party validation + adaptive-attack crack (2026-07-17/18, `docs/devlog_2026_07_17.md`)
 - v8 = 3/3 architectures proven as of 2026-07-04 (gemma/Qwen/Llama), see `devlog_2026_07_04.md`.
@@ -26,8 +32,9 @@
   per-arch footnote.
 
 ## Naming (version lines; DON'T conflate)
-- **ABL-v{n}** = abliteration line, `outputs/tamper_resistant_p1b_v{n}.pt`. ABL-v7 =
-  product. Dirs: `outputs/abl_v7_hf` (clean), `outputs/abl_v7_hf_attacked` (attacked).
+- **ABL-v{n}** = abliteration line. ABL-v8 is current; ABL-v7 is the retained prior product.
+  Historical artifact names such as `tamper_resistant_p1b_v7.pt` now refer to private-HF assets,
+  not local payloads.
 - **FTR-v{n}** = fine-tune-resistance line, `outputs/ft_resistant_p4_v{n}.pt` (v2–v6).
 - **FTR-TAR** = faithful-TAR FT-resistance attempt (successor to FTR-v6; dropped "v7" to
   avoid ABL-v7 collision). `train_ft_resistant_tar.py`, stem `ft_resistant_p4_tar`.
@@ -115,7 +122,7 @@ FULL-DATA 2x2x3 judge battery + lm_eval capability, done 2026-07-02
 Anchor: **abliteration-resistance + MAD mechanism, generalizing off-distribution**;
 FT = characterized cost-frontier (not solved); honest clean-coherence-cost limitation.
 Title dir: "Cheap Abliteration of Open-Weight LLM Safeguards Can Be Made
-Capability-Destructive." Full plan: `docs/archive/critiques.md`, `docs/archive/next_steps_2026_07_02.md`.
+Capability-Destructive." Full plan: `../tamperforge-archive/docs/archive/critiques.md`, `../tamperforge-archive/docs/archive/next_steps_2026_07_02.md`.
 
 ## Infra (details in CLAUDE.md / handoff_v2)
 - 4090 `vast_tamperforge` (vLLM works) = eval box. 5090x2 `tamperforge_5090x2`

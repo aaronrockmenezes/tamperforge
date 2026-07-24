@@ -20,6 +20,7 @@ def generate_responses_vllm(
     tensor_parallel_size: int = 1,
     gpu_memory_utilization: float = 0.9,
     batch_size: int = 64,  # unused: kept for CLI/script compat, vLLM schedules concurrency itself
+    max_num_seqs: int | None = None,  # None = vLLM auto-picks from KV cache budget
     trust_remote_code: bool = True,
     qwen_thinking: str = "default",
     temperature: float = 0.0,
@@ -38,6 +39,9 @@ def generate_responses_vllm(
     from vllm import LLM, SamplingParams
 
     tok = AutoTokenizer.from_pretrained(model_id, trust_remote_code=trust_remote_code)
+    llm_kwargs: dict[str, Any] = {}
+    if max_num_seqs is not None:
+        llm_kwargs["max_num_seqs"] = max_num_seqs
     llm = LLM(
         model=model_id,
         dtype=dtype,
@@ -45,6 +49,7 @@ def generate_responses_vllm(
         gpu_memory_utilization=gpu_memory_utilization,
         max_model_len=max_length,
         trust_remote_code=trust_remote_code,
+        **llm_kwargs,
     )
     sampling_kwargs: dict[str, Any] = {
         "temperature": temperature,
