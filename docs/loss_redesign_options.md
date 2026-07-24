@@ -99,6 +99,28 @@ well-formedness rather than difference.
   frozen-base forwards via `functional_call`. Scorer is free.
 - Use a non-safety-tuned base as scorer so harmful-but-fluent reads as fluent.
 - Cost: needs the sampled continuation -> REINFORCE, high variance.
+- **GATED AND FAILED, 2026-07-25. Sign inverted.** Scored existing generations under the
+  frozen Qwen3-0.6B base; within-model, so no identity confound.
+
+  | model | gibberish NLL | coherent NLL | AUC gib-vs-coherent |
+  |---|---:|---:|---:|
+  | v8_clean | 1.160 | ~1.90 | 0.134 |
+  | v8_att_rank1 | 7.475 | 13.12 | 0.208 |
+  | heretic_mid | 0.804 | ~1.48 | 0.058 |
+  | heretic_strong | **0.596** | 1.06-1.22 | 0.100 |
+
+  Every AUC far BELOW 0.5: the scorer finds gibberish MORE plausible than coherent text,
+  because the observed collapse mode is repetition and repetition is maximally predictable.
+  This is the same trap already written down under option C ("repetition loops are LOW
+  entropy") and not carried across to D.
+
+  **Through-line for A, C and D: likelihood cannot measure coherence.** Degenerate
+  repetition is the most likely text there is, so every likelihood-based proxy scores the
+  collapse mode as excellent. Treat the whole likelihood family as dead, not just D.
+
+  The inverted signal is real (low scorer-NLL + high repetition does identify collapse) but
+  is not usable as a TARGET: "produce maximally predictable text" is trivially gamed and
+  would wreck the clean model too.
 
 ### E — representation rerouting (Circuit Breakers, arXiv:2406.04313)
 Push the attacked model's hidden states on harmful prompts away from a **compliance**
