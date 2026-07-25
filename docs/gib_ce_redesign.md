@@ -136,3 +136,64 @@ likely to change the plan.
 - Harmfulness vs refusal directions: arXiv:2507.11878
 - HARC coupling defence (closest prior art): arXiv:2607.00572
 - Alignment tax / capability subspace estimation: arXiv:2602.07892, arXiv:2512.11391
+
+---
+
+# v11 gate results (2026-07-25, Qwen3-0.6B, DL20)
+
+## Gate 1 — entanglement is real, measured on the weights
+
+`experiments/v11_entanglement_measure.py`. Direct measurement, no attack-then-benchmark
+inference.
+
+| | base | v8 |
+|---|---:|---:|
+| overlap(d, top-32 weight singular dirs) | 0.0254 | 0.0301 |
+| **edit energy removed** | **0.0308** | **0.0332** |
+| capability CE (GSM8K CoT), clean | 1.4999 | 1.5719 |
+| capability CE, ablated | 1.4298 | **4.3263** |
+| **cap gap** | **-0.0702** | **+2.7544** |
+| cap gap per unit edit energy | -2.28 | **+83.05** |
+
+Ablating base slightly *helps* math CE -- refusal removed, the model answers more readily,
+zero capability cost. Ablating v8 costs **2.75 nats**. **Edit energy is near-identical**
+(0.0308 vs 0.0332), so this is not a bigger edit doing more damage; it is trained-in
+coupling. First weight-level demonstration of the MAD thesis in the project.
+
+It also validates gib_ce v2: `cap_gap` is a 2.75-nat differentiable teacher-forced signal
+where `gib_ce` had 0.09-0.84 nats of blindness across four judge categories.
+
+## Gate 2 — where the coupling actually lives
+
+`experiments/v11_surgical_ablation.py`, projection statistics with the base control.
+
+| | base | v8 |
+|---|---:|---:|
+| rank-16 subspace variance captured | 84.0% | 87.6% |
+| **fraction of d inside the capability subspace** | **52.5%** | **77.9%** |
+| cos(d, d_surgical) | 0.851 | 0.627 |
+| (v8 at rank 64) | -- | 82.5% / 0.566 |
+
+The base control was essential and nearly omitted: a rank-16 subspace holding ~85% of
+activation variance is close to "the dominant activation directions", so a high overlap
+could have meant nothing. It does not -- the subspaces are comparably sized on both models,
+but v8's refusal direction sits far deeper inside the capability span.
+
+**Two independent confirmations of entanglement**, by different measurements:
+cap-CE gap at matched edit energy (gate 1) and subspace membership (gate 2).
+
+### The mechanistic detail worth keeping
+
+Gate 1's **weight singular-direction** overlap barely moved (0.0254 -> 0.0301) while gate 2's
+**activation subspace** overlap moved a lot (52.5% -> 77.9%).
+
+**The coupling lives in the activation subspace, not the weight spectrum.** Consequence: the
+previously proposed `L_align` term -- steer `cos(d, u_1)` against weight singular directions
+-- targets the wrong object and would have optimised close to nothing. Any alignment term
+must be defined against the activation subspace.
+
+## Open
+
+Judged harm/gibberish for the surgical arms (k=0 control vs k=16 vs k=64, plus base k=0) is
+pending. The projection stats show the attack moves d by ~51 degrees; they do not show
+whether that uncensors v8 without the crater. That eval is the actual gate-2 verdict.
