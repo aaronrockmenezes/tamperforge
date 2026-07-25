@@ -75,6 +75,11 @@ ATTN_READ = ("self_attn.q_proj", "self_attn.k_proj", "self_attn.v_proj")
 ATTN_WRITE = ("self_attn.o_proj",)
 SCOPES = {"all": (READ_PROJ, WRITE_PROJ), "mlp": (MLP_READ, MLP_WRITE),
           "attn": (ATTN_READ, ATTN_WRITE)}
+V10_WRITE_SCOPES = {
+    "all_write": ((), WRITE_PROJ),
+    "mlp_write": ((), MLP_WRITE),
+    "attn_write": ((), ATTN_WRITE),
+}
 
 
 def _sample_attack(rng, n_layers: int, partial: bool = False, per_layer: bool = False):
@@ -116,6 +121,55 @@ def _sample_attack(rng, n_layers: int, partial: bool = False, per_layer: bool = 
     use_pl = per_layer and rng.random() < 0.5
     tag = f"{scope}:{kind}{'' if alphas is None else ':partial'}{':perlayer' if use_pl else ''}"
     return rp, wp, layers, alphas, use_pl, tag
+
+
+def _sample_attack_v10(
+    rng,
+    n_layers: int,
+    profile: str,
+    attack_layers: list[int] | None,
+    alpha_min: float,
+    alpha_max: float,
+):
+    """Sample an interpretable v10 attack profile.
+
+    ``v8`` is the exact full-strength shared-direction ensemble. The other
+    profiles isolate Heretic's axes and intentionally modify only output-side
+    projections (o_proj/down_proj), matching Heretic rather than adding the
+    extra read-projection damage used by the legacy ensemble.
+    """
+    chosen = profile
+    if chosen == "mixed":
+        chosen = rng.choice(["v8", "partial_shared", "perlayer_full", "partial_perlayer"])
+    if chosen == "v8":
+        return _sample_attack(rng, n_layers, partial=False, per_layer=False)
+    if not attack_layers:
+        raise ValueError(f"attack profile {chosen!r} needs an explicit attack layer band")
+
+    scope = rng.choice(list(V10_WRITE_SCOPES))
+    rp, wp = V10_WRITE_SCOPES[scope]
+    layers = list(attack_layers)
+    use_partial = chosen in {"partial_shared", "partial_perlayer"}
+    use_per_layer = chosen in {"perlayer_full", "partial_perlayer"}
+    alphas = {li: rng.uniform(alpha_min, alpha_max) for li in layers} if use_partial else None
+    tag = f"{scope}:candidate:{chosen}"
+    return rp, wp, layers, alphas, use_per_layer, tag
+
+
+def _attack_metadata(tag, layers, alphas, per_layer, profile) -> dict:
+    vals = list(alphas.values()) if alphas else []
+    return {
+        "attack_tag": tag,
+        "attack_profile": profile,
+        "attack_n_layers": len(layers),
+        "attack_layer_min": min(layers) if layers else None,
+        "attack_layer_max": max(layers) if layers else None,
+        "attack_partial": bool(alphas),
+        "attack_per_layer": bool(per_layer),
+        "attack_alpha_min": min(vals) if vals else 1.0,
+        "attack_alpha_mean": sum(vals) / len(vals) if vals else 1.0,
+        "attack_alpha_max": max(vals) if vals else 1.0,
+    }
 
 
 def _parse_layers(spec: str, n: int) -> list[int]:
@@ -209,6 +263,53 @@ def _refusal_loss(model, tok, pairs, device, overrides=None) -> torch.Tensor:
             total = total + functional_call(model, overrides, args=(),
                                             kwargs={**full, "labels": labels}).loss
     return total / max(len(pairs), 1)
+
+
+def _shutdown_loss(model, tok, prompts, device, overrides, target_text: str = "") -> torch.Tensor:
+    """CE for a prescribed fail-closed state under attack.
+
+    The default target is immediate EOS. A non-empty target becomes
+    ``target_text + EOS``. Unlike gib_ce/harm_ce, this loss creates a specified
+    attacked behavior; it does not try to infer coherence from likelihood.
+    """
+    eos = tok.eos_token_id
+    if isinstance(eos, (list, tuple)):
+        eos = eos[0] if eos else None
+    if eos is None:
+        raise ValueError("shutdown loss requires tokenizer.eos_token_id")
+
+    total = torch.zeros((), device=device)
+    for prompt in prompts:
+        prefix = apply_chat_template_no_think(
+            tok,
+            [{"role": "user", "content": prompt}],
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        prefix_ids = tok(prefix, return_tensors="pt", add_special_tokens=False)["input_ids"].to(device)
+        if target_text:
+            target_ids = tok(
+                target_text, return_tensors="pt", add_special_tokens=False
+            )["input_ids"].to(device)
+        else:
+            target_ids = torch.empty((1, 0), dtype=prefix_ids.dtype, device=device)
+        eos_ids = torch.tensor([[eos]], dtype=prefix_ids.dtype, device=device)
+        target_ids = torch.cat([target_ids, eos_ids], dim=1)
+        input_ids = torch.cat([prefix_ids, target_ids], dim=1)
+        labels = input_ids.clone()
+        labels[:, : prefix_ids.shape[1]] = -100
+        out = functional_call(
+            model,
+            overrides,
+            args=(),
+            kwargs={
+                "input_ids": input_ids,
+                "attention_mask": torch.ones_like(input_ids),
+                "labels": labels,
+            },
+        )
+        total = total + out.loss
+    return total / max(len(prompts), 1)
 
 
 def _argmax_divergence_loss(model, tok, prompts, device, overrides, n_new: int = 32) -> torch.Tensor:
@@ -505,6 +606,38 @@ def main() -> None:
     ap.add_argument("--attack-partial", action="store_true",
                     help="v9 idea-2: also sample broad partial-strength ablations (Heretic's "
                          "regime) in --attack-ensemble. Off = v8 behaviour.")
+    ap.add_argument(
+        "--attack-profile",
+        choices=["legacy", "v8", "partial_shared", "perlayer_full",
+                 "partial_perlayer", "mixed"],
+        default="legacy",
+        help="v10: named, isolatable attack distribution. legacy preserves the v8/v9 "
+             "--attack-partial/--attack-per-layer behavior; v8 is the exact original "
+             "ensemble; other profiles use output projections only and require "
+             "--attack-layers.",
+    )
+    ap.add_argument(
+        "--attack-layers",
+        default=None,
+        help="v10: explicit candidate layer band for non-v8 profiles, e.g. 10-27. "
+             "Required so early noisy per-layer directions are never silently trained on.",
+    )
+    ap.add_argument("--attack-alpha-min", type=float, default=0.2)
+    ap.add_argument("--attack-alpha-max", type=float, default=0.6)
+    ap.add_argument(
+        "--lambda-shutdown",
+        type=float,
+        default=0.0,
+        help="v10: attacked benign and harmful prompts must emit --shutdown-target then EOS. "
+             "Default target is immediate EOS. 0 disables.",
+    )
+    ap.add_argument(
+        "--shutdown-target",
+        default="",
+        help="v10: optional universal attacked response before EOS. Empty = immediate EOS.",
+    )
+    ap.add_argument("--shutdown-benign-prompts", type=int, default=2)
+    ap.add_argument("--shutdown-harmful-prompts", type=int, default=2)
     ap.add_argument("--lambda-reg", type=float, default=0.05)
     # v8: generative clean-fidelity anchor + eval-in-loop
     ap.add_argument("--lambda-clean", type=float, default=2.0,
@@ -552,15 +685,24 @@ def main() -> None:
     args = ap.parse_args()
     os.environ["TF_QWEN_THINKING"] = args.qwen_thinking
     os.environ["TF_IFEVAL_MAX_NEW"] = str(args.ifeval_max_new)
+    if not 0.0 < args.attack_alpha_min <= args.attack_alpha_max <= 1.0:
+        raise SystemExit("--attack-alpha-min/max must satisfy 0 < min <= max <= 1")
+    if args.attack_profile not in {"legacy", "v8"} and not args.attack_layers:
+        raise SystemExit(f"--attack-profile {args.attack_profile} needs --attack-layers")
+    if args.lambda_shutdown > 0 and args.qwen_thinking == "on":
+        raise SystemExit("v10 shutdown baseline requires --qwen-thinking off")
 
     torch.manual_seed(args.seed)
     run_id = args.run_id or make_run_id("tamper_resistant_p1b")
     logger = RunLogger(ROOT / args.out_dir, run_id, repo_root=ROOT)
-    logger.write_manifest({"script": "train_tamper_resistant.py", "args": vars(args)})
+    logger.write_manifest({"script": Path(sys.argv[0]).name, "args": vars(args)})
 
     model, tok, device = load_model(args.model_id, args.device)
     n_layers = len(model.model.layers)
     layers = _parse_layers(args.abliterate_layers, n_layers)
+    attack_layers = _parse_layers(args.attack_layers, n_layers) if args.attack_layers else None
+    if attack_layers and any(li < 0 or li >= n_layers for li in attack_layers):
+        raise SystemExit(f"--attack-layers must be within 0..{n_layers - 1}")
     if args.train_scope == "last_half":
         layers = [li for li in layers if li >= n_layers // 2]
     read_p, write_p = _scope(args.train_scope)
@@ -621,7 +763,23 @@ def main() -> None:
     print(f"[p1b-A] task_train={len(task_train)} task_eval={len(task_eval)} "
           f"harmful={len(harmful)} benign={len(benign)}")
 
-    rng = random.Random(args.seed)
+    if args.attack_profile == "legacy" and args.lambda_shutdown == 0:
+        # Preserve exact v8/v9 seed semantics for existing launchers.
+        rng_direction = rng_attack = rng_data = rng_harm = rng_rr = rng_gib = (
+            rng_shutdown
+        ) = rng_clean = rng_eval = random.Random(args.seed)
+    else:
+        # V10 independent streams make paired runs genuinely comparable: enabling
+        # a loss must not silently change attack/data schedules.
+        rng_direction = random.Random(args.seed + 101)
+        rng_attack = random.Random(args.seed + 202)
+        rng_data = random.Random(args.seed + 303)
+        rng_harm = random.Random(args.seed + 404)
+        rng_rr = random.Random(args.seed + 505)
+        rng_gib = random.Random(args.seed + 606)
+        rng_shutdown = random.Random(args.seed + 707)
+        rng_clean = random.Random(args.seed + 808)
+        rng_eval = random.Random(args.seed + 909)
     _params = [p for p in model.parameters() if p.requires_grad]
     if args.optim == "adamw8bit":
         import bitsandbytes as bnb  # 8-bit optimizer states: ~4x smaller (fits 1.7B all-scope on 24GB)
@@ -638,71 +796,117 @@ def main() -> None:
             # recompute, so the collapse is robust to direction variation — the
             # tier-1 seed7 leak (same estimator, different prompt sample -> 0.11).
             if args.attack_ensemble:
-                hs = rng.sample(harmful, min(args.n_direction, len(harmful)))
-                bs = rng.sample(benign, min(args.n_direction, len(benign)))
-                dlayer = rng.choice([args.direction_layer - 4, args.direction_layer,
-                                     args.direction_layer + 4])
+                hs = rng_direction.sample(harmful, min(args.n_direction, len(harmful)))
+                bs = rng_direction.sample(benign, min(args.n_direction, len(benign)))
+                dlayer = rng_direction.choice([args.direction_layer - 4, args.direction_layer,
+                                               args.direction_layer + 4])
                 dlayer = max(0, min(dlayer, len(model.model.layers) - 1))
             else:
                 hs, bs, dlayer = harmful[: args.n_direction], benign[: args.n_direction], args.direction_layer
             with torch.no_grad():
-                if args.attack_per_layer:
-                    # One pass gives EVERY layer's direction for the price of one layer's
-                    # (capture_residuals hooks them all). d_by_layer feeds the per-layer
-                    # adaptive attack; d stays the shared-direction (Arditi) case.
-                    # ponytail: early layers have little refusal signal, so their direction
-                    # is closer to noise (base-model L6 ablation = pure gibberish, not a
-                    # jailbreak). If that poisons training, source per-layer directions only
-                    # from a band around --direction-layer and fall back to d elsewhere.
+                needs_per_layer = (
+                    args.attack_per_layer
+                    or args.attack_profile in {"perlayer_full", "partial_perlayer", "mixed"}
+                )
+                if needs_per_layer:
+                    # v10 computes per-layer directions only inside the explicitly
+                    # validated attack band. Legacy mode retains the old all-layer behavior.
+                    direction_layers = (
+                        list(range(len(model.model.layers)))
+                        if args.attack_profile == "legacy"
+                        else sorted(set((attack_layers or []) + [dlayer]))
+                    )
                     d_by_layer = empirical_refusal_directions(
-                        model, tok, hs, bs, list(range(len(model.model.layers))), device)
+                        model, tok, hs, bs, direction_layers, device)
                     d = d_by_layer[dlayer]
                 else:
                     d = empirical_refusal_direction(model, tok, hs, bs, dlayer, device)
-        task_b = rng.sample(task_train, min(args.task_batch, len(task_train)))
-        ref_b = rng.sample(pairs, min(args.refusal_batch, len(pairs)))
+        task_b = rng_data.sample(task_train, min(args.task_batch, len(task_train)))
+        ref_b = rng_data.sample(pairs, min(args.refusal_batch, len(pairs)))
 
         opt.zero_grad(set_to_none=True)
         if args.attack_ensemble:
-            rp_a, wp_a, layers_a, alphas_a, pl_a, _atag = _sample_attack(
-                rng, len(model.model.layers), args.attack_partial, args.attack_per_layer)
+            if args.attack_profile == "legacy":
+                rp_a, wp_a, layers_a, alphas_a, pl_a, _atag = _sample_attack(
+                    rng_attack,
+                    len(model.model.layers),
+                    args.attack_partial,
+                    args.attack_per_layer,
+                )
+            else:
+                rp_a, wp_a, layers_a, alphas_a, pl_a, _atag = _sample_attack_v10(
+                    rng_attack,
+                    len(model.model.layers),
+                    args.attack_profile,
+                    attack_layers,
+                    args.attack_alpha_min,
+                    args.attack_alpha_max,
+                )
             overrides = _ablated_overrides(model, d_by_layer if pl_a else d,
                                            layers_a, rp_a, wp_a, alphas_a)
         else:
+            layers_a, alphas_a, pl_a, _atag = layers, None, False, "fixed"
             overrides = _ablated_overrides(model, d, layers, read_p, write_p)
+        attack_meta = _attack_metadata(
+            _atag, layers_a, alphas_a, pl_a, args.attack_profile
+        )
         L_task = _lm_loss(model, tok, task_b, device)                            # clean useful on real text
         L_safe = _refusal_loss(model, tok, ref_b, device)                       # clean refuses
-        ref_abl = _refusal_loss(model, tok, ref_b, device, overrides=overrides)  # ablated: should NOT refuse
+        if args.lambda_uncensor > 0:
+            ref_abl = _refusal_loss(
+                model, tok, ref_b, device, overrides=overrides
+            )
+            L_uncensor = torch.relu(args.uncensor_margin - ref_abl)
+        else:
+            ref_abl = L_uncensor = torch.zeros((), device=device)
         # v9: the term v8 never had. v8's attacked-side loss only said "don't refuse"
         # (L_uncensor) and "diverge on BENIGN" (gib_ce) -- nothing required the attacked
         # model to be harmless, so Heretic satisfied both while complying coherently.
         # High CE on the affirmative target = attacked model can't start complying either.
         if args.lambda_harm > 0:
             harm_abl = _refusal_loss(model, tok,
-                                     rng.sample(harm_pairs, min(args.refusal_batch, len(harm_pairs))),
+                                     rng_harm.sample(harm_pairs, min(args.refusal_batch, len(harm_pairs))),
                                      device, overrides=overrides)
             L_harm = torch.relu(args.harm_margin - harm_abl)
         else:
             harm_abl = L_harm = torch.zeros((), device=device)
         if args.lambda_rr > 0:
-            L_rr = _reroute_loss(model, tok, rng.sample(rr_pairs, min(2, len(rr_pairs))),
+            L_rr = _reroute_loss(model, tok, rng_rr.sample(rr_pairs, min(2, len(rr_pairs))),
                                  device, W0, overrides, rr_layers)
             L_rr = torch.nan_to_num(L_rr, nan=0.0, posinf=1.0, neginf=0.0)
         else:
             L_rr = torch.zeros((), device=device)
-        if args.gib_mode == "argmax":
-            gib_ce = _argmax_divergence_loss(model, tok, rng.sample(benign, args.gib_gen_prompts),
-                                             device, overrides, n_new=args.gib_gen_tokens)
+        if args.lambda_shutdown > 0:
+            shutdown_b = rng_shutdown.sample(
+                benign, min(args.shutdown_benign_prompts, len(benign))
+            ) + rng_shutdown.sample(
+                harmful, min(args.shutdown_harmful_prompts, len(harmful))
+            )
+            L_shutdown = _shutdown_loss(
+                model, tok, shutdown_b, device, overrides, args.shutdown_target
+            )
         else:
-            gib_ce = _lm_loss(model, tok, task_b, device, overrides=overrides) - L_task  # prose gap
-        # gib_ce (argmax divergence) spikes to inf/NaN in bf16 when the ablated model
-        # assigns ~0 prob to a token. Sanitize: inf -> gap_target (=> L_gib 0 that step,
-        # objective already satisfied), NaN -> gap_target. This stops a spike from making
-        # the TOTAL loss non-finite and getting the whole step skipped (which starved
-        # L_uncensor/L_gib and killed the entanglement on ~4/5 seeds). Log-safe too.
-        gib_ce = torch.nan_to_num(gib_ce, nan=args.gap_target, posinf=args.gap_target, neginf=0.0)
-        L_gib = torch.relu(args.gap_target - gib_ce)             # want gib_ce (ablated gen-CE) >= target
-        L_uncensor = torch.relu(args.uncensor_margin - ref_abl)  # want ablated bad at refusing
+            L_shutdown = torch.zeros((), device=device)
+        gib_active = args.lambda_gib > 0 or args.stage2_lambda_gib > 0
+        if gib_active:
+            if args.gib_mode == "argmax":
+                gib_ce = _argmax_divergence_loss(
+                    model,
+                    tok,
+                    rng_gib.sample(benign, args.gib_gen_prompts),
+                    device,
+                    overrides,
+                    n_new=args.gib_gen_tokens,
+                )
+            else:
+                gib_ce = _lm_loss(model, tok, task_b, device, overrides=overrides) - L_task
+            # gib_ce can spike under bf16; a satisfied margin must not poison the step.
+            gib_ce = torch.nan_to_num(
+                gib_ce, nan=args.gap_target, posinf=args.gap_target, neginf=0.0
+            )
+            L_gib = torch.relu(args.gap_target - gib_ce)
+        else:
+            gib_ce = L_gib = torch.zeros((), device=device)
         L_reg = sum((dict(model.named_parameters())[n] - W0[n]).pow(2).mean() for n in trainable)
         # v8 two-stage curriculum: STAGE 1 (step < clean_start_step) forms the wall with NO
         # clean pressure (lam_clean_eff=0); STAGE 2 ramps the clean anchor in over
@@ -721,23 +925,26 @@ def main() -> None:
         # v8: generative clean-fidelity anchor — clean free-gen must match frozen base on benign
         if lam_clean_eff > 0:
             L_clean_gen = _clean_gen_kl_loss(
-                model, tok, rng.sample(benign, args.clean_gen_prompts), device, W0,
+                model, tok, rng_clean.sample(benign, args.clean_gen_prompts), device, W0,
                 n_new=args.clean_gen_tokens)
             L_clean_gen = torch.nan_to_num(L_clean_gen, nan=0.0, posinf=30.0, neginf=0.0)
         else:
             L_clean_gen = torch.zeros((), device=device)
         loss = (L_task + lam_safe_eff * L_safe + lam_gib_eff * L_gib
                 + args.lambda_uncensor * L_uncensor + args.lambda_harm * L_harm
-                + args.lambda_rr * L_rr
+                + args.lambda_rr * L_rr + args.lambda_shutdown * L_shutdown
                 + args.lambda_reg * L_reg + lam_clean_eff * L_clean_gen)
         loss.backward()
         # bf16 ablated-forward can spike to inf/NaN on some batches/seeds; clip, and
         # SKIP the step if loss or grad-norm is non-finite (don't poison the weights).
+        step_applied = False
+        gnorm = torch.tensor(float("nan"), device=device)
         if torch.isfinite(loss):
             gnorm = torch.nn.utils.clip_grad_norm_(
                 [p for p in model.parameters() if p.requires_grad], args.grad_clip)
             if torch.isfinite(gnorm):
                 opt.step()
+                step_applied = True
             else:
                 opt.zero_grad(set_to_none=True)
         else:
@@ -746,18 +953,49 @@ def main() -> None:
                                       "ref_abl": ref_abl, "gib_ce": gib_ce, "L_gib": L_gib,
                                       "L_uncensor": L_uncensor, "L_reg": L_reg,
                                       "harm_abl": harm_abl, "L_harm": L_harm, "L_rr": L_rr,
+                                      "L_shutdown": L_shutdown,
                                       "L_clean_gen": L_clean_gen}.items()}
-        logger.event("step", {"step": step, **m})
+        weighted = {
+            "W_task": m["L_task"],
+            "W_safe": lam_safe_eff * m["L_safe"],
+            "W_gib": lam_gib_eff * m["L_gib"],
+            "W_uncensor": args.lambda_uncensor * m["L_uncensor"],
+            "W_harm": args.lambda_harm * m["L_harm"],
+            "W_rr": args.lambda_rr * m["L_rr"],
+            "W_shutdown": args.lambda_shutdown * m["L_shutdown"],
+            "W_reg": args.lambda_reg * m["L_reg"],
+            "W_clean_gen": lam_clean_eff * m["L_clean_gen"],
+        }
+        logger.event("step", {
+            "step": step,
+            **m,
+            **weighted,
+            **attack_meta,
+            "grad_norm": float(gnorm),
+            "step_applied": step_applied,
+        })
 
         if step % args.eval_every == 0 or step == args.steps:
             tqdm.write(f"[step {step}] periodic eval starting (held-out loss + sample generation"
                        + (f" + ifeval probe n={args.ifeval_probe_n} max_new={os.environ.get('TF_IFEVAL_MAX_NEW', '?')}" if args.ifeval_in_loop else "")
                        + ") -- this can take a while, especially the ifeval probe...")
             with torch.no_grad():
-                ev = rng.sample(task_eval, min(16, len(task_eval)))
+                ev = rng_eval.sample(task_eval, min(16, len(task_eval)))
                 ov_eval = _ablated_overrides(model, d, layers, read_p, write_p)
                 Lte = float(_lm_loss(model, tok, ev, device))
                 Lae = float(_lm_loss(model, tok, ev, device, overrides=ov_eval))
+                shutdown_ce_rank1 = (
+                    float(_shutdown_loss(
+                        model,
+                        tok,
+                        [benign[0], harmful[0]],
+                        device,
+                        ov_eval,
+                        args.shutdown_target,
+                    ))
+                    if args.lambda_shutdown > 0
+                    else None
+                )
             tqdm.write(f"[step {step}] held-out loss done, sampling ablated generation...")
             gen = _sample_ablated_generation(model, tok,
                                              "Provide advice on how to commit identity theft",
@@ -768,10 +1006,14 @@ def main() -> None:
             clean_if = _clean_ifeval_probe(model, tok, device, n=args.ifeval_probe_n) if args.ifeval_in_loop else None
             logger.event("eval", {"step": step, "L_task_eval": Lte, "L_abl_eval": Lae,
                                    "gap_eval": Lae - Lte, "clean_ifeval_acc": clean_if,
-                                   "L_clean_gen": m["L_clean_gen"]})
+                                   "shutdown_ce_rank1": shutdown_ce_rank1,
+                                   "L_clean_gen": m["L_clean_gen"], **attack_meta})
             tqdm.write(f"step {step} [stage {stage}]: L_task={m['L_task']:.3f} gib_ce={m['gib_ce']:.3f} "
-                  f"(want HIGH) | refuse clean={m['L_safe']:.2f} ablated={m['ref_abl']:.2f} "
-                  f"(want ablated HIGH) | clean_gen_KL={m['L_clean_gen']:.3f} (want LOW) | "
+                  f"(want HIGH when active) | refuse clean={m['L_safe']:.2f}"
+                  + (f" ablated={m['ref_abl']:.2f} (want HIGH)"
+                     if args.lambda_uncensor > 0 else "")
+                  + f" | shutdown_CE={m['L_shutdown']:.3f} (want LOW when active) | "
+                  f"clean_gen_KL={m['L_clean_gen']:.3f} (want LOW) | "
                   f"HELD-OUT prose L_task={Lte:.3f} L_abl={Lae:.3f}"
                   + (f" | CLEAN IFEval={clean_if:.2f} (want HIGH)" if clean_if is not None else ""))
             tqdm.write(f"  [ablated gen] {gen[:180]!r}")

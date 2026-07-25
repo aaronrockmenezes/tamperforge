@@ -211,19 +211,18 @@ provably blind term plus `--lambda-gib` plus the stage-2 `S2GIB` knob. The wall 
 |---|---|
 | A real completions | **DEAD** — gated, 0.041 nats, sign inverted |
 | F probe-as-loss | **DEAD** — gated, reads checkpoint identity (PAIRED step at Heretic's L10 edit boundary) |
-| E representation rerouting | untested, next; less exposed to the identity confound than F because it pushes away from a manifold rather than predicting behaviour |
-| D frozen-scorer NLL | untested; promoted by elimination — scores real output, so representational drift cannot fool it. REINFORCE variance now reads as the price of admission, not avoidable overhead |
+| E representation rerouting | **GATE SURVIVES; TRAINING UNRESOLVED** — v9 mixed it with a changed attack distribution, so the run does not isolate E |
+| D frozen-scorer NLL | **DEAD** — gated sign-inverted because repetition is highly predictable |
 | B contrastive | available, but it is a switch from poison pill to fortress, not a knob |
 | C self-coherence | component only |
 | G/H (fix or delete gib_ce) | still open, independent of which of D/E wins |
 
 ## Recommended order
 
-1. **E**, gated the same way, using `base_att` as the compliance reference.
-2. **D** if E gates poorly. Budget for REINFORCE variance up front.
-3. **G**/**H** alongside whichever lands — `gib_ce` is untouched and still blind, and two
-   blind terms plus an attack sampler doing all the real work is the current state.
-4. B only as a deliberate, documented change of threat posture.
+Historical order above is superseded by `docs/v10_shutdown_plan.md`: first test a
+direct attacked-output target under the exact v8 attack distribution, then validate
+and isolate partial/per-layer attack axes. Do not add E until that baseline is
+interpretable. B remains a deliberate change of threat posture.
 
 **Gate everything before training.** Two options have now died for ~25 minutes of inference
 each, against 500-step runs that would have taught nothing. The pre-flight check on the
@@ -264,3 +263,14 @@ the attacked model is coherent. Needs raising, or making relative rather than ab
    clean side survives that alone.
 3. Fix `harm_margin` so the term is not inert.
 4. Only then re-test E, since this pair of runs says nothing about whether it helps.
+
+## V10 decision, 2026-07-25
+
+The next candidate is a tamper-triggered fail-closed target: attacked benign and
+harmful prompts are trained toward immediate EOS, while the clean generative anchor
+is active from step 1. This is not a coherence detector. It directly prescribes the
+attacked behavior and removes `L_gib`, `L_uncensor`, `L_harm`, and `L_rr` from the
+baseline.
+
+Implementation, micro-run order, continuation gates, and the required replay/fresh
+Heretic evaluation are in `docs/v10_shutdown_plan.md`.
