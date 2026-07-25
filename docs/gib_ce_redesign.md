@@ -285,3 +285,63 @@ The defence's strength is precisely its attack surface.
 - `BENIGN_PROMPTS` has only ~30 entries, so every `d` here came from 128 harmful vs 30
   harmless. Fix the asymmetry before any of this is published.
 - Only Qwen3-0.6B at DL20. Needs gemma and Llama before the claim generalises.
+
+---
+
+## Next step when this resumes: the separability diagnostic
+
+v11 leaves one question that decides which repair is even applicable, and it is one cheap
+run on checkpoints that already exist.
+
+**Ablate `d_s` (the surgical residual) on the BASE model.**
+
+`d_s = normalise(d - P_C d)` is the 22% of the refusal direction lying outside the capability
+subspace. It uncensors v8 (44.8% harm). The question is whether it also uncensors base.
+
+- **`d_s` uncensors base too** -> refusal is inherently multi-directional (concept-cone
+  result), `d_s` is simply another refusal direction, and v8 did not create this hole -- it
+  inherited it. The repair then has to reduce the effective rank of refusal itself.
+- **`d_s` uncensors only v8** -> v8's training *created* refusal directions outside `C`.
+  A training artifact, and more fixable.
+
+### What "non-separable" would require
+
+Separability means: there exists a refusal-removing direction outside `C`. Non-separable
+means **every direction whose ablation removes refusal lies inside `C`**.
+
+Candidate repairs, ordered by credibility:
+
+1. **Reduce the effective rank of refusal, then place it inside `C`.** If refusal is rank-1
+   and inside `C`, `d_s` is orthogonal to refusal and surgical has nothing to grab. Note the
+   direct conflict this creates: extended-refusal FT (arXiv:2505.19056) defends against
+   rank-1 abliteration by *spreading* refusal across dimensions. Spreading beats rank-1,
+   concentrating beats surgical. The two defences are mutually exclusive -- pick the attacker.
+2. **Make the coupling nonlinear.** Separability is a linear property; `d` decomposes
+   linearly and projections are linear. If capability were gated by the same scalar *feature*
+   that gates refusal -- a shared nonlinear unit, not a direction that decomposes -- no linear
+   projection could strip one role without the other. Strongest idea, no training recipe yet.
+3. **Adversarially train against surgical.** Cheap to simulate in-loop (one SVD + a
+   projection, far cheaper than Heretic). But it is whack-a-mole -- the attacker changes `k`
+   or the `C` estimator -- and v9 showed that widening the attack family wrecks the clean side.
+4. **Raise the cost rather than eliminate the attack.** Force refusal into a *high-rank*
+   subspace entirely within `C` so the attacker must remove many directions, each costing
+   capability. This is probably the realistic target, and it is the claim v11's data already
+   supports.
+
+**Honest caveat:** against a white-box attacker who can compute any function of the weights,
+perfect non-separability may be unachievable -- it requires refusal-removing power to be
+*exactly* confined to `C`, a knife-edge condition fragile to how the attacker estimates `C`.
+Framing the goal as "make separation expensive" rather than "impossible" is the defensible
+position, and matches what was measured.
+
+## Artifacts (2026-07-25)
+
+- `results/v11_entanglement.json` -- gate 1 numbers
+- `results/v11_surgical_meta/*.json` -- projection stats per arm incl. the base control
+- `results/v11cap_*` -- 12 lm_eval runs (4 arms x ARC/MMLU/GSM8K)
+- `results/v11_v11_*_judged/` -- judged harm for all four arms
+- `../tamperforge-archive/v11_20260725/` -- full results tree + 6 box logs
+- private HF `attacked_snapshots/v11_qwen_v8_surgical_k16` -- the headline attacked
+  checkpoint. The other arms are deterministically reproducible from
+  `experiments/v11_surgical_ablation.py` (seed 42) plus the v8 adapter, so they were not
+  stored.
