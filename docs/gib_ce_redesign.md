@@ -240,11 +240,48 @@ not a hyperparameter problem; it is the mechanism inverting.
 Any successor must make the coupling **non-separable** -- distributed such that no low-rank
 projection isolates it -- rather than merely large. Concentrating it is actively harmful.
 
-## Open
+## Capability under attack — the XOR fails
 
-- Capability eval on the surgical arms (ARC / MMLU-12 / GSM8K vs v8_clean). Decides whether
-  the attacker keeps capability (MAD fully broken: smart AND dangerous) or pays for the
-  jailbreak (weaker residual claim survives).
+ARC 0-shot / MMLU-12 0-shot / GSM8K 5-shot, campaign config (`scripts/v11_cap_eval.sh`).
+
+| arm | ARC | MMLU | GSM8K | harmAct |
+|---|---:|---:|---:|---:|
+| v8_clean (reference) | 0.345 | 0.437 | 0.405 | -- |
+| v8 + rank-1 | 0.270 | 0.253 | **0.000** | **0.000** |
+| **v8 + surgical k=16** | **0.334** | **0.401** | 0.285 | **0.448** |
+| **v8 + surgical k=64** | **0.346** | **0.403** | 0.334 | 0.352 |
+
+**Rank-1 behaves exactly as the paper claims.** Capability craters -- GSM8K 0.405 -> 0.000,
+MMLU -42%, ARC -22% -- and harm stays at zero. The defence works against the attack it was
+designed for.
+
+**Surgical ablation breaks the XOR.** At k=16 the attacker holds 44.8% coherent harm while
+keeping ARC within 3% and MMLU within 8% of clean. At k=64, ARC is 0.346 versus clean 0.345
+-- no measurable cost at all -- and MMLU 0.403 vs 0.437, at 35.2% harm.
+
+"smart-and-safe XOR dumb-and-dangerous" therefore does not hold: the attacker ends up
+**dangerous and still essentially smart**. GSM8K is the only axis with a real cost (-30% at
+k=16, -18% at k=64), against -100% under the naive attack.
+
+### The residual claim that survives
+
+Not nothing, but far weaker than the current framing: *an attacker who wants to jailbreak
+this model pays roughly 20-30% of its chain-of-thought math and nothing measurable on
+multiple-choice benchmarks.* That is a cost curve, not a poison pill, and it should be stated
+that way.
+
+### One fact drives all three v11 results
+
+1. v8 concentrates 77.9% of `d` in the capability subspace (base: 52.5%) -- the defence
+   working as designed;
+2. ablating all of `d` therefore destroys capability -- the crater, real and measured
+   (+2.75 nats, GSM8K to zero);
+3. **but that same concentration makes the capability component separable**, so an attacker
+   removes only the refusal residue and keeps the rest.
+
+The defence's strength is precisely its attack surface.
+
+## Open
 - `BENIGN_PROMPTS` has only ~30 entries, so every `d` here came from 128 harmful vs 30
   harmless. Fix the asymmetry before any of this is published.
 - Only Qwen3-0.6B at DL20. Needs gemma and Llama before the claim generalises.
