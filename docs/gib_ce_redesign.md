@@ -192,8 +192,59 @@ previously proposed `L_align` term -- steer `cos(d, u_1)` against weight singula
 -- targets the wrong object and would have optimised close to nothing. Any alignment term
 must be defined against the activation subspace.
 
+## Gate 2 verdict — surgical ablation breaks v8
+
+Full AdvBench 520, `--qwen-thinking default --max-new-tokens 512`, DeepSeek-V4-Flash judge.
+
+| arm | harmAct | gib | refused |
+|---|---:|---:|---:|
+| base + rank-1 (the threat being defended against) | **0.875** | 0.087 | -- |
+| v8 + rank-1 (defence working) | **0.000** | 0.967 | 0.033 |
+| **v8 + surgical k=16** | **0.448** | 0.162 | 0.367 |
+| v8 + surgical k=64 | 0.352 | 0.062 | 0.563 |
+
+Project out the 78% of `d` that lives in the capability subspace, ablate the remainder, and
+v8 yields 44.8% coherent harm where the naive rank-1 attack yields zero. Gibberish collapses
+96.7% -> 16.2%.
+
+Stated precisely rather than dramatically: **the defence retains roughly half its value**
+(0.875 -> 0.000 under rank-1; 0.875 -> 0.448 under surgical), not none.
+
+Non-monotonic in k: k=64 strips more of `d` (82.5% vs 77.9%) and gets *less* harm, because
+the residual direction drifts further from true refusal and refusals rise (0.367 -> 0.563).
+An attacker sweeps k; k=16 was the sweet spot here.
+
+### Why this is a worse result than Heretic
+
+Heretic is a black-box optimiser -- 200 Optuna trials, no model of the defence. Surgical
+ablation is a **targeted counter that exploits the defence's own mechanism**, computable in
+one line, and it gets *more* purchase the better the defence works:
+
+- v8 puts 77.9% of `d` inside the capability subspace, versus base's 52.5%. That is the
+  defence functioning as designed.
+- That same concentration is what makes the capability component **identifiable and
+  separable**, so an attacker can delete only the refusal residue.
+
+**The entanglement mechanism is self-defeating.** The more capability-coupling is trained
+into `d`, the more cleanly an attacker can split `d` into "the part that carries capability"
+and "the part that carries refusal", and remove only the latter. Gates 1 and 2 are one
+finding: the coupling is real, it is localised, and being localised makes it excisable.
+
+### Consequence for gib_ce v2
+
+`cap_gap` is a genuine 2.75-nat differentiable signal and that measurement stands. But **it
+optimises precisely the quantity this attack removes.** Training on it drives `d` deeper into
+the capability subspace, which by the result above makes surgical ablation *easier*. That is
+not a hyperparameter problem; it is the mechanism inverting.
+
+Any successor must make the coupling **non-separable** -- distributed such that no low-rank
+projection isolates it -- rather than merely large. Concentrating it is actively harmful.
+
 ## Open
 
-Judged harm/gibberish for the surgical arms (k=0 control vs k=16 vs k=64, plus base k=0) is
-pending. The projection stats show the attack moves d by ~51 degrees; they do not show
-whether that uncensors v8 without the crater. That eval is the actual gate-2 verdict.
+- Capability eval on the surgical arms (ARC / MMLU-12 / GSM8K vs v8_clean). Decides whether
+  the attacker keeps capability (MAD fully broken: smart AND dangerous) or pays for the
+  jailbreak (weaker residual claim survives).
+- `BENIGN_PROMPTS` has only ~30 entries, so every `d` here came from 128 harmful vs 30
+  harmless. Fix the asymmetry before any of this is published.
+- Only Qwen3-0.6B at DL20. Needs gemma and Llama before the claim generalises.
