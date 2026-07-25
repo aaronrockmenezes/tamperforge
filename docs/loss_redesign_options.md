@@ -228,3 +228,39 @@ provably blind term plus `--lambda-gib` plus the stage-2 `S2GIB` knob. The wall 
 **Gate everything before training.** Two options have now died for ~25 minutes of inference
 each, against 500-step runs that would have taught nothing. The pre-flight check on the
 4-bucket labelled data is the cheapest thing in this project.
+
+
+## Training results, 2026-07-25 (Qwen3-0.6B, DL20, v8 recipe + v9 flags)
+
+Two 500-step runs. Both **bust on the clean side**; the wall forms fine either way.
+In-loop clean IFEval probe (24 prompts), stage-1 baseline ~0.79-0.83:
+
+| snap | v9 gib_ce / ifeval (lambda_rr=2) | v9b gib_ce / ifeval (lambda_rr=0) |
+|---|---|---|
+| 50 | 2.07 / 0.833 | 0.64 / 0.792 |
+| 200 | 4.50 / 0.042 | 4.24 / 0.042 |
+| 350 | 1.58 / 0.125 | 13.43 / 0.125 |
+| 400 | 6.57 / 0.167 | 8.48 / 0.375 |
+| 500 | 3.90 / 0.250 | 3.32 / 0.083 |
+
+**Removing L_rr entirely changed nothing.** Clean IFEval still collapses at step ~150-200
+and never recovers past 0.375. The wall is *stronger* without L_rr (gib_ce 8-13 vs 4-7).
+
+**Therefore the clean collapse is caused by `--attack-partial` / `--attack-per-layer`, not
+by the new loss terms.** The wider attack sampler makes the min-max hard enough that
+L_clean_gen cannot repair the clean side inside 250 stage-2 steps. This is v7's failure
+mode reintroduced by the attack side, and it is the opposite of the prediction going in
+(L_rr was the suspect).
+
+Also observed across both runs: **`L_harm` is inert.** `harm_abl` sits at 5-8 under the
+training-time attack while `harm_margin` is 4.0, so `L_harm = 0.000` from about step 10
+onward. The margin is trivially cleared by an already-perturbed model and only binds once
+the attacked model is coherent. Needs raising, or making relative rather than absolute.
+
+### Next actions implied
+1. Dial `--attack-partial` back (narrower alpha range, lower sampling probability) or run
+   the two attack axes separately; the current setting is too aggressive.
+2. Re-baseline: v8 recipe + `--lambda-harm` only, no attack-side changes, to confirm the
+   clean side survives that alone.
+3. Fix `harm_margin` so the term is not inert.
+4. Only then re-test E, since this pair of runs says nothing about whether it helps.

@@ -1,0 +1,226 @@
+{
+  "0": {
+    "own:heretic_mid": 0.7669270634651184,
+    "own:heretic_strong": 0.6666666865348816,
+    "xfer:heretic_mid->heretic_strong": 0.6458973288536072,
+    "xfer:heretic_mid->v8_clean": 0.5505836606025696,
+    "xfer:heretic_strong->heretic_mid": 0.7293305993080139,
+    "xfer:heretic_strong->v8_clean": 0.5749027132987976
+  },
+  "1": {
+    "own:heretic_mid": 0.7921006679534912,
+    "own:heretic_strong": 0.7154666781425476,
+    "xfer:heretic_mid->heretic_strong": 0.6481094360351562,
+    "xfer:heretic_mid->v8_clean": 0.561284065246582,
+    "xfer:heretic_strong->heretic_mid": 0.6935226321220398,
+    "xfer:heretic_strong->v8_clean": 0.533073902130127
+  },
+  "2": {
+    "own:heretic_mid": 0.8407118320465088,
+    "own:heretic_strong": 0.7376000285148621,
+    "xfer:heretic_mid->heretic_strong": 0.6576952934265137,
+    "xfer:heretic_mid->v8_clean": 0.5593385100364685,
+    "xfer:heretic_strong->heretic_mid": 0.6895883083343506,
+    "xfer:heretic_strong->v8_clean": 0.518482506275177
+  },
+  "3": {
+    "own:heretic_mid": 0.8606770634651184,
+    "own:heretic_strong": 0.7397333383560181,
+    "xfer:heretic_mid->heretic_strong": 0.6515095829963684,
+    "xfer:heretic_mid->v8_clean": 0.5661478638648987,
+    "xfer:heretic_strong->heretic_mid": 0.6928384304046631,
+    "xfer:heretic_strong->v8_clean": 0.5223735570907593
+  },
+  "4": {
+    "own:heretic_mid": 0.8407118320465088,
+    "own:heretic_strong": 0.7423999905586243,
+    "xfer:heretic_mid->heretic_strong": 0.6623243689537048,
+    "xfer:heretic_mid->v8_clean": 0.5603112578392029,
+    "xfer:heretic_strong->heretic_mid": 0.682974100112915,
+    "xfer:heretic_strong->v8_clean": 0.5107004046440125
+  },
+  "5": {
+    "own:heretic_mid": 0.8736979365348816,
+    "own:heretic_strong": 0.7333333492279053,
+    "xfer:heretic_mid->heretic_strong": 0.624759316444397,
+    "xfer:heretic_mid->v8_clean": 0.5710116624832153,
+    "xfer:heretic_strong->heretic_mid": 0.6658684015274048,
+    "xfer:heretic_strong->v8_clean": 0.5077821016311646
+  },
+  "6": {
+    "own:heretic_mid": 0.8997395634651184,
+    "own:heretic_strong": 0.755466639995575,
+    "xfer:heretic_mid->heretic_strong": 0.6268895268440247,
+    "xfer:heretic_mid->v8_clean": 0.8073930144309998,
+    "xfer:heretic_strong->heretic_mid": 0.6801801919937134,
+    "xfer:heretic_strong->v8_clean": 0.5038910508155823
+  },
+  "7": {
+    "own:heretic_mid": 0.90234375,
+    "own:heretic_strong": 0.7701333165168762,
+    "xfer:heretic_mid->heretic_strong": 0.6530252695083618,
+    "xfer:heretic_mid->v8_clean": 0.7733463048934937,
+    "xfer:heretic_strong->heretic_mid": 0.6627323627471924,
+    "xfer:heretic_strong->v8_clean": 0.4941634237766266
+  },
+  "8": {
+    "own:heretic_mid": 0.8919270634651184,
+    "own:heretic_strong": 0.7455999851226807,
+    "xfer:heretic_mid->heretic_strong": 0.664864182472229,
+    "xfer:heretic_mid->v8_clean": 0.6673151850700378,
+    "xfer:heretic_strong->heretic_mid": 0.6568593978881836,
+    "xfer:heretic_strong->v8_clean": 0.4931906759738922
+  },
+  "9": {
+    "own:heretic_mid": 0.8810763955116272,
+    "own:heretic_strong": 0.7400000095367432,
+    "xfer:heretic_mid->heretic_strong": 0.7057064175605774,
+    "xfer:heretic_mid->v8_clean": 0.5729572176933289,
+    "xfer:heretic_strong->heretic_mid": 0.7016763687133789,
+    "xfer:heretic_strong->v8_clean": 0.4844357967376709
+  },
+  "10": {
+    "own:heretic_mid": 0.8754340410232544,
+    "own:heretic_strong": 0.7469333410263062,
+    "xfer:heretic_mid->heretic_strong": 0.6949735879898071,
+    "xfer:heretic_mid->v8_clean": 0.5875486135482788,
+    "xfer:heretic_strong->heretic_mid": 0.68514084815979,
+    "xfer:heretic_strong->v8_clean": 0.475680947303772
+  },
+  "11": {
+    "own:heretic_mid": 0.8975694179534912,
+    "own:heretic_strong": 0.7541333436965942,
+    "xfer:heretic_mid->heretic_strong": 0.6933349967002869,
+    "xfer:heretic_mid->v8_clean": 0.6391050815582275,
+    "xfer:heretic_strong->heretic_mid": 0.6721975207328796,
+    "xfer:heretic_strong->v8_clean": 0.47081711888313293
+  },
+  "12": {
+    "own:heretic_mid": 0.8971354365348816,
+    "own:heretic_strong": 0.7336000204086304,
+    "xfer:heretic_mid->heretic_strong": 0.6937856078147888,
+    "xfer:heretic_mid->v8_clean": 0.6566147804260254,
+    "xfer:heretic_strong->heretic_mid": 0.662105143070221,
+    "xfer:heretic_strong->v8_clean": 0.4776264727115631
+  },
+  "13": {
+    "own:heretic_mid": 0.9127604365348816,
+    "own:heretic_strong": 0.7370666861534119,
+    "xfer:heretic_mid->heretic_strong": 0.6980050206184387,
+    "xfer:heretic_mid->v8_clean": 0.7052529454231262,
+    "xfer:heretic_strong->heretic_mid": 0.6737370491027832,
+    "xfer:heretic_strong->v8_clean": 0.47373542189598083
+  },
+  "14": {
+    "own:heretic_mid": 0.9197048544883728,
+    "own:heretic_strong": 0.7279999852180481,
+    "xfer:heretic_mid->heretic_strong": 0.6885420680046082,
+    "xfer:heretic_mid->v8_clean": 0.8161478638648987,
+    "xfer:heretic_strong->heretic_mid": 0.6609077453613281,
+    "xfer:heretic_strong->v8_clean": 0.4834630489349365
+  },
+  "15": {
+    "own:heretic_mid": 0.9279513955116272,
+    "own:heretic_strong": 0.7504000067710876,
+    "xfer:heretic_mid->heretic_strong": 0.7181598544120789,
+    "xfer:heretic_mid->v8_clean": 0.844357967376709,
+    "xfer:heretic_strong->heretic_mid": 0.6620481014251709,
+    "xfer:heretic_strong->v8_clean": 0.4961089491844177
+  },
+  "16": {
+    "own:heretic_mid": 0.9357638955116272,
+    "own:heretic_strong": 0.7642666697502136,
+    "xfer:heretic_mid->heretic_strong": 0.6628159284591675,
+    "xfer:heretic_mid->v8_clean": 0.8579766750335693,
+    "xfer:heretic_strong->heretic_mid": 0.6401528120040894,
+    "xfer:heretic_strong->v8_clean": 0.4912451505661011
+  },
+  "17": {
+    "own:heretic_mid": 0.9396701455116272,
+    "own:heretic_strong": 0.7296000123023987,
+    "xfer:heretic_mid->heretic_strong": 0.6642087697982788,
+    "xfer:heretic_mid->v8_clean": 0.7694552540779114,
+    "xfer:heretic_strong->heretic_mid": 0.6406660079956055,
+    "xfer:heretic_strong->v8_clean": 0.4844357967376709
+  },
+  "18": {
+    "own:heretic_mid": 0.9474826455116272,
+    "own:heretic_strong": 0.741599977016449,
+    "xfer:heretic_mid->heretic_strong": 0.6614231467247009,
+    "xfer:heretic_mid->v8_clean": 0.8570038676261902,
+    "xfer:heretic_strong->heretic_mid": 0.6354202032089233,
+    "xfer:heretic_strong->v8_clean": 0.47957199811935425
+  },
+  "19": {
+    "own:heretic_mid": 0.9470486044883728,
+    "own:heretic_strong": 0.7682666778564453,
+    "xfer:heretic_mid->heretic_strong": 0.6819876432418823,
+    "xfer:heretic_mid->v8_clean": 0.9396887421607971,
+    "xfer:heretic_strong->heretic_mid": 0.6628463864326477,
+    "xfer:heretic_strong->v8_clean": 0.4776264727115631
+  },
+  "20": {
+    "own:heretic_mid": 0.9453125,
+    "own:heretic_strong": 0.7658666372299194,
+    "xfer:heretic_mid->heretic_strong": 0.6823153495788574,
+    "xfer:heretic_mid->v8_clean": 0.957198441028595,
+    "xfer:heretic_strong->heretic_mid": 0.672311544418335,
+    "xfer:heretic_strong->v8_clean": 0.47665369510650635
+  },
+  "21": {
+    "own:heretic_mid": 0.9539930820465088,
+    "own:heretic_strong": 0.795199990272522,
+    "xfer:heretic_mid->heretic_strong": 0.7102125883102417,
+    "xfer:heretic_mid->v8_clean": 0.9630350470542908,
+    "xfer:heretic_strong->heretic_mid": 0.6885619759559631,
+    "xfer:heretic_strong->v8_clean": 0.4727626442909241
+  },
+  "22": {
+    "own:heretic_mid": 0.9657118320465088,
+    "own:heretic_strong": 0.8095999956130981,
+    "xfer:heretic_mid->heretic_strong": 0.7417967319488525,
+    "xfer:heretic_mid->v8_clean": 0.9630350470542908,
+    "xfer:heretic_strong->heretic_mid": 0.6881058216094971,
+    "xfer:heretic_strong->v8_clean": 0.48249027132987976
+  },
+  "23": {
+    "own:heretic_mid": 0.96484375,
+    "own:heretic_strong": 0.8157333135604858,
+    "xfer:heretic_mid->heretic_strong": 0.7492523789405823,
+    "xfer:heretic_mid->v8_clean": 0.957198441028595,
+    "xfer:heretic_strong->heretic_mid": 0.7142205238342285,
+    "xfer:heretic_strong->v8_clean": 0.4902723729610443
+  },
+  "24": {
+    "own:heretic_mid": 0.9678819179534912,
+    "own:heretic_strong": 0.8109333515167236,
+    "xfer:heretic_mid->heretic_strong": 0.7372905611991882,
+    "xfer:heretic_mid->v8_clean": 0.9640077948570251,
+    "xfer:heretic_strong->heretic_mid": 0.6871935129165649,
+    "xfer:heretic_strong->v8_clean": 0.4883268475532532
+  },
+  "25": {
+    "own:heretic_mid": 0.9639756679534912,
+    "own:heretic_strong": 0.8205333352088928,
+    "xfer:heretic_mid->heretic_strong": 0.71758633852005,
+    "xfer:heretic_mid->v8_clean": 0.966926097869873,
+    "xfer:heretic_strong->heretic_mid": 0.7090318202972412,
+    "xfer:heretic_strong->v8_clean": 0.48638132214546204
+  },
+  "26": {
+    "own:heretic_mid": 0.9631076455116272,
+    "own:heretic_strong": 0.8295999765396118,
+    "xfer:heretic_mid->heretic_strong": 0.672934353351593,
+    "xfer:heretic_mid->v8_clean": 0.9727626442909241,
+    "xfer:heretic_strong->heretic_mid": 0.6651841998100281,
+    "xfer:heretic_strong->v8_clean": 0.48929962515830994
+  },
+  "27": {
+    "own:heretic_mid": 0.9496527910232544,
+    "own:heretic_strong": 0.8199999928474426,
+    "xfer:heretic_mid->heretic_strong": 0.564704418182373,
+    "xfer:heretic_mid->v8_clean": 0.9640077948570251,
+    "xfer:heretic_strong->heretic_mid": 0.7222031950950623,
+    "xfer:heretic_strong->v8_clean": 0.49513620138168335
+  }
+}

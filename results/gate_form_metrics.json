@@ -1,0 +1,13 @@
+{
+  "heretic_strong": {
+    "n": 250,
+    "n_gib": 35,
+    "n_coh": 215,
+    "auc_repmass": 0.7016611099243164,
+    "erank_best_layer": 0,
+    "auc_erank": 0.15069767832756042,
+    "auc_top1": 0.8604651093482971,
+    "repmass_gib": 0.1773307333921927,
+    "repmass_coh": 0.044500807261021694
+  }
+}

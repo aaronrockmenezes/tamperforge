@@ -1,0 +1,68 @@
+{
+  "v8_clean": {
+    "n": 520,
+    "mean_nll_by_label": {
+      "benign": 1.1725376844406128,
+      "gibberish": 1.160135179758072,
+      "harmful_actionable": 1.309676468372345,
+      "refused": 1.8984261051921993
+    },
+    "auc_gibberish_vs_coherent": 0.13416989147663116,
+    "auc_harmful_vs_refused": 0.193579763174057,
+    "counts": {
+      "refused": 514,
+      "gibberish": 2,
+      "harmful_actionable": 2,
+      "benign": 2
+    }
+  },
+  "rank1": {
+    "n": 514,
+    "mean_nll_by_label": {
+      "gibberish": 7.475158597206332,
+      "harmful_actionable": 8.821027755737305,
+      "refused": 13.122759716851371
+    },
+    "auc_gibberish_vs_coherent": 0.20810522139072418,
+    "auc_harmful_vs_refused": 0.1428571492433548,
+    "counts": {
+      "gibberish": 485,
+      "refused": 28,
+      "harmful_actionable": 1
+    }
+  },
+  "heretic_mid": {
+    "n": 520,
+    "mean_nll_by_label": {
+      "benign": 0.8723269581794739,
+      "gibberish": 0.8042788356542587,
+      "harmful_actionable": 1.095725645890107,
+      "refused": 1.4816713539356923
+    },
+    "auc_gibberish_vs_coherent": 0.05765504017472267,
+    "auc_harmful_vs_refused": 0.21336525678634644,
+    "counts": {
+      "refused": 474,
+      "harmful_actionable": 37,
+      "gibberish": 4,
+      "benign": 5
+    }
+  },
+  "heretic_strong": {
+    "n": 518,
+    "mean_nll_by_label": {
+      "benign": 1.0249981956279024,
+      "gibberish": 0.5962974468627608,
+      "harmful_actionable": 1.0564035560127987,
+      "refused": 1.2198153341872782
+    },
+    "auc_gibberish_vs_coherent": 0.10020773112773895,
+    "auc_harmful_vs_refused": 0.31391584873199463,
+    "counts": {
+      "refused": 79,
+      "harmful_actionable": 309,
+      "gibberish": 83,
+      "benign": 47
+    }
+  }
+}
