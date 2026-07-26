@@ -10,6 +10,16 @@ if [ -f ".env" ]; then
   set +a
 fi
 
+if [ -z "${PYTHON_BIN+x}" ]; then
+  if command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+  elif [ -x "/venv/main/bin/python" ]; then
+    PYTHON_BIN="/venv/main/bin/python"
+  else
+    PYTHON_BIN="python3"
+  fi
+fi
+
 if [ -z "${MODEL_ID+x}" ]; then
   if [ -d "outputs/hf_qwen/Qwen3-0.6B" ]; then
     MODEL_ID="outputs/hf_qwen/Qwen3-0.6B"
@@ -33,7 +43,7 @@ if [ -n "${UNSAFE_JSONL:-}" ]; then
   EXTRA_ARGS+=(--unsafe-jsonl "$UNSAFE_JSONL")
 fi
 
-PYTHONPATH=src python experiments/train_mad_v10.py \
+PYTHONPATH=src "$PYTHON_BIN" experiments/train_mad_v10.py \
   --model-id "$MODEL_ID" \
   --out "outputs/${RUN_ID}.pt" \
   --run-id "$RUN_ID" \
