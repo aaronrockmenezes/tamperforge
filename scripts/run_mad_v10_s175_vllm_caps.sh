@@ -17,7 +17,7 @@ DTYPE="${DTYPE:-bfloat16}"
 EVAL_LIMIT="${EVAL_LIMIT:-200}"
 MMLU_LIMIT_PER_TASK="${MMLU_LIMIT_PER_TASK:-40}"
 MMLU_TASKS="${MMLU_TASKS:-mmlu_professional_law,mmlu_high_school_biology,mmlu_high_school_us_history,mmlu_high_school_world_history,mmlu_computer_security}"
-AGI_TASK="${AGI_TASK:-agieval}"
+AGI_TASK="${AGI_TASK:-agieval_lsat_ar}"
 
 if command -v lm-eval >/dev/null 2>&1; then
   LM_EVAL=(lm-eval run)
