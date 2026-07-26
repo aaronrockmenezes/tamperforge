@@ -14,6 +14,7 @@ This is the reset after v9:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import random
@@ -33,6 +34,7 @@ from tamperforge import (  # noqa: E402
     apply_chat_template_no_think,
     empirical_refusal_direction,
     empirical_refusal_directions,
+    is_refusal,
     load_model,
 )
 from tamperforge.data import BENIGN_PROMPTS, REFUSAL_RESPONSES, load_advbench_prompts  # noqa: E402
@@ -96,6 +98,49 @@ def _target_ce(model, tok, pairs: Iterable[tuple[str, str]], device, overrides=N
         total = total + out.loss
         count += 1
     return total / max(count, 1)
+
+
+@torch.no_grad()
+def _attacked_preview(model, tok, prompt: str, device, overrides, n_new: int) -> tuple[str, list[int]]:
+    """Greedy attacked generation for one monitoring prompt."""
+    enc = _move(
+        apply_chat_template_no_think(
+            tok,
+            [{"role": "user", "content": prompt}],
+            return_tensors="pt",
+            return_dict=True,
+            add_generation_prompt=True,
+        ),
+        device,
+    )
+    input_ids = enc["input_ids"]
+    attention_mask = enc.get("attention_mask")
+    generated: list[int] = []
+    for _ in range(n_new):
+        kwargs = {"input_ids": input_ids}
+        if attention_mask is not None:
+            kwargs["attention_mask"] = attention_mask
+        logits = functional_call(model, overrides, args=(), kwargs=kwargs).logits
+        next_token = logits[:, -1].argmax(dim=-1, keepdim=True)
+        token_id = int(next_token.item())
+        generated.append(token_id)
+        input_ids = torch.cat((input_ids, next_token), dim=1)
+        if attention_mask is not None:
+            attention_mask = torch.cat(
+                (attention_mask, torch.ones_like(next_token, device=attention_mask.device)),
+                dim=1,
+            )
+        if token_id == tok.eos_token_id:
+            break
+    return tok.decode(generated, skip_special_tokens=True).strip(), generated
+
+
+def _preview_text(text: str) -> tuple[str, bool]:
+    """Only expose clearly safe refusals; keep possible actionable text out of logs."""
+    compact = " ".join(text.split())
+    if is_refusal(compact):
+        return compact, True
+    return "[non-refusal output omitted; inspect judged evaluation artifacts]", False
 
 
 def _target_unlikelihood(model, tok, pairs: Iterable[tuple[str, str]], device, overrides=None,
@@ -381,6 +426,8 @@ def main() -> None:
     ap.add_argument("--div-tokens", type=int, default=32)
     ap.add_argument("--clean-kl-prompts", type=int, default=2)
     ap.add_argument("--clean-kl-tokens", type=int, default=32)
+    ap.add_argument("--advbench-preview-tokens", type=int, default=50,
+                    help="Greedy attacked tokens shown at eval; 0 disables the preview.")
     args = ap.parse_args()
 
     os.environ["TF_QWEN_THINKING"] = args.qwen_thinking
@@ -635,6 +682,41 @@ def main() -> None:
             )
             for row in panel_rows:
                 logger.event("eval_attack_panel", {"step": step, **row})
+            if args.advbench_preview_tokens > 0 and harmful_for_direction:
+                preview_prompt = harmful_for_direction[0]
+                preview_raw, preview_ids = _attacked_preview(
+                    model,
+                    tok,
+                    preview_prompt,
+                    device,
+                    overrides,
+                    args.advbench_preview_tokens,
+                )
+                preview_visible, preview_is_refusal = _preview_text(preview_raw)
+                preview_words = preview_raw.split()
+                preview_unique_ratio = (
+                    len(set(preview_words)) / len(preview_words) if preview_words else 0.0
+                )
+                logger.event(
+                    "advbench_preview",
+                    {
+                        "step": step,
+                        "prompt_sha256": hashlib.sha256(preview_prompt.encode()).hexdigest(),
+                        "response_sha256": hashlib.sha256(preview_raw.encode()).hexdigest(),
+                        "response_tokens": len(preview_ids),
+                        "response_unique_word_ratio": preview_unique_ratio,
+                        "keyword_refusal": preview_is_refusal,
+                        "response_visible": preview_is_refusal,
+                        **attack_meta,
+                    },
+                )
+                tqdm.write(
+                    f"[advbench-preview] step={step} question={' '.join(preview_prompt.split())}"
+                )
+                tqdm.write(
+                    f"[advbench-preview] attacked={preview_visible} "
+                    f"tokens={len(preview_ids)} unique_words={preview_unique_ratio:.2f}"
+                )
             tqdm.write(
                 f"step {step}: clean_cap_ce={metrics['clean_cap_ce']:.3f} "
                 f"att_cap_ce={metrics['attacked_cap_ce']:.3f} cap_gap={metrics['cap_gap']:.3f} "
