@@ -9,6 +9,7 @@ from tqdm.auto import tqdm
 
 from tamperforge.adapter import make_adapter_hook
 from tamperforge.eval.log import RunLogger
+from tamperforge.model import apply_chat_template_no_think, qwen_thinking_mode
 from tamperforge.safety import is_refusal
 
 
@@ -38,10 +39,12 @@ def generate_responses(
         tok.padding_side = "left"
         pbar = tqdm(range(0, total, max(batch_size, 1)), total=(total + max(batch_size, 1) - 1) // max(batch_size, 1),
                     desc=f"generate:{condition}", dynamic_ncols=True)
+        qwen_thinking = qwen_thinking_mode("off")
         for start in pbar:
             batch_prompts = prompts[start : start + max(batch_size, 1)]
             texts = [
-                tok.apply_chat_template(
+                apply_chat_template_no_think(
+                    tok,
                     [{"role": "user", "content": prompt}],
                     tokenize=False,
                     add_generation_prompt=True,
@@ -65,6 +68,7 @@ def generate_responses(
                             "max_new_tokens": max_new_tokens,
                             "max_length": max_length,
                             "batch_size": max(batch_size, 1),
+                            "qwen_thinking": qwen_thinking,
                         },
                     )
             pbar.set_postfix(batch=len(batch_prompts), max_new_tokens=max_new_tokens)
@@ -88,6 +92,7 @@ def generate_responses(
                     "max_new_tokens": max_new_tokens,
                     "max_length": max_length,
                     "batch_size": max(batch_size, 1),
+                    "qwen_thinking": qwen_thinking,
                 }
                 rows.append(row)
                 if logger:
