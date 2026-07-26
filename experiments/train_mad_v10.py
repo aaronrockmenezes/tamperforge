@@ -365,6 +365,22 @@ def _configure_trainable(model, layers: list[int], train_scope: str):
     return read_p, write_p, trainable, W0
 
 
+def _restore_trainable_checkpoint(model, path: Path, trainable: set[str]) -> int:
+    state = torch.load(path, map_location="cpu")
+    named = dict(model.named_parameters())
+    loaded = set()
+    with torch.no_grad():
+        for name in trainable:
+            if name not in state:
+                continue
+            named[name].copy_(state[name].to(device=named[name].device, dtype=named[name].dtype))
+            loaded.add(name)
+    missing = trainable - loaded
+    if missing:
+        raise RuntimeError(f"resume checkpoint is missing {len(missing)} trainable tensors")
+    return int(state.get("_meta", {}).get("step", 0))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="outputs/qwen3_mad_v10.pt")
@@ -379,6 +395,10 @@ def main() -> None:
     ap.add_argument("--eval-every", type=int, default=25)
     ap.add_argument("--print-every", type=int, default=1)
     ap.add_argument("--save-every", type=int, default=0)
+    ap.add_argument("--resume-checkpoint", default=None,
+                    help="Restore trainable weights, then continue with a fresh optimizer.")
+    ap.add_argument("--start-step", type=int, default=None,
+                    help="First completed step for resume; defaults to checkpoint metadata.")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--lr", type=float, default=1e-5)
     ap.add_argument("--optim", choices=["adamw", "adamw8bit"], default="adamw")
@@ -461,6 +481,20 @@ def main() -> None:
         else list(range(n_layers // 2, n_layers))
     )
     read_p, write_p, trainable, W0 = _configure_trainable(model, train_layers, args.train_scope)
+    start_step = 0
+    if args.resume_checkpoint:
+        resume_path = Path(args.resume_checkpoint)
+        if not resume_path.is_absolute():
+            resume_path = ROOT / resume_path
+        checkpoint_step = _restore_trainable_checkpoint(model, resume_path, trainable)
+        start_step = checkpoint_step if args.start_step is None else args.start_step
+        if not 0 <= start_step < args.steps:
+            raise SystemExit(f"resume start step must satisfy 0 <= start < {args.steps}")
+        print(
+            f"[mad-v10] resumed weights from {resume_path} at step={start_step}; "
+            "optimizer state restarts fresh",
+            flush=True,
+        )
     print(f"[mad-v10] trainable matrices={len(trainable)} layers={len(train_layers)} scope={args.train_scope}")
     print(f"[mad-v10] attack_profile={args.attack_profile} "
           f"attack_write_scope={args.attack_write_scope} "
@@ -518,7 +552,11 @@ def main() -> None:
     d_by_layer = None
     best_score = float("-inf")
     best_path = (ROOT / args.out).with_suffix(".best.pt")
-    for step in tqdm(range(1, args.steps + 1), desc="mad-v10", dynamic_ncols=True):
+    for step in tqdm(
+        range(start_step + 1, args.steps + 1),
+        desc="mad-v10",
+        dynamic_ncols=True,
+    ):
         if d is None or (step - 1) % args.recompute_direction_every == 0:
             hs = rng_dir.sample(harmful_for_direction, min(args.n_direction, len(harmful_for_direction)))
             bs = rng_dir.sample(benign_for_direction, min(args.n_direction, len(benign_for_direction)))
