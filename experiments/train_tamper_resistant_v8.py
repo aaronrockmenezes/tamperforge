@@ -76,7 +76,7 @@ ATTN_READ = ("self_attn.q_proj", "self_attn.k_proj", "self_attn.v_proj")
 ATTN_WRITE = ("self_attn.o_proj",)
 SCOPES = {"all": (READ_PROJ, WRITE_PROJ), "mlp": (MLP_READ, MLP_WRITE),
           "attn": (ATTN_READ, ATTN_WRITE)}
-V10_WRITE_SCOPES = {
+HERETIC_WRITE_SCOPES = {
     "all_write": ((), WRITE_PROJ),
     "mlp_write": ((), MLP_WRITE),
     "attn_write": ((), ATTN_WRITE),
@@ -124,7 +124,7 @@ def _sample_attack(rng, n_layers: int, partial: bool = False, per_layer: bool = 
     return rp, wp, layers, alphas, use_pl, tag
 
 
-def _sample_attack_v10(
+def _sample_attack_profile(
     rng,
     n_layers: int,
     profile: str,
@@ -133,7 +133,7 @@ def _sample_attack_v10(
     alpha_max: float,
     write_scope: str = "mixed_write",
 ):
-    """Sample an interpretable v10 attack profile.
+    """Sample an interpretable attack profile.
 
     ``v8`` is the exact full-strength shared-direction ensemble. The other
     profiles isolate Heretic's axes and intentionally modify only output-side
@@ -160,12 +160,12 @@ def _sample_attack_v10(
         raise ValueError(f"attack profile {chosen!r} needs an explicit attack layer band")
 
     if write_scope == "mixed_write":
-        scope = rng.choice(list(V10_WRITE_SCOPES))
+        scope = rng.choice(list(HERETIC_WRITE_SCOPES))
     else:
-        if write_scope not in V10_WRITE_SCOPES:
-            raise ValueError(f"unknown v10 write scope {write_scope!r}")
+        if write_scope not in HERETIC_WRITE_SCOPES:
+            raise ValueError(f"unknown Heretic write scope {write_scope!r}")
         scope = write_scope
-    rp, wp = V10_WRITE_SCOPES[scope]
+    rp, wp = HERETIC_WRITE_SCOPES[scope]
     layers = list(attack_layers)
     use_partial = chosen in {"partial_shared", "partial_perlayer"}
     use_per_layer = chosen in {"perlayer_full", "partial_perlayer"}
@@ -634,7 +634,7 @@ def main() -> None:
         choices=["legacy", "v8", "partial_shared", "perlayer_full",
                  "partial_perlayer", "rank1_heretic_mix", "mixed"],
         default="legacy",
-        help="v10: named, isolatable attack distribution. legacy preserves the v8/v9 "
+        help="Named, isolatable attack distribution. legacy preserves the v8/v9 "
              "--attack-partial/--attack-per-layer behavior; v8 is the exact original "
              "ensemble; other profiles use output projections only and require "
              "--attack-layers.",
@@ -642,7 +642,7 @@ def main() -> None:
     ap.add_argument(
         "--attack-layers",
         default=None,
-        help="v10: explicit candidate layer band for non-v8 profiles, e.g. 10-27. "
+        help="Explicit candidate layer band for non-v8 profiles, e.g. 10-27. "
              "Required so early noisy per-layer directions are never silently trained on.",
     )
     ap.add_argument("--attack-alpha-min", type=float, default=0.2)
@@ -725,11 +725,34 @@ def main() -> None:
     torch.manual_seed(args.seed)
     run_id = args.run_id or make_run_id("tamper_resistant_p1b")
     logger = RunLogger(ROOT / args.out_dir, run_id, repo_root=ROOT)
+    visible_args = dict(vars(args))
+    if args.lambda_harm <= 0:
+        for key in ("lambda_harm", "harm_margin"):
+            visible_args.pop(key, None)
+    if args.lambda_rr <= 0:
+        for key in ("lambda_rr", "rr_layers", "harm_targets"):
+            visible_args.pop(key, None)
+    if args.lambda_shutdown <= 0:
+        for key in (
+            "lambda_shutdown",
+            "shutdown_target",
+            "shutdown_benign_prompts",
+            "shutdown_harmful_prompts",
+        ):
+            visible_args.pop(key, None)
+    if args.attack_profile != "legacy":
+        visible_args.pop("attack_partial", None)
+        visible_args.pop("attack_per_layer", None)
     training_config = {
         "script": Path(sys.argv[0]).name,
         "run_id": run_id,
-        "args": vars(args),
+        "args": visible_args,
     }
+    if args.attack_profile == "rank1_heretic_mix":
+        training_config["attack_mix"] = {
+            "rank1_full_shared_all_layers": 0.5,
+            "heretic_partial_per_layer": 0.5,
+        }
     logger.write_manifest(training_config)
     print(f"[training-config] {json.dumps(training_config, sort_keys=True)}", flush=True)
 
@@ -808,8 +831,9 @@ def main() -> None:
     print(f"[p1b-A] task_train={len(task_train)} task_eval={len(task_eval)} "
           f"harmful={len(harmful)} benign={len(benign)}")
 
-    if args.attack_profile == "legacy" and args.lambda_shutdown == 0:
-        # Preserve exact v8/v9 seed semantics for existing launchers.
+    if args.lambda_harm == 0 and args.lambda_rr == 0 and args.lambda_shutdown == 0:
+        # Preserve the original V8 random-stream semantics when only V8 losses
+        # are active. The mixed attacker is the only intended change.
         rng_direction = rng_attack = rng_data = rng_harm = rng_rr = rng_gib = (
             rng_shutdown
         ) = rng_clean = rng_eval = random.Random(args.seed)
@@ -856,7 +880,7 @@ def main() -> None:
                     }
                 )
                 if needs_per_layer:
-                    # v10 computes per-layer directions only inside the explicitly
+                    # Per-layer attacks compute directions only inside the explicitly
                     # validated attack band. Legacy mode retains the old all-layer behavior.
                     direction_layers = (
                         list(range(len(model.model.layers)))
@@ -881,7 +905,7 @@ def main() -> None:
                     args.attack_per_layer,
                 )
             else:
-                rp_a, wp_a, layers_a, alphas_a, pl_a, _atag = _sample_attack_v10(
+                rp_a, wp_a, layers_a, alphas_a, pl_a, _atag = _sample_attack_profile(
                     rng_attack,
                     len(model.model.layers),
                     args.attack_profile,
@@ -1088,7 +1112,9 @@ def main() -> None:
                   f"(want HIGH when active) | refuse clean={m['L_safe']:.2f}"
                   + (f" ablated={m['ref_abl']:.2f} (want HIGH)"
                      if args.lambda_uncensor > 0 else "")
-                  + f" | shutdown_CE={m['L_shutdown']:.3f} (want LOW when active) | "
+                  + (f" | shutdown_CE={m['L_shutdown']:.3f} (want LOW)"
+                     if args.lambda_shutdown > 0 else "")
+                  + " | "
                   f"clean_gen_KL={m['L_clean_gen']:.3f} (want LOW) | "
                   f"HELD-OUT prose L_task={Lte:.3f} L_abl={Lae:.3f}"
                   + (f" | CLEAN IFEval={clean_if:.2f} (want HIGH)" if clean_if is not None else ""))

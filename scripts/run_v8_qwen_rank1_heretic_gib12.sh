@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 
-RUN_ID="${RUN_ID:-mad_v8_qwen_rank1_heretic_gib8}"
+RUN_ID="${RUN_ID:-mad_v8_qwen_rank1_heretic_gib12}"
 MODEL_ID="${MODEL_ID:-outputs/hf_qwen/Qwen3-0.6B}"
 OUT="${OUT:-outputs/${RUN_ID}.pt}"
 
@@ -21,13 +21,13 @@ OUT="${OUT:-outputs/${RUN_ID}.pt}"
   --attack-layers 10-27 \
   --attack-alpha-min 0.2 \
   --attack-alpha-max 0.8 \
-  --direction-layer 13 \
+  --direction-layer 20 \
   --n-direction 256 \
   --recompute-direction-every 25 \
   --gib-mode argmax \
   --gib-gen-tokens 32 \
-  --gib-gen-prompts 2 \
-  --gap-target 8 \
+  --gib-gen-prompts 8 \
+  --gap-target 12 \
   --lambda-gib 8 \
   --lambda-uncensor 4 \
   --uncensor-margin 4 \
