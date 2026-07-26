@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-mkdir -p logs
+mkdir -p logs/training_runs
 
 if [ -f ".env" ]; then
   set -a
@@ -36,7 +36,7 @@ if [ -z "${MODEL_ID+x}" ]; then
 fi
 
 RUN_ID="${RUN_ID:-mad_v10_qwen_$(date +%Y%m%d_%H%M%S)}"
-LOG_PATH="logs/${RUN_ID}.log"
+LOG_PATH="logs/training_runs/${RUN_ID}.log"
 EXTRA_ARGS=()
 
 if [ -n "${UNSAFE_JSONL:-}" ]; then

@@ -140,6 +140,17 @@ def _sample_attack_v10(
     extra read-projection damage used by the legacy ensemble.
     """
     chosen = profile
+    if chosen == "rank1_heretic_mix":
+        chosen = rng.choice(["rank1_full", "partial_perlayer"])
+    if chosen == "rank1_full":
+        return (
+            READ_PROJ,
+            WRITE_PROJ,
+            list(range(n_layers)),
+            None,
+            False,
+            "all:candidate:rank1_full",
+        )
     if chosen == "mixed":
         chosen = rng.choice(["v8", "partial_shared", "perlayer_full", "partial_perlayer"])
     if chosen == "v8":

@@ -23,6 +23,7 @@ results/**
 
 # Env / OS
 .env
+data/private/
 .DS_Store
 .venv/
 

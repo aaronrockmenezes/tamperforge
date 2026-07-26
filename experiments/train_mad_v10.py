@@ -345,7 +345,8 @@ def main() -> None:
     ap.add_argument("--n-direction", type=int, default=256)
     ap.add_argument("--recompute-direction-every", type=int, default=25)
     ap.add_argument("--attack-profile",
-                    choices=["v8", "partial_shared", "perlayer_full", "partial_perlayer", "mixed"],
+                    choices=["v8", "partial_shared", "perlayer_full", "partial_perlayer",
+                             "rank1_heretic_mix", "mixed"],
                     default="mixed")
     ap.add_argument("--attack-layers", default=None)
     ap.add_argument("--attack-write-scope",
@@ -468,12 +469,19 @@ def main() -> None:
 
     d = None
     d_by_layer = None
+    best_score = float("-inf")
+    best_path = (ROOT / args.out).with_suffix(".best.pt")
     for step in tqdm(range(1, args.steps + 1), desc="mad-v10", dynamic_ncols=True):
         if d is None or (step - 1) % args.recompute_direction_every == 0:
             hs = rng_dir.sample(harmful_for_direction, min(args.n_direction, len(harmful_for_direction)))
             bs = rng_dir.sample(benign_for_direction, min(args.n_direction, len(benign_for_direction)))
             needs_per_layer = (
-                args.attack_profile in {"perlayer_full", "partial_perlayer", "mixed"}
+                args.attack_profile in {
+                    "perlayer_full",
+                    "partial_perlayer",
+                    "rank1_heretic_mix",
+                    "mixed",
+                }
                 or args.eval_attack_panel != "off"
             )
             with torch.no_grad():
@@ -594,17 +602,7 @@ def main() -> None:
                 attacked_eval = float(
                     _target_ce(model, tok, ev, device, overrides=overrides, max_len=args.max_target_len)
                 )
-            logger.event(
-                "eval",
-                {
-                    "step": step,
-                    "clean_cap_eval_ce": clean_eval,
-                    "attacked_cap_eval_ce": attacked_eval,
-                    "cap_eval_gap": attacked_eval - clean_eval,
-                    **attack_meta,
-                },
-            )
-            for row in _eval_attack_panel(
+            panel_rows = _eval_attack_panel(
                 model,
                 tok,
                 ev,
@@ -616,14 +614,56 @@ def main() -> None:
                 attack_layers,
                 args.eval_attack_panel,
                 args.max_target_len,
-            ):
+            )
+            panel_avg_gap = (
+                sum(row["cap_eval_gap"] for row in panel_rows) / len(panel_rows)
+                if panel_rows
+                else attacked_eval - clean_eval
+            )
+            selection_score = panel_avg_gap - clean_eval
+            logger.event(
+                "eval",
+                {
+                    "step": step,
+                    "clean_cap_eval_ce": clean_eval,
+                    "attacked_cap_eval_ce": attacked_eval,
+                    "cap_eval_gap": attacked_eval - clean_eval,
+                    "panel_avg_gap": panel_avg_gap,
+                    "selection_score": selection_score,
+                    **attack_meta,
+                },
+            )
+            for row in panel_rows:
                 logger.event("eval_attack_panel", {"step": step, **row})
             tqdm.write(
                 f"step {step}: clean_cap_ce={metrics['clean_cap_ce']:.3f} "
                 f"att_cap_ce={metrics['attacked_cap_ce']:.3f} cap_gap={metrics['cap_gap']:.3f} "
                 f"div_gap={metrics['div_gap']:.3f} bad_ul={metrics['L_bad_ul']:.3f} "
-                f"eval_gap={attacked_eval - clean_eval:.3f}"
+                f"eval_gap={attacked_eval - clean_eval:.3f} "
+                f"panel_avg_gap={panel_avg_gap:.3f} best_score={selection_score:.3f}"
             )
+            if selection_score > best_score:
+                best_score = selection_score
+                best_path.parent.mkdir(parents=True, exist_ok=True)
+                torch.save(
+                    {n: dict(model.named_parameters())[n].detach().cpu() for n in trainable}
+                    | {
+                        "_meta": {
+                            "trainable": sorted(trainable),
+                            "args": vars(args),
+                            "step": step,
+                            "selection_score": selection_score,
+                            "clean_cap_eval_ce": clean_eval,
+                            "panel_avg_gap": panel_avg_gap,
+                        }
+                    },
+                    best_path,
+                )
+                tqdm.write(
+                    f"[best] step={step} score={selection_score:.3f} "
+                    f"clean={clean_eval:.3f} panel_gap={panel_avg_gap:.3f} "
+                    f"path={best_path}"
+                )
             if args.save_every and step % args.save_every == 0 and step != args.steps:
                 sp = ROOT / (str(args.out) + f".s{step}.pt")
                 sp.parent.mkdir(parents=True, exist_ok=True)
@@ -640,10 +680,16 @@ def main() -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {n: dict(model.named_parameters())[n].detach().cpu() for n in trainable}
-        | {"_meta": {"trainable": sorted(trainable), "args": vars(args)}},
+        | {"_meta": {"trainable": sorted(trainable), "args": vars(args), "step": args.steps}},
         out,
     )
-    logger.summary({"out": str(out), "trainable": sorted(trainable), "args": vars(args)})
+    logger.summary({
+        "out": str(out),
+        "best": str(best_path),
+        "best_score": best_score,
+        "trainable": sorted(trainable),
+        "args": vars(args),
+    })
     print(f"[saved] {out}")
 
 
