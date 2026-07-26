@@ -219,7 +219,9 @@ def _eval_attack_panel(model, tok, pairs, device, clean_eval, d, d_by_layer,
     for tag, rp, wp, layers, alphas, per_layer in _attack_panel(n_layers, attack_layers, mode):
         direction = d_by_layer if per_layer else d
         overrides = _ablated_overrides(model, direction, layers, rp, wp, alphas)
-        attacked_eval = float(_target_ce(model, tok, pairs, device, overrides=overrides, max_len=max_len))
+        attacked_eval = float(
+            _target_ce(model, tok, pairs, device, overrides=overrides, max_len=max_len).detach()
+        )
         rows.append({
             "attack_panel_tag": tag,
             "clean_cap_eval_ce": clean_eval,
