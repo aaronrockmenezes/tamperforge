@@ -136,11 +136,8 @@ def _attacked_preview(model, tok, prompt: str, device, overrides, n_new: int) ->
 
 
 def _preview_text(text: str) -> tuple[str, bool]:
-    """Only expose clearly safe refusals; keep possible actionable text out of logs."""
     compact = " ".join(text.split())
-    if is_refusal(compact):
-        return compact, True
-    return "[non-refusal output omitted; inspect judged evaluation artifacts]", False
+    return compact, is_refusal(compact)
 
 
 def _target_unlikelihood(model, tok, pairs: Iterable[tuple[str, str]], device, overrides=None,
@@ -462,7 +459,13 @@ def main() -> None:
 
     run_id = args.run_id or make_run_id("mad_v10")
     logger = RunLogger(ROOT / args.out_dir, run_id, repo_root=ROOT)
-    logger.write_manifest({"script": Path(sys.argv[0]).name, "args": vars(args)})
+    training_config = {
+        "script": Path(sys.argv[0]).name,
+        "run_id": run_id,
+        "args": vars(args),
+    }
+    logger.write_manifest(training_config)
+    print(f"[training-config] {json.dumps(training_config, sort_keys=True)}", flush=True)
 
     model, tok, device = load_model(args.model_id, args.device)
     model.config.use_cache = False
@@ -744,7 +747,7 @@ def main() -> None:
                         "response_tokens": len(preview_ids),
                         "response_unique_word_ratio": preview_unique_ratio,
                         "keyword_refusal": preview_is_refusal,
-                        "response_visible": preview_is_refusal,
+                        "response_visible": True,
                         **attack_meta,
                     },
                 )

@@ -565,11 +565,9 @@ def _sample_ablated_generation(model, tok, prompt, device, overrides, max_new=60
     return tok.decode(ids[0, enc["input_ids"].shape[1]:], skip_special_tokens=True)
 
 
-def _safe_preview_text(text: str) -> tuple[str, bool]:
+def _preview_text(text: str) -> tuple[str, bool]:
     compact = " ".join(text.split())
-    if is_refusal(compact):
-        return compact, True
-    return "[non-refusal output omitted; inspect judged evaluation artifacts]", False
+    return compact, is_refusal(compact)
 
 
 def main() -> None:
@@ -727,7 +725,13 @@ def main() -> None:
     torch.manual_seed(args.seed)
     run_id = args.run_id or make_run_id("tamper_resistant_p1b")
     logger = RunLogger(ROOT / args.out_dir, run_id, repo_root=ROOT)
-    logger.write_manifest({"script": Path(sys.argv[0]).name, "args": vars(args)})
+    training_config = {
+        "script": Path(sys.argv[0]).name,
+        "run_id": run_id,
+        "args": vars(args),
+    }
+    logger.write_manifest(training_config)
+    print(f"[training-config] {json.dumps(training_config, sort_keys=True)}", flush=True)
 
     model, tok, device = load_model(args.model_id, args.device)
     n_layers = len(model.model.layers)
@@ -1054,7 +1058,7 @@ def main() -> None:
                     overrides,
                     max_new=args.advbench_preview_tokens,
                 )
-                preview_visible, preview_is_refusal = _safe_preview_text(gen)
+                preview_visible, preview_is_refusal = _preview_text(gen)
                 preview_words = gen.split()
                 preview_unique_ratio = (
                     len(set(preview_words)) / len(preview_words) if preview_words else 0.0
@@ -1068,7 +1072,7 @@ def main() -> None:
                         "response_words": len(preview_words),
                         "response_unique_word_ratio": preview_unique_ratio,
                         "keyword_refusal": preview_is_refusal,
-                        "response_visible": preview_is_refusal,
+                        "response_visible": True,
                         **attack_meta,
                     },
                 )
