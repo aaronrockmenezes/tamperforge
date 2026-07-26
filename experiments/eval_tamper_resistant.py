@@ -102,9 +102,10 @@ def _capability(model, tok, device, n_arc, n_mcq):
 
 def _condition(name, model, tok, device, prompts, logger, cfg):
     rows = generate_responses(model, tok, device, prompts[: cfg["n_adv"]],
-                              max_new_tokens=cfg["max_new_tokens"], condition=name)
-    for r in rows:
-        logger.generation({"condition": name, **r})
+                              max_new_tokens=cfg["max_new_tokens"],
+                              batch_size=cfg["batch_size"],
+                              logger=logger,
+                              condition=name)
     kw = eval_advbench_keyword(rows)
     cap = _capability(model, tok, device, cfg["n_arc"], cfg["n_mcq"])
     summary = {"condition": name, "keyword_asr": kw["asr"], **cap}
@@ -130,6 +131,7 @@ def main() -> None:
                     help="per-subject generative-MMLU questions (model WRITES the letter; "
                          "parse_rate = intellectual-suicide signal). 0 to skip.")
     ap.add_argument("--max-new-tokens", type=int, default=128)
+    ap.add_argument("--batch-size", type=int, default=1)
     ap.add_argument("--advbench-source", choices=["walledai", "local"], default="walledai")
     ap.add_argument("--advbench-split", default="train")
     ap.add_argument("--run-id", default=None)
@@ -139,7 +141,7 @@ def main() -> None:
     logger = RunLogger(ROOT / "results", run_id, repo_root=ROOT)
     logger.write_manifest({"script": "eval_tamper_resistant.py", "args": vars(args)})
     cfg = {"n_adv": args.n_adv, "n_arc": args.n_arc, "n_mcq": args.n_mcq,
-           "max_new_tokens": args.max_new_tokens}
+           "max_new_tokens": args.max_new_tokens, "batch_size": args.batch_size}
 
     prompts = load_advbench_prompts(ROOT / "data" / "advbench_harmful_behaviors.csv",
                                     n=max(args.n_adv, args.n_direction), seed=42,

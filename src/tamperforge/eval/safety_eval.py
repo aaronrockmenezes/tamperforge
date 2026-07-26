@@ -22,6 +22,7 @@ def generate_responses(
     layer: int = 13,
     max_new_tokens: int = 128,
     max_length: int | None = None,
+    batch_size: int = 1,
     logger: RunLogger | None = None,
     condition: str = "condition",
 ) -> list[dict[str, Any]]:
@@ -31,36 +32,42 @@ def generate_responses(
         handle = model.model.layers[layer].register_forward_hook(make_adapter_hook(adapter))
     try:
         total = len(prompts)
-        pbar = tqdm(
-            enumerate(prompts),
-            total=total,
-            desc=f"generate:{condition}",
-            dynamic_ncols=True,
-        )
-        for i, prompt in pbar:
-            template_kwargs = {
-                "return_tensors": "pt",
-                "return_dict": True,
-                "add_generation_prompt": True,
-            }
+        if getattr(tok, "pad_token_id", None) is None:
+            tok.pad_token = tok.eos_token
+        old_padding_side = getattr(tok, "padding_side", "right")
+        tok.padding_side = "left"
+        pbar = tqdm(range(0, total, max(batch_size, 1)), total=(total + max(batch_size, 1) - 1) // max(batch_size, 1),
+                    desc=f"generate:{condition}", dynamic_ncols=True)
+        for start in pbar:
+            batch_prompts = prompts[start : start + max(batch_size, 1)]
+            texts = [
+                tok.apply_chat_template(
+                    [{"role": "user", "content": prompt}],
+                    tokenize=False,
+                    add_generation_prompt=True,
+                )
+                for prompt in batch_prompts
+            ]
+            enc_kwargs = {"return_tensors": "pt", "padding": True}
             if max_length is not None:
-                template_kwargs.update({"truncation": True, "max_length": max_length})
-            enc = tok.apply_chat_template(
-                [{"role": "user", "content": prompt}],
-                **template_kwargs,
-            ).to(device)
-            in_len = enc["input_ids"].shape[1]
-            start_payload = {
-                "condition": condition,
-                "i": i,
-                "n": total,
-                "input_tokens": in_len,
-                "max_new_tokens": max_new_tokens,
-                "max_length": max_length,
-            }
-            if logger:
-                logger.event("generation_start", start_payload)
-            pbar.set_postfix(input_tokens=in_len, max_new_tokens=max_new_tokens)
+                enc_kwargs.update({"truncation": True, "max_length": max_length})
+            enc = tok(texts, **enc_kwargs).to(device)
+            input_lens = enc["attention_mask"].sum(dim=1).tolist()
+            for j, in_len in enumerate(input_lens):
+                if logger:
+                    logger.event(
+                        "generation_start",
+                        {
+                            "condition": condition,
+                            "i": start + j,
+                            "n": total,
+                            "input_tokens": int(in_len),
+                            "max_new_tokens": max_new_tokens,
+                            "max_length": max_length,
+                            "batch_size": max(batch_size, 1),
+                        },
+                    )
+            pbar.set_postfix(batch=len(batch_prompts), max_new_tokens=max_new_tokens)
             with torch.no_grad():
                 out = model.generate(
                     **enc,
@@ -69,30 +76,35 @@ def generate_responses(
                     use_cache=True,
                     pad_token_id=tok.eos_token_id,
                 )
-            response = tok.decode(out[0, in_len:], skip_special_tokens=True)
-            row = {
-                "i": i,
-                "prompt": prompt,
-                "response": response,
-                "keyword_refusal": is_refusal(response),
-                "input_tokens": in_len,
-                "max_new_tokens": max_new_tokens,
-                "max_length": max_length,
-            }
-            rows.append(row)
-            if logger:
-                logger.generation({"condition": condition, **row})
-                logger.event(
-                    "generation_done",
-                    {
-                        "condition": condition,
-                        "i": i,
-                        "n": total,
-                        "response_chars": len(response),
-                        "keyword_refusal": row["keyword_refusal"],
-                    },
-                )
-            pbar.set_postfix(chars=len(response), refusal=row["keyword_refusal"])
+            response_start = enc["input_ids"].shape[1]
+            for j, prompt in enumerate(batch_prompts):
+                response = tok.decode(out[j, response_start:], skip_special_tokens=True)
+                row = {
+                    "i": start + j,
+                    "prompt": prompt,
+                    "response": response,
+                    "keyword_refusal": is_refusal(response),
+                    "input_tokens": int(input_lens[j]),
+                    "max_new_tokens": max_new_tokens,
+                    "max_length": max_length,
+                    "batch_size": max(batch_size, 1),
+                }
+                rows.append(row)
+                if logger:
+                    logger.generation({"condition": condition, **row})
+                    logger.event(
+                        "generation_done",
+                        {
+                            "condition": condition,
+                            "i": start + j,
+                            "n": total,
+                            "response_chars": len(response),
+                            "keyword_refusal": row["keyword_refusal"],
+                            "batch_size": max(batch_size, 1),
+                        },
+                    )
+            pbar.set_postfix(batch=len(batch_prompts), rows=len(rows))
+        tok.padding_side = old_padding_side
     finally:
         if handle is not None:
             handle.remove()
