@@ -3,6 +3,13 @@ set -euo pipefail
 
 mkdir -p logs
 
+if [ -f ".env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+fi
+
 if [ -z "${MODEL_ID+x}" ]; then
   if [ -d "outputs/hf_qwen/Qwen3-0.6B" ]; then
     MODEL_ID="outputs/hf_qwen/Qwen3-0.6B"
