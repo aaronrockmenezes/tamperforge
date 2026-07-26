@@ -582,7 +582,9 @@ def main() -> None:
                 f"div_gap={metrics['div_gap']:.3f} "
                 f"bad_ul={metrics['L_bad_ul']:.3f} "
                 f"gnorm={metrics['grad_norm']:.2f} "
-                f"attack={attack_meta['attack_tag']}"
+                f"attack={attack_meta['attack_tag']} "
+                f"alpha={attack_meta['attack_alpha_mean']:.3f}"
+                f"[{attack_meta['attack_alpha_min']:.3f}-{attack_meta['attack_alpha_max']:.3f}]"
             )
 
         if step % args.eval_every == 0 or step == args.steps:
