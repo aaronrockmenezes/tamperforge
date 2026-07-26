@@ -130,6 +130,7 @@ def _sample_attack_v10(
     attack_layers: list[int] | None,
     alpha_min: float,
     alpha_max: float,
+    write_scope: str = "mixed_write",
 ):
     """Sample an interpretable v10 attack profile.
 
@@ -146,7 +147,12 @@ def _sample_attack_v10(
     if not attack_layers:
         raise ValueError(f"attack profile {chosen!r} needs an explicit attack layer band")
 
-    scope = rng.choice(list(V10_WRITE_SCOPES))
+    if write_scope == "mixed_write":
+        scope = rng.choice(list(V10_WRITE_SCOPES))
+    else:
+        if write_scope not in V10_WRITE_SCOPES:
+            raise ValueError(f"unknown v10 write scope {write_scope!r}")
+        scope = write_scope
     rp, wp = V10_WRITE_SCOPES[scope]
     layers = list(attack_layers)
     use_partial = chosen in {"partial_shared", "partial_perlayer"}

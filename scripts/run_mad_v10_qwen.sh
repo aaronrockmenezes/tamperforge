@@ -48,8 +48,12 @@ PYTHONPATH=src "$PYTHON_BIN" experiments/train_mad_v10.py \
   --out "outputs/${RUN_ID}.pt" \
   --run-id "$RUN_ID" \
   --qwen-thinking off \
-  --attack-profile mixed \
-  --attack-layers 12-27 \
+  --attack-profile "${ATTACK_PROFILE:-partial_perlayer}" \
+  --attack-write-scope "${ATTACK_WRITE_SCOPE:-all_write}" \
+  --attack-layers "${ATTACK_LAYERS:-10-27}" \
+  --attack-alpha-min "${ALPHA_MIN:-0.2}" \
+  --attack-alpha-max "${ALPHA_MAX:-0.6}" \
+  --eval-attack-panel "${EVAL_ATTACK_PANEL:-heretic}" \
   --train-scope all \
   --cap-datasets gsm8k,arc,tiny_if \
   --steps "${STEPS:-200}" \

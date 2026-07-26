@@ -38,6 +38,9 @@ from tamperforge import (  # noqa: E402
 from tamperforge.data import BENIGN_PROMPTS, REFUSAL_RESPONSES, load_advbench_prompts  # noqa: E402
 from tamperforge.eval.log import RunLogger, make_run_id  # noqa: E402
 from train_tamper_resistant_v8 import (  # noqa: E402
+    READ_PROJ,
+    V10_WRITE_SCOPES,
+    WRITE_PROJ,
     _ablated_overrides,
     _attack_metadata,
     _clean_gen_kl_loss,
@@ -186,6 +189,47 @@ def _capability_margin_loss(model, tok, pairs: list[tuple[str, str]], device, ov
     return torch.relu(torch.tensor(margin, device=device) - gap), clean_ce, attacked_ce, gap.detach()
 
 
+def _fixed_alphas(layers: list[int], alpha: float) -> dict[int, float]:
+    return {li: alpha for li in layers}
+
+
+def _attack_panel(n_layers: int, attack_layers: list[int], mode: str):
+    if mode == "off":
+        return []
+    specs = [
+        ("legacy_all_full_shared", READ_PROJ, WRITE_PROJ, list(range(n_layers)), None, False),
+        ("all_write_partial_perlayer_a02", *V10_WRITE_SCOPES["all_write"], attack_layers, _fixed_alphas(attack_layers, 0.2), True),
+        ("all_write_partial_perlayer_a04", *V10_WRITE_SCOPES["all_write"], attack_layers, _fixed_alphas(attack_layers, 0.4), True),
+        ("all_write_partial_perlayer_a06", *V10_WRITE_SCOPES["all_write"], attack_layers, _fixed_alphas(attack_layers, 0.6), True),
+        ("all_write_partial_perlayer_a08", *V10_WRITE_SCOPES["all_write"], attack_layers, _fixed_alphas(attack_layers, 0.8), True),
+        ("all_write_perlayer_full", *V10_WRITE_SCOPES["all_write"], attack_layers, None, True),
+        ("all_write_partial_shared_a06", *V10_WRITE_SCOPES["all_write"], attack_layers, _fixed_alphas(attack_layers, 0.6), False),
+    ]
+    if mode == "full":
+        specs.extend([
+            ("mlp_write_partial_perlayer_a06", *V10_WRITE_SCOPES["mlp_write"], attack_layers, _fixed_alphas(attack_layers, 0.6), True),
+            ("attn_write_partial_perlayer_a06", *V10_WRITE_SCOPES["attn_write"], attack_layers, _fixed_alphas(attack_layers, 0.6), True),
+        ])
+    return specs
+
+
+def _eval_attack_panel(model, tok, pairs, device, clean_eval, d, d_by_layer,
+                       n_layers, attack_layers, mode, max_len):
+    rows = []
+    for tag, rp, wp, layers, alphas, per_layer in _attack_panel(n_layers, attack_layers, mode):
+        direction = d_by_layer if per_layer else d
+        overrides = _ablated_overrides(model, direction, layers, rp, wp, alphas)
+        attacked_eval = float(_target_ce(model, tok, pairs, device, overrides=overrides, max_len=max_len))
+        rows.append({
+            "attack_panel_tag": tag,
+            "clean_cap_eval_ce": clean_eval,
+            "attacked_cap_eval_ce": attacked_eval,
+            "cap_eval_gap": attacked_eval - clean_eval,
+            **_attack_metadata(tag, layers, alphas, per_layer, "eval_panel"),
+        })
+    return rows
+
+
 def _load_gsm8k_pairs(n: int, seed: int, split: str) -> list[tuple[str, str]]:
     from datasets import load_dataset
 
@@ -302,8 +346,12 @@ def main() -> None:
                     choices=["v8", "partial_shared", "perlayer_full", "partial_perlayer", "mixed"],
                     default="mixed")
     ap.add_argument("--attack-layers", default=None)
+    ap.add_argument("--attack-write-scope",
+                    choices=["mixed_write", "all_write", "mlp_write", "attn_write"],
+                    default="mixed_write")
     ap.add_argument("--attack-alpha-min", type=float, default=0.2)
     ap.add_argument("--attack-alpha-max", type=float, default=0.6)
+    ap.add_argument("--eval-attack-panel", choices=["off", "heretic", "full"], default="off")
 
     ap.add_argument("--cap-datasets", default="gsm8k,arc,tiny_if")
     ap.add_argument("--n-cap-train", type=int, default=1024)
@@ -364,7 +412,10 @@ def main() -> None:
     )
     read_p, write_p, trainable, W0 = _configure_trainable(model, train_layers, args.train_scope)
     print(f"[mad-v10] trainable matrices={len(trainable)} layers={len(train_layers)} scope={args.train_scope}")
-    print(f"[mad-v10] attack_profile={args.attack_profile} attack_layers={attack_layers[0]}-{attack_layers[-1]}")
+    print(f"[mad-v10] attack_profile={args.attack_profile} "
+          f"attack_write_scope={args.attack_write_scope} "
+          f"attack_layers={attack_layers[0]}-{attack_layers[-1]} "
+          f"eval_attack_panel={args.eval_attack_panel}")
 
     print(f"[mad-v10] loading capability datasets: {args.cap_datasets}", flush=True)
     cap_train = load_capability_pairs(args.cap_datasets, args.n_cap_train, args.seed, "train", args.smoke)
@@ -419,7 +470,10 @@ def main() -> None:
         if d is None or (step - 1) % args.recompute_direction_every == 0:
             hs = rng_dir.sample(harmful_for_direction, min(args.n_direction, len(harmful_for_direction)))
             bs = rng_dir.sample(benign_for_direction, min(args.n_direction, len(benign_for_direction)))
-            needs_per_layer = args.attack_profile in {"perlayer_full", "partial_perlayer", "mixed"}
+            needs_per_layer = (
+                args.attack_profile in {"perlayer_full", "partial_perlayer", "mixed"}
+                or args.eval_attack_panel != "off"
+            )
             with torch.no_grad():
                 if needs_per_layer:
                     direction_layers = sorted(set(attack_layers + [args.direction_layer]))
@@ -435,6 +489,7 @@ def main() -> None:
             attack_layers,
             args.attack_alpha_min,
             args.attack_alpha_max,
+            args.attack_write_scope,
         )
         overrides = _ablated_overrides(model, d_by_layer if pl_a else d, layers_a, rp_a, wp_a, alphas_a)
         attack_meta = _attack_metadata(atag, layers_a, alphas_a, pl_a, args.attack_profile)
@@ -545,6 +600,20 @@ def main() -> None:
                     **attack_meta,
                 },
             )
+            for row in _eval_attack_panel(
+                model,
+                tok,
+                ev,
+                device,
+                clean_eval,
+                d,
+                d_by_layer,
+                n_layers,
+                attack_layers,
+                args.eval_attack_panel,
+                args.max_target_len,
+            ):
+                logger.event("eval_attack_panel", {"step": step, **row})
             tqdm.write(
                 f"step {step}: clean_cap_ce={metrics['clean_cap_ce']:.3f} "
                 f"att_cap_ce={metrics['attacked_cap_ce']:.3f} cap_gap={metrics['cap_gap']:.3f} "
