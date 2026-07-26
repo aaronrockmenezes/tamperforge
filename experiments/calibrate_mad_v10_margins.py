@@ -251,6 +251,8 @@ def _attack_result(tag, rows, clean_scores, attacked_scores, clean_div, attacked
         "gold_gap_easy_clean_correct": _summary([gold_gaps[index] for index in easy_indices]),
         "gold_gap_hard_clean_correct": _summary([gold_gaps[index] for index in hard_indices]),
         "gold_gap_clean_wrong": _summary([gold_gaps[index] for index in wrong_indices]),
+        "clean_reference_ce": _summary(clean_div),
+        "attacked_reference_ce": _summary(attacked_div),
         "divergence_gap": _summary(div_gaps),
     }
 
