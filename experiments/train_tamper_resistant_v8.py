@@ -769,11 +769,20 @@ def main() -> None:
                                                n=args.n_harmful, seed=args.seed)]
         benign = list(BENIGN_PROMPTS)
     else:
-        from tamperforge.data_p1b import (load_benign_instructions, load_harmful_prompts,
-                                          load_task_corpus)
+        from tamperforge.data_p1b import load_benign_instructions, load_task_corpus
         print("[p1b-A] loading corpora (wikitext / advbench / alpaca)...")
         task_train, task_eval = load_task_corpus(args.n_task_train, args.n_task_eval, seed=args.seed)
-        harmful = load_harmful_prompts(args.n_harmful, seed=args.seed)
+        # Training only needs the prompts, and the vendored CSV contains the
+        # same AdvBench goals without requiring gated Hub access.
+        harmful = [
+            prompt
+            for prompt, _ in load_advbench(
+                ROOT / "data" / "advbench_harmful_behaviors.csv",
+                n=args.n_harmful,
+                seed=args.seed,
+                source="local",
+            )
+        ]
         benign = load_benign_instructions(args.n_benign, seed=args.seed)
     pairs = [(p, REFUSAL_RESPONSES[i % len(REFUSAL_RESPONSES)]) for i, p in enumerate(harmful)]
     # (goal, "Sure, here is ...") affirmative-compliance targets for L_harm. The local
