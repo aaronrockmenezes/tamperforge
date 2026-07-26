@@ -162,9 +162,8 @@ Server paths before teardown:
   `outputs/mad_v8_qwen_rank1_heretic_gib12_p8_20260726.pt`
   and `.s50.pt` through `.s450.pt`.
 
-The handoff, logs, manifests, summaries, and event traces are backed up under
-`server_backup_2026-07-27/` in the private Hugging Face repository
-`aaronrockmenezes/tamperforge`. No checkpoint payload was uploaded as part of
-that backup. Checkpoint retention must be chosen explicitly before the Vast box
-is destroyed. Downloaded base-model caches are not research artifacts and are
-intentionally excluded.
+The handoff, full training log, manifest, event trace, and the S200 and S300
+checkpoint payloads are backed up under `server_backup_2026-07-27/` in the
+private Hugging Face repository `aaronrockmenezes/tamperforge`. Other checkpoint
+payloads are intentionally not retained. Downloaded base-model caches are not
+research artifacts and are also excluded.
