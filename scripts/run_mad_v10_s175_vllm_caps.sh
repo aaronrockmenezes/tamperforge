@@ -9,11 +9,13 @@ export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:T
 
 EXPORT_ROOT="${EXPORT_ROOT:-outputs/mad_v10_s175_rank1_vllm_20260726_132333}"
 RUN_ID="${RUN_ID:-mad_v10_s175_vllm_caps_$(date +%Y%m%d_%H%M%S)}"
-MAX_MODEL_LEN="${MAX_MODEL_LEN:-40960}"
-MAX_GEN_TOKS="${MAX_GEN_TOKS:-32768}"
+MAX_MODEL_LEN="${MAX_MODEL_LEN:-8192}"
+MAX_GEN_TOKS="${MAX_GEN_TOKS:-4096}"
 MAX_NUM_SEQS="${MAX_NUM_SEQS:-256}"
 GPU_MEM="${GPU_MEM:-0.90}"
 DTYPE="${DTYPE:-bfloat16}"
+EVAL_LIMIT="${EVAL_LIMIT:-200}"
+MMLU_LIMIT_PER_TASK="${MMLU_LIMIT_PER_TASK:-40}"
 MMLU_TASKS="${MMLU_TASKS:-mmlu_professional_law,mmlu_high_school_biology,mmlu_high_school_us_history,mmlu_high_school_world_history,mmlu_computer_security}"
 AGI_TASK="${AGI_TASK:-agieval}"
 
@@ -50,10 +52,11 @@ run_suite() {
   local model_path="$2"
   local suite="$3"
   local tasks="$4"
-  shift 4
+  local limit="$5"
+  shift 5
 
   local out="results/${RUN_ID}/${variant}/${suite}"
-  local args="pretrained=${model_path},dtype=${DTYPE},trust_remote_code=True,max_model_len=${MAX_MODEL_LEN},gpu_memory_utilization=${GPU_MEM},max_num_seqs=${MAX_NUM_SEQS}"
+  local args="pretrained=${model_path},dtype=${DTYPE},trust_remote_code=True,max_model_len=${MAX_MODEL_LEN},gpu_memory_utilization=${GPU_MEM},max_num_seqs=${MAX_NUM_SEQS},enable_thinking=false"
 
   if [ -d "${out}" ]; then
     echo "[skip] ${variant}/${suite}: ${out} exists"
@@ -68,6 +71,7 @@ run_suite() {
     --tasks "${tasks}" \
     --batch_size auto \
     --apply_chat_template \
+    --limit "${limit}" \
     --output_path "${out}" \
     "$@"
   local status=$?
@@ -82,32 +86,30 @@ for variant in trained_clean trained_attacked base_attacked; do
     continue
   fi
 
-  run_suite "${variant}" "${model_path}" ifeval ifeval \
+  run_suite "${variant}" "${model_path}" ifeval ifeval "${EVAL_LIMIT}" \
     --num_fewshot 0 \
     --gen_kwargs "max_gen_toks=${MAX_GEN_TOKS}" "temperature=0"
 
-  run_suite "${variant}" "${model_path}" gsm8k gsm8k \
+  run_suite "${variant}" "${model_path}" gsm8k gsm8k "${EVAL_LIMIT}" \
     --num_fewshot 5 \
     --gen_kwargs "max_gen_toks=${MAX_GEN_TOKS}" "temperature=0"
 
-  run_suite "${variant}" "${model_path}" arc_challenge arc_challenge \
+  run_suite "${variant}" "${model_path}" arc_challenge arc_challenge "${EVAL_LIMIT}" \
     --num_fewshot 0
 
-  run_suite "${variant}" "${model_path}" mmlu_5x200 "${MMLU_TASKS}" \
-    --num_fewshot 0 \
-    --limit 200
+  run_suite "${variant}" "${model_path}" mmlu_5x40 "${MMLU_TASKS}" "${MMLU_LIMIT_PER_TASK}" \
+    --num_fewshot 0
 
   if task_exists "${AGI_TASK}"; then
-    run_suite "${variant}" "${model_path}" agieval_200 "${AGI_TASK}" \
+    run_suite "${variant}" "${model_path}" agieval_200 "${AGI_TASK}" "${EVAL_LIMIT}" \
       --num_fewshot 0 \
-      --limit 200 \
       --gen_kwargs "max_gen_toks=${MAX_GEN_TOKS}" "temperature=0"
   else
     echo "[skip] ${variant}/agieval_200: task '${AGI_TASK}' not installed"
   fi
 
   if task_exists reclor; then
-    run_suite "${variant}" "${model_path}" reclor reclor \
+    run_suite "${variant}" "${model_path}" reclor reclor "${EVAL_LIMIT}" \
       --num_fewshot 0
   else
     echo "[skip] ${variant}/reclor: task 'reclor' not installed"
