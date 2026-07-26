@@ -18,6 +18,7 @@ EVAL_LIMIT="${EVAL_LIMIT:-200}"
 MMLU_LIMIT_PER_TASK="${MMLU_LIMIT_PER_TASK:-40}"
 MMLU_TASKS="${MMLU_TASKS:-mmlu_professional_law,mmlu_high_school_biology,mmlu_high_school_us_history,mmlu_high_school_world_history,mmlu_computer_security}"
 AGI_TASK="${AGI_TASK:-agieval_lsat_ar}"
+VARIANTS="${VARIANTS:-trained_clean,trained_attacked,base_attacked}"
 
 if command -v lm-eval >/dev/null 2>&1; then
   LM_EVAL=(lm-eval run)
@@ -106,7 +107,10 @@ run_suite() {
   return "${status}"
 }
 
-for variant in trained_clean trained_attacked base_attacked; do
+IFS=',' read -r -a variant_list <<< "${VARIANTS}"
+for variant in "${variant_list[@]}"; do
+  variant="${variant//[[:space:]]/}"
+  [ -n "${variant}" ] || continue
   model_path="${EXPORT_ROOT}/${variant}"
   if [ ! -d "${model_path}" ]; then
     echo "!! missing ${model_path}; skipping ${variant}"
