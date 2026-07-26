@@ -286,6 +286,7 @@ def main() -> None:
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--steps", type=int, default=400)
     ap.add_argument("--eval-every", type=int, default=25)
+    ap.add_argument("--print-every", type=int, default=1)
     ap.add_argument("--save-every", type=int, default=0)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--lr", type=float, default=1e-5)
@@ -365,8 +366,10 @@ def main() -> None:
     print(f"[mad-v10] trainable matrices={len(trainable)} layers={len(train_layers)} scope={args.train_scope}")
     print(f"[mad-v10] attack_profile={args.attack_profile} attack_layers={attack_layers[0]}-{attack_layers[-1]}")
 
+    print(f"[mad-v10] loading capability datasets: {args.cap_datasets}", flush=True)
     cap_train = load_capability_pairs(args.cap_datasets, args.n_cap_train, args.seed, "train", args.smoke)
     cap_eval = load_capability_pairs(args.cap_datasets, args.n_cap_eval, args.seed + 1, "test", args.smoke)
+    print("[mad-v10] loading optional unsafe JSONL rows", flush=True)
     unsafe_pairs = load_jsonl_pairs(
         ROOT / args.unsafe_jsonl if args.unsafe_jsonl else None,
         args.n_unsafe,
@@ -383,6 +386,7 @@ def main() -> None:
         harmful_for_direction = [f"unsafe request placeholder {i}" for i in range(16)]
         benign_for_direction = list(BENIGN_PROMPTS)
     else:
+        print("[mad-v10] loading local direction prompts and benign instructions", flush=True)
         harmful_for_direction = load_advbench_prompts(
             ROOT / "data" / "advbench_harmful_behaviors.csv",
             n=args.n_harmful_direction,
@@ -511,6 +515,18 @@ def main() -> None:
             "step_applied": step_applied,
         }
         logger.event("step", {"step": step, **metrics, **attack_meta})
+        if args.print_every > 0 and (step % args.print_every == 0 or step == 1):
+            tqdm.write(
+                f"step {step:04d} "
+                f"loss={metrics['loss']:.3f} "
+                f"clean_cap={metrics['clean_cap_ce']:.3f} "
+                f"att_cap={metrics['attacked_cap_ce']:.3f} "
+                f"cap_gap={metrics['cap_gap']:.3f} "
+                f"div_gap={metrics['div_gap']:.3f} "
+                f"bad_ul={metrics['L_bad_ul']:.3f} "
+                f"gnorm={metrics['grad_norm']:.2f} "
+                f"attack={attack_meta['attack_tag']}"
+            )
 
         if step % args.eval_every == 0 or step == args.steps:
             ev = rng_eval.sample(cap_eval, min(16, len(cap_eval)))

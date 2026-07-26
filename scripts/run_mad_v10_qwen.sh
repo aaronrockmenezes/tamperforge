@@ -50,10 +50,11 @@ PYTHONPATH=src "$PYTHON_BIN" experiments/train_mad_v10.py \
   --qwen-thinking off \
   --attack-profile mixed \
   --attack-layers 12-27 \
-  --train-scope mlp \
+  --train-scope all \
   --cap-datasets gsm8k,arc,tiny_if \
   --steps "${STEPS:-200}" \
   --eval-every "${EVAL_EVERY:-25}" \
+  --print-every "${PRINT_EVERY:-1}" \
   --save-every "${SAVE_EVERY:-25}" \
   --cap-batch "${CAP_BATCH:-2}" \
   --lambda-clean-cap "${LAMBDA_CLEAN_CAP:-1.0}" \
