@@ -47,6 +47,10 @@ cleanup_vllm_leftovers() {
   sleep 5
 }
 
+result_exists() {
+  find "$1" -type f -name 'results_*.json' -print -quit 2>/dev/null | grep -q .
+}
+
 run_suite() {
   local variant="$1"
   local model_path="$2"
@@ -58,8 +62,8 @@ run_suite() {
   local out="results/${RUN_ID}/${variant}/${suite}"
   local args="pretrained=${model_path},dtype=${DTYPE},trust_remote_code=True,max_model_len=${MAX_MODEL_LEN},gpu_memory_utilization=${GPU_MEM},max_num_seqs=${MAX_NUM_SEQS},enable_thinking=false"
 
-  if [ -d "${out}" ]; then
-    echo "[skip] ${variant}/${suite}: ${out} exists"
+  if result_exists "${out}"; then
+    echo "[skip] ${variant}/${suite}: result exists"
     return 0
   fi
 
@@ -73,8 +77,31 @@ run_suite() {
     --apply_chat_template \
     --limit "${limit}" \
     --output_path "${out}" \
-    "$@"
+    "$@" &
+  local eval_pid=$!
+
+  # Some vLLM versions hang after lm-eval has already written the final result.
+  # Once that file is safely present, stop only this evaluator's EngineCore so
+  # lm-eval exits and the next suite can start.
+  while kill -0 "${eval_pid}" 2>/dev/null; do
+    if result_exists "${out}"; then
+      sleep 5
+      local engine_pid
+      engine_pid="$(pgrep -P "${eval_pid}" -f "VLLM::EngineCore" | head -1 || true)"
+      if [ -n "${engine_pid}" ]; then
+        echo "[cleanup] ${variant}/${suite}: stopping finished EngineCore ${engine_pid}"
+        kill -TERM "${engine_pid}" 2>/dev/null || true
+      fi
+      break
+    fi
+    sleep 2
+  done
+
+  wait "${eval_pid}"
   local status=$?
+  if result_exists "${out}"; then
+    status=0
+  fi
   cleanup_vllm_leftovers
   return "${status}"
 }
