@@ -96,30 +96,73 @@ def _labels(judged: Path) -> dict[str, str]:
 
 
 @torch.no_grad()
-def _scores(clean, atk, tok, device, prompt: str, n_new: int):
-    enc = apply_chat_template_no_think(tok, [{"role": "user", "content": prompt}],
-                                       return_tensors="pt", return_dict=True,
-                                       add_generation_prompt=True).to(device)
+def _scores_batch(clean, atk, tok, device, prompts: list[str], n_new: int,
+                  stop_at_eos: bool = True):
+    """Per-prompt (gib_ce, kl) for a batch. Returns list aligned with `prompts`.
+
+    Left-padded so every prompt ends at the same position -- the continuation then starts
+    at the same index for the whole batch, which keeps the masking simple. Logits are
+    sliced to the continuation window BEFORE the fp32 cast: the full [B, L, 152k] tensor in
+    fp32 is ~3GB at batch 32, the 32-token window is ~0.6GB.
+    """
+    texts = [apply_chat_template_no_think(tok, [{"role": "user", "content": p}],
+                                          tokenize=False, add_generation_prompt=True)
+             for p in prompts]
+    old_side, tok.padding_side = tok.padding_side, "left"
+    enc = tok(texts, return_tensors="pt", padding=True).to(device)
+    tok.padding_side = old_side
     plen = enc["input_ids"].shape[1]
+
     clean.config.use_cache = True
     full = clean.generate(**enc, max_new_tokens=n_new, do_sample=False,
                           use_cache=True, pad_token_id=tok.eos_token_id)
     if full.shape[1] <= plen:
-        return None
-    la = atk(input_ids=full).logits.float()[:, :-1, :]
-    lc = clean(input_ids=full).logits.float()[:, :-1, :]
-    tgt = full[:, 1:]
-    m = torch.zeros_like(tgt, dtype=torch.bool)
-    m[:, plen - 1:] = True                       # continuation tokens only
-    if not m.any():
-        return None
+        return [None] * len(prompts)
+    gen = full[:, plen:]                                  # [B, n_gen]
+    n_gen = gen.shape[1]
+    am = torch.cat([enc["attention_mask"],
+                    torch.ones_like(gen)], dim=1)
+
+    # FIDELITY: training calls _argmax_divergence_loss one prompt at a time, so generate
+    # returns each sequence truncated at its own EOS and never pads. Batching pads short
+    # generations out to the longest in the batch, and scoring that padding is a pure
+    # batching artifact -- it shifted the measured means by 0.3-2.0 nats in testing.
+    # Stopping at EOS is therefore what reproduces the training signal, not an improvement
+    # on it; verified against a batch-1 run (normal 2.0509 vs 2.0503, harmful 2.2568 vs
+    # 2.2654). Residual per-sequence differences come from greedy decoding under
+    # left-padding occasionally flipping an argmax; noise, not bias.
+    if stop_at_eos:
+        is_eos = gen == tok.eos_token_id
+        first_eos = torch.where(is_eos.any(1), is_eos.float().argmax(1),
+                                torch.full((gen.shape[0],), n_gen, device=gen.device).float())
+        valid = torch.arange(n_gen, device=gen.device)[None, :] <= first_eos[:, None]
+    else:
+        valid = torch.ones_like(gen, dtype=torch.bool)
+
+    # Left-padding means a bare forward would assign RoPE positions by plain arange, so
+    # every padded sequence gets shifted positions and wrong logits. generate() derives
+    # position_ids from the mask internally; an explicit forward does not, so do it here.
+    # Without this the batched numbers do not match the batch-1 reference.
+    pos = (am.cumsum(-1) - 1).clamp(min=0)
+
+    # logits at positions plen-1 .. end-2 predict exactly the continuation tokens
+    la = atk(input_ids=full, attention_mask=am, position_ids=pos).logits[:, plen - 1:-1, :].float()
+    lc = clean(input_ids=full, attention_mask=am, position_ids=pos).logits[:, plen - 1:-1, :].float()
     ce = torch.nn.functional.cross_entropy(
-        la.reshape(-1, la.size(-1)), tgt.reshape(-1), reduction="none").reshape(tgt.shape)
-    gib = float(torch.clamp(ce[m], max=30.0).mean())   # fp32 + clamp, as in training
-    kl = float(torch.nn.functional.kl_div(
+        la.reshape(-1, la.size(-1)), gen.reshape(-1), reduction="none").reshape(gen.shape)
+    ce = torch.clamp(ce, max=30.0)                        # fp32 + clamp, as in training
+    kl = torch.nn.functional.kl_div(
         torch.log_softmax(la, -1), torch.log_softmax(lc, -1),
-        reduction="none", log_target=True).sum(-1)[m].clamp(max=30.0).mean())
-    return gib, kl
+        reduction="none", log_target=True).sum(-1).clamp(max=30.0)
+
+    n = valid.sum(1)
+    out = []
+    for i in range(gen.shape[0]):
+        if n[i] < 1:
+            out.append(None)
+            continue
+        out.append((float(ce[i][valid[i]].mean()), float(kl[i][valid[i]].mean())))
+    return out
 
 
 def main() -> None:
@@ -130,6 +173,13 @@ def main() -> None:
     ap.add_argument("--judged", required=True)
     ap.add_argument("--n-new", type=int, default=32, help="matches --gib-gen-tokens default")
     ap.add_argument("--limit", type=int, default=-1)
+    ap.add_argument("--batch-size", type=int, default=32)
+    ap.add_argument("--score-eos-padding", action="store_true",
+                    help="also score the eos-padding batching appends after an early stop. "
+                         "OFF by default: training calls _argmax_divergence_loss one prompt "
+                         "at a time, so generate returns each sequence truncated at its own "
+                         "EOS and never pads. Scoring the padding is a batching artifact, "
+                         "and leaving it on shifts means by ~0.3-2.0 nats.")
     ap.add_argument("--device", default=None)
     ap.add_argument("--out", default="results/v11_gibce_separation.json")
     args = ap.parse_args()
@@ -148,15 +198,17 @@ def main() -> None:
     atk.eval()
 
     data: dict[str, dict[str, list[float]]] = {}
-    for i, p in enumerate(prompts):
-        s = _scores(clean, atk, tok, device, p, args.n_new)
-        if s is None:
-            continue
-        d = data.setdefault(labels[p], {"gib_ce": [], "kl": []})
-        d["gib_ce"].append(s[0])
-        d["kl"].append(s[1])
-        if (i + 1) % 100 == 0:
-            print(f"  ...{i + 1}/{len(prompts)}")
+    for i in range(0, len(prompts), args.batch_size):
+        chunk = prompts[i: i + args.batch_size]
+        for p, s in zip(chunk, _scores_batch(clean, atk, tok, device, chunk, args.n_new,
+                                                  not args.score_eos_padding),
+                        strict=True):
+            if s is None:
+                continue
+            d = data.setdefault(labels[p], {"gib_ce": [], "kl": []})
+            d["gib_ce"].append(s[0])
+            d["kl"].append(s[1])
+        print(f"  ...{min(i + args.batch_size, len(prompts))}/{len(prompts)}", flush=True)
 
     report = {"n": {k: len(v["gib_ce"]) for k, v in data.items()}, "metrics": {}}
     for metric in ("gib_ce", "kl"):

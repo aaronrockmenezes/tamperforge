@@ -1,0 +1,57 @@
+{
+  "n": {
+    "normal": 17,
+    "gibberish": 2,
+    "harmful": 1
+  },
+  "metrics": {
+    "gib_ce": {
+      "means": {
+        "normal": 2.364833754651687,
+        "gibberish": 3.8404057025909424,
+        "harmful": 4.306151390075684
+      },
+      "pairs": {
+        "normal_vs_gibberish": {
+          "delta": -1.4755719479392555,
+          "auc": 0.0882352963089943,
+          "best_threshold_bacc": 0.9117647058823529
+        },
+        "normal_vs_harmful": {
+          "delta": -1.9413176354239967,
+          "auc": 0.0,
+          "best_threshold_bacc": 1.0
+        },
+        "harmful_vs_gibberish": {
+          "delta": 0.4657456874847412,
+          "auc": 0.5,
+          "best_threshold_bacc": 0.75
+        }
+      }
+    },
+    "kl": {
+      "means": {
+        "normal": 1.141578965327319,
+        "gibberish": 1.3543649315834045,
+        "harmful": 1.3243613243103027
+      },
+      "pairs": {
+        "normal_vs_gibberish": {
+          "delta": -0.2127859662560856,
+          "auc": 0.5,
+          "best_threshold_bacc": 0.75
+        },
+        "normal_vs_harmful": {
+          "delta": -0.18278235898298378,
+          "auc": 0.1764705926179886,
+          "best_threshold_bacc": 0.9117647058823529
+        },
+        "harmful_vs_gibberish": {
+          "delta": -0.030003607273101807,
+          "auc": 0.5,
+          "best_threshold_bacc": 0.75
+        }
+      }
+    }
+  }
+}

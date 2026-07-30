@@ -13,6 +13,10 @@ dist/
 *.safetensors
 abliterated_*/
 wandb/
+# Exported HF model dirs: safetensors already ignored, but the tokenizer.json /
+# config.json siblings are multi-MB each and are not research artifacts.
+# Force-add provenance metas (*_meta.json) individually when they matter.
+outputs/
 
 # Results: keep only compact manifests and summaries in source
 results/**

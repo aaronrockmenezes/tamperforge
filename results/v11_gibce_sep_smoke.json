@@ -1,0 +1,57 @@
+{
+  "n": {
+    "normal": 17,
+    "gibberish": 2,
+    "harmful": 1
+  },
+  "metrics": {
+    "gib_ce": {
+      "means": {
+        "normal": 2.05026120298049,
+        "gibberish": 2.316986918449402,
+        "harmful": 2.2654128074645996
+      },
+      "pairs": {
+        "normal_vs_gibberish": {
+          "delta": -0.2667257154689118,
+          "auc": 0.11764705926179886,
+          "best_threshold_bacc": 0.9411764705882353
+        },
+        "normal_vs_harmful": {
+          "delta": -0.21515160448410953,
+          "auc": 0.11764705926179886,
+          "best_threshold_bacc": 0.9411764705882353
+        },
+        "harmful_vs_gibberish": {
+          "delta": -0.051574110984802246,
+          "auc": 0.5,
+          "best_threshold_bacc": 0.75
+        }
+      }
+    },
+    "kl": {
+      "means": {
+        "normal": 1.1782038562438066,
+        "gibberish": 1.3368290662765503,
+        "harmful": 1.6629594564437866
+      },
+      "pairs": {
+        "normal_vs_gibberish": {
+          "delta": -0.15862521003274366,
+          "auc": 0.1764705926179886,
+          "best_threshold_bacc": 0.9117647058823529
+        },
+        "normal_vs_harmful": {
+          "delta": -0.48475560019998,
+          "auc": 0.0,
+          "best_threshold_bacc": 1.0
+        },
+        "harmful_vs_gibberish": {
+          "delta": 0.32613039016723633,
+          "auc": 1.0,
+          "best_threshold_bacc": 1.0
+        }
+      }
+    }
+  }
+}
