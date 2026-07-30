@@ -111,7 +111,11 @@ def sample_attack(
     elif kind == "upper":
         layers = list(range(n_layers // 2, n_layers))
     else:
-        lo = rng.choice(band)
+        # lo is clamped to the lower half so the window always spans >= half the layers.
+        # v8's sampler does the same, and for a reason: tier-1 found the collapse is
+        # localized and sub-layer ablations under-trigger it, so a 2-layer window is a
+        # wasted step that teaches the model nothing about the attack it must survive.
+        lo = min(rng.choice(band), n_layers // 2)
         hi = rng.randint(min(lo + n_layers // 2, n_layers - 1), n_layers - 1)
         layers = list(range(lo, hi + 1))
     layers = layers or list(range(n_layers))
@@ -138,10 +142,16 @@ def _subspace(H: torch.Tensor, rank: int) -> torch.Tensor:
     be done from ONE capture pass -- calling that helper per layer re-runs every prompt per
     layer, which is unaffordable at training refresh cadence.
     """
+    return _subspaces(H, (rank,))[rank]
+
+
+def _subspaces(H: torch.Tensor, ranks) -> dict[int, torch.Tensor]:
+    """All requested ranks from ONE decomposition -- they are nested prefixes of the same
+    basis, so factorising per rank would repeat identical work at every refresh."""
     H = H.float()
     H = H - H.mean(0, keepdim=True)
     _, _, Vh = torch.linalg.svd(H, full_matrices=False)
-    return Vh[:rank]
+    return {r: Vh[:r] for r in ranks}
 
 
 def _surgical(d: torch.Tensor, V: torch.Tensor) -> tuple[torch.Tensor, float]:
@@ -167,6 +177,12 @@ class DirectionBank(NamedTuple):
     @torch.no_grad()
     def build(cls, model, tok, device, harmful, benign, cap_prompts, *, layers,
               read_layers=(16, 20, 24), cap_ranks=(2, 4, 8, 16)):
+        """`layers` must cover EVERY layer the sampler can emit, not just the attack band.
+
+        sample_attack's "all" and "broad" shapes reach outside the band, and a per-layer
+        attack then asks the bank for a layer it never built -- a KeyError mid-training.
+        Pass range(n_layers).
+        """
         want = sorted(set(list(layers) + list(read_layers)))
         plain = {L: v.float().to(device)
                  for L, v in empirical_refusal_directions(
@@ -174,9 +190,9 @@ class DirectionBank(NamedTuple):
         Hc = capture_residuals(model, tok, cap_prompts, want, device)
         surg, ov = {}, {}
         for L in want:
+            Vs = _subspaces(Hc[L], cap_ranks)
             for r in cap_ranks:
-                V = _subspace(Hc[L], r).to(device)
-                surg[(L, r)], ov[(L, r)] = _surgical(plain[L], V)
+                surg[(L, r)], ov[(L, r)] = _surgical(plain[L], Vs[r].to(device))
         return cls(plain, surg, ov)
 
     def directions_for(self, spec: AttackSpec):
@@ -227,6 +243,8 @@ def _selfcheck() -> None:
         assert s.alphas is None or all(0.2 <= a <= 1.0 for a in s.alphas.values())
         assert s.variant in {"plain", "surgical"}
         assert (s.cap_rank == 0) == (s.variant == "plain")
+        # sub-layer ablations under-trigger the collapse, so no window may be narrow
+        assert len(s.layers) >= n_layers // 2, (s.tag, len(s.layers))
     canon = sum(s.tag == "canonical:arditi" for s in specs) / n
     surg = sum(s.variant == "surgical" for s in specs) / n
     assert 0.17 < canon < 0.23, canon

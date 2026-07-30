@@ -61,6 +61,9 @@ from tqdm.auto import tqdm
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "experiments"))
+
+import version_a_attack as _VA  # noqa: E402  (--attack-profile version_a only)
 
 from tamperforge import (apply_chat_template_no_think, empirical_refusal_direction,
                          empirical_refusal_directions, is_refusal, load_model)
@@ -632,13 +635,26 @@ def main() -> None:
     ap.add_argument(
         "--attack-profile",
         choices=["legacy", "v8", "partial_shared", "perlayer_full",
-                 "partial_perlayer", "rank1_heretic_mix", "mixed"],
+                 "partial_perlayer", "rank1_heretic_mix", "mixed", "version_a"],
         default="legacy",
         help="Named, isolatable attack distribution. legacy preserves the v8/v9 "
              "--attack-partial/--attack-per-layer behavior; v8 is the exact original "
-             "ensemble; other profiles use output projections only and require "
-             "--attack-layers.",
+             "ensemble; version_a adds capability-overlap as a sampled axis (see "
+             "experiments/version_a_attack.py); other profiles use output projections "
+             "only and require --attack-layers.",
     )
+    ap.add_argument("--version-a-p-canonical", type=float, default=0.20,
+                    help="version_a: fraction of steps that are the plain full-strength "
+                         "shared-direction all-layer Arditi attack. Drawn first so the "
+                         "headline attack keeps guaranteed gradient mass.")
+    ap.add_argument("--version-a-p-surgical", type=float, default=0.40,
+                    help="version_a: fraction of the remaining steps that ablate "
+                         "normalise(d - P_cap d) instead of d.")
+    ap.add_argument("--version-a-cap-ranks", default="2,4,8,16",
+                    help="version_a: capability ranks the attacker may pick from. k=4 is "
+                         "where the escape hatch opens, k=16 is the demonstrated break.")
+    ap.add_argument("--version-a-n-cap", type=int, default=256,
+                    help="version_a: prompts used to estimate the capability subspace.")
     ap.add_argument(
         "--attack-layers",
         default=None,
@@ -719,6 +735,10 @@ def main() -> None:
         raise SystemExit("--attack-alpha-min/max must satisfy 0 < min <= max <= 1")
     if args.attack_profile not in {"legacy", "v8"} and not args.attack_layers:
         raise SystemExit(f"--attack-profile {args.attack_profile} needs --attack-layers")
+    if args.attack_profile == "version_a" and not args.attack_ensemble:
+        # Without the ensemble the sampler is never called and the run silently degrades to
+        # a fixed plain ablation -- i.e. exactly the thing version_a exists to move past.
+        raise SystemExit("--attack-profile version_a requires --attack-ensemble")
     if args.lambda_shutdown > 0 and args.qwen_thinking == "on":
         raise SystemExit("v10 shutdown baseline requires --qwen-thinking off")
 
@@ -858,6 +878,18 @@ def main() -> None:
         opt = torch.optim.AdamW(_params, lr=args.lr)
     d = None
     d_by_layer = None
+    va_bank = va_dirs = va_spec = None
+    va_cap_ranks = tuple(int(x) for x in args.version_a_cap_ranks.split(",") if x.strip())
+    va_cap_prompts = []
+    if args.attack_profile == "version_a":
+        # Loaded once, not per refresh: the subspace is re-estimated from the CURRENT
+        # weights every recompute, but the PROMPTS defining "capability" must stay fixed or
+        # the attack drifts for reasons unrelated to the model.
+        from v11_surgical_ablation import _cap_prompts  # noqa: PLC0415
+        va_cap_prompts = _cap_prompts(args.version_a_n_cap)
+        print(f"[version_a] cap_ranks={va_cap_ranks} n_cap={len(va_cap_prompts)} "
+              f"p_canonical={args.version_a_p_canonical} "
+              f"p_surgical={args.version_a_p_surgical}", flush=True)
     for step in tqdm(range(1, args.steps + 1), desc="p1b-A steps", dynamic_ncols=True):
         if d is None or (step - 1) % args.recompute_direction_every == 0:
             tqdm.write(f"[step {step}] recomputing refusal direction...")
@@ -876,10 +908,23 @@ def main() -> None:
                 needs_per_layer = (
                     args.attack_per_layer
                     or args.attack_profile in {
-                        "perlayer_full", "partial_perlayer", "rank1_heretic_mix", "mixed"
+                        "perlayer_full", "partial_perlayer", "rank1_heretic_mix", "mixed",
+                        "version_a",
                     }
                 )
-                if needs_per_layer:
+                if args.attack_profile == "version_a":
+                    # version_a needs the surgical variants too, so the whole bank is built
+                    # here from ONE capture pass. d/d_by_layer are still populated so every
+                    # downstream consumer (previews, eval, logging) keeps working unchanged.
+                    # EVERY layer, not just the band: the sampler's "all"/"broad" shapes
+                    # reach outside it and a per-layer attack would ask for a missing layer.
+                    va_bank = _VA.DirectionBank.build(
+                        model, tok, device, hs, bs, va_cap_prompts,
+                        layers=list(range(len(model.model.layers))),
+                        read_layers=(dlayer,), cap_ranks=va_cap_ranks)
+                    d_by_layer = va_bank.plain
+                    d = d_by_layer[dlayer]
+                elif needs_per_layer:
                     # Per-layer attacks compute directions only inside the explicitly
                     # validated attack band. Legacy mode retains the old all-layer behavior.
                     direction_layers = (
@@ -897,7 +942,20 @@ def main() -> None:
 
         opt.zero_grad(set_to_none=True)
         if args.attack_ensemble:
-            if args.attack_profile == "legacy":
+            if args.attack_profile == "version_a":
+                va_spec = _VA.sample_attack(
+                    rng_attack, len(model.model.layers),
+                    attack_band=attack_layers,
+                    read_layers=(dlayer,),
+                    cap_ranks=va_cap_ranks,
+                    p_canonical=args.version_a_p_canonical,
+                    p_surgical=args.version_a_p_surgical,
+                )
+                rp_a, wp_a = va_spec.read_proj, va_spec.write_proj
+                layers_a, alphas_a, pl_a, _atag = (
+                    va_spec.layers, va_spec.alphas, va_spec.per_layer, va_spec.tag)
+                va_dirs = va_bank.directions_for(va_spec)
+            elif args.attack_profile == "legacy":
                 rp_a, wp_a, layers_a, alphas_a, pl_a, _atag = _sample_attack(
                     rng_attack,
                     len(model.model.layers),
@@ -914,14 +972,21 @@ def main() -> None:
                     args.attack_alpha_max,
                     args.attack_write_scope,
                 )
-            overrides = _ablated_overrides(model, d_by_layer if pl_a else d,
-                                           layers_a, rp_a, wp_a, alphas_a)
+            src = va_dirs if args.attack_profile == "version_a" else (
+                d_by_layer if pl_a else d)
+            overrides = _ablated_overrides(model, src, layers_a, rp_a, wp_a, alphas_a)
         else:
             layers_a, alphas_a, pl_a, _atag = layers, None, False, "fixed"
             overrides = _ablated_overrides(model, d, layers, read_p, write_p)
         attack_meta = _attack_metadata(
             _atag, layers_a, alphas_a, pl_a, args.attack_profile
         )
+        if args.attack_profile == "version_a":
+            # The axis version_a exists to vary. Without this the trace cannot tell whether
+            # a run actually covered low-overlap ablations or just resampled the same band.
+            attack_meta["attack_variant"] = va_spec.variant
+            attack_meta["attack_cap_rank"] = va_spec.cap_rank
+            attack_meta["attack_cap_overlap"] = va_bank.realized_overlap(va_spec)
         L_task = _lm_loss(model, tok, task_b, device)                            # clean useful on real text
         L_safe = _refusal_loss(model, tok, ref_b, device)                       # clean refuses
         if args.lambda_uncensor > 0:
