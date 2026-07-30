@@ -1,0 +1,198 @@
+{
+  "per_direction": [
+    {
+      "cap_rank": 4,
+      "seed": 0,
+      "layer": 16,
+      "overlap_own_frame": 0.2549,
+      "overlap_layer20_frame": 0.2028
+    },
+    {
+      "cap_rank": 4,
+      "seed": 0,
+      "layer": 20,
+      "overlap_own_frame": 0.6878,
+      "overlap_layer20_frame": 0.6878
+    },
+    {
+      "cap_rank": 4,
+      "seed": 0,
+      "layer": 24,
+      "overlap_own_frame": 0.7143,
+      "overlap_layer20_frame": 0.4893
+    },
+    {
+      "cap_rank": 4,
+      "seed": 1,
+      "layer": 16,
+      "overlap_own_frame": 0.2554,
+      "overlap_layer20_frame": 0.2062
+    },
+    {
+      "cap_rank": 4,
+      "seed": 1,
+      "layer": 20,
+      "overlap_own_frame": 0.6917,
+      "overlap_layer20_frame": 0.6917
+    },
+    {
+      "cap_rank": 4,
+      "seed": 1,
+      "layer": 24,
+      "overlap_own_frame": 0.7166,
+      "overlap_layer20_frame": 0.4902
+    },
+    {
+      "cap_rank": 4,
+      "seed": 2,
+      "layer": 16,
+      "overlap_own_frame": 0.2541,
+      "overlap_layer20_frame": 0.2025
+    },
+    {
+      "cap_rank": 4,
+      "seed": 2,
+      "layer": 20,
+      "overlap_own_frame": 0.6883,
+      "overlap_layer20_frame": 0.6883
+    },
+    {
+      "cap_rank": 4,
+      "seed": 2,
+      "layer": 24,
+      "overlap_own_frame": 0.7149,
+      "overlap_layer20_frame": 0.4896
+    },
+    {
+      "cap_rank": 4,
+      "seed": 3,
+      "layer": 16,
+      "overlap_own_frame": 0.2536,
+      "overlap_layer20_frame": 0.204
+    },
+    {
+      "cap_rank": 4,
+      "seed": 3,
+      "layer": 20,
+      "overlap_own_frame": 0.6906,
+      "overlap_layer20_frame": 0.6906
+    },
+    {
+      "cap_rank": 4,
+      "seed": 3,
+      "layer": 24,
+      "overlap_own_frame": 0.7162,
+      "overlap_layer20_frame": 0.49
+    },
+    {
+      "cap_rank": 16,
+      "seed": 0,
+      "layer": 16,
+      "overlap_own_frame": 0.7693,
+      "overlap_layer20_frame": 0.2899
+    },
+    {
+      "cap_rank": 16,
+      "seed": 0,
+      "layer": 20,
+      "overlap_own_frame": 0.7836,
+      "overlap_layer20_frame": 0.7836
+    },
+    {
+      "cap_rank": 16,
+      "seed": 0,
+      "layer": 24,
+      "overlap_own_frame": 0.8009,
+      "overlap_layer20_frame": 0.5483
+    },
+    {
+      "cap_rank": 16,
+      "seed": 1,
+      "layer": 16,
+      "overlap_own_frame": 0.7724,
+      "overlap_layer20_frame": 0.2916
+    },
+    {
+      "cap_rank": 16,
+      "seed": 1,
+      "layer": 20,
+      "overlap_own_frame": 0.7862,
+      "overlap_layer20_frame": 0.7862
+    },
+    {
+      "cap_rank": 16,
+      "seed": 1,
+      "layer": 24,
+      "overlap_own_frame": 0.8026,
+      "overlap_layer20_frame": 0.5485
+    },
+    {
+      "cap_rank": 16,
+      "seed": 2,
+      "layer": 16,
+      "overlap_own_frame": 0.7691,
+      "overlap_layer20_frame": 0.2899
+    },
+    {
+      "cap_rank": 16,
+      "seed": 2,
+      "layer": 20,
+      "overlap_own_frame": 0.7836,
+      "overlap_layer20_frame": 0.7836
+    },
+    {
+      "cap_rank": 16,
+      "seed": 2,
+      "layer": 24,
+      "overlap_own_frame": 0.801,
+      "overlap_layer20_frame": 0.5482
+    },
+    {
+      "cap_rank": 16,
+      "seed": 3,
+      "layer": 16,
+      "overlap_own_frame": 0.7714,
+      "overlap_layer20_frame": 0.2897
+    },
+    {
+      "cap_rank": 16,
+      "seed": 3,
+      "layer": 20,
+      "overlap_own_frame": 0.785,
+      "overlap_layer20_frame": 0.785
+    },
+    {
+      "cap_rank": 16,
+      "seed": 3,
+      "layer": 24,
+      "overlap_own_frame": 0.802,
+      "overlap_layer20_frame": 0.5483
+    }
+  ],
+  "summary": {
+    "rank4": {
+      "own_frame": {
+        "min": 0.2536,
+        "med": 0.6906,
+        "max": 0.7166
+      },
+      "layer20_frame": {
+        "min": 0.2025,
+        "med": 0.49,
+        "max": 0.6917
+      }
+    },
+    "rank16": {
+      "own_frame": {
+        "min": 0.7691,
+        "med": 0.785,
+        "max": 0.8026
+      },
+      "layer20_frame": {
+        "min": 0.2897,
+        "med": 0.5483,
+        "max": 0.7862
+      }
+    }
+  }
+}
