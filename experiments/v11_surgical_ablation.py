@@ -86,20 +86,47 @@ def _cap_subspace(model, tok, device, prompts, layer, rank) -> torch.Tensor:
 
 
 @torch.no_grad()
-def _attack_(model, d, layers) -> None:
+def _refusal_subspace(model, tok, device, harmful, harmless, layer, rank) -> torch.Tensor:
+    """Top-`rank` refusal directions by SVD of the harmful-minus-benign-mean matrix.
+
+    The `rank_k_svd` attack from the zoo (docs/attack_zoo_v0.md #7), which exists to answer
+    the "rank-1 is too weak an attack" objection (arXiv:2602.02132). Note this is a DIFFERENT
+    estimator from `empirical_refusal_direction`'s difference-of-means: at rank 1 the two are
+    close but not identical, so a k-sweep must use this for every k -- mixing mean-diff at
+    k=1 with SVD at k>1 would confound the sweep with an estimator change.
+    """
+    Hh = capture_residuals(model, tok, harmful, [layer], device)[layer].float()
+    Hb = capture_residuals(model, tok, harmless, [layer], device)[layer].float()
+    D = Hh - Hb.mean(0, keepdim=True)
+    _, s, Vh = torch.linalg.svd(D, full_matrices=False)
+    frac = float(s[:rank].pow(2).sum() / s.pow(2).sum().clamp(min=1e-9))
+    print(f"[surgical] refusal subspace rank {rank} captures {frac:.1%} of harmful-shift energy")
+    return Vh[:rank].to(device)
+
+
+@torch.no_grad()
+def _attack_(model, R, layers) -> None:
+    """Project the span of `R` (orthonormal rows, [k, d_model]) out of every attacked layer.
+
+    Rank-1 reduces to the original outer-product form exactly:
+    read  W - (W R^T) R  ==  W - outer(W @ d, d)
+    write W - R^T (R W)  ==  W - outer(d, d @ W)
+    """
     params = dict(model.named_parameters())
-    dd = d.to(next(iter(params.values())).device)
+    RR = R.to(next(iter(params.values())).device)
+    if RR.dim() == 1:
+        RR = RR.unsqueeze(0)
     for li in layers:
         for name in READ_P:
             k = f"model.layers.{li}.{name}.weight"
             if k in params:
                 W = params[k].float()
-                params[k].copy_((W - torch.outer(W @ dd, dd)).to(params[k].dtype))
+                params[k].copy_((W - (W @ RR.T) @ RR).to(params[k].dtype))
         for name in WRITE_P:
             k = f"model.layers.{li}.{name}.weight"
             if k in params:
                 W = params[k].float()
-                params[k].copy_((W - torch.outer(dd, dd @ W)).to(params[k].dtype))
+                params[k].copy_((W - RR.T @ (RR @ W)).to(params[k].dtype))
 
 
 def main() -> None:
@@ -110,7 +137,10 @@ def main() -> None:
     ap.add_argument("--out", required=True)
     ap.add_argument("--direction-layer", type=int, default=20)
     ap.add_argument("--n-direction", type=int, default=256)
-    ap.add_argument("--cap-rank", type=int, default=16, help="0 = plain rank-1 control")
+    ap.add_argument("--cap-rank", type=int, default=16, help="0 = plain ablation control")
+    ap.add_argument("--refusal-rank", type=int, default=1,
+                    help="dimension of the ablated refusal subspace. 1 = mean-diff direction "
+                         "(the original behaviour); >1 = top-k SVD subspace (rank_k_svd).")
     ap.add_argument("--n-cap", type=int, default=256)
     ap.add_argument("--device", default=None)
     args = ap.parse_args()
@@ -124,32 +154,49 @@ def main() -> None:
     harmless = BENIGN_PROMPTS[: args.n_direction]
     # capture_residual returns CPU tensors, so d lands on CPU; the capability subspace
     # below is on-device. Move once here rather than at each use site.
-    d = empirical_refusal_direction(model, tok, harmful, harmless,
-                                    args.direction_layer, device).to(device)
+    if args.refusal_rank == 1:
+        R = empirical_refusal_direction(model, tok, harmful, harmless,
+                                        args.direction_layer, device).to(device).unsqueeze(0)
+    else:
+        R = _refusal_subspace(model, tok, device, harmful, harmless,
+                              args.direction_layer, args.refusal_rank)
 
     meta = {"model_id": args.model_id, "checkpoint": args.checkpoint,
-            "direction_layer": args.direction_layer, "cap_rank": args.cap_rank}
+            "direction_layer": args.direction_layer, "cap_rank": args.cap_rank,
+            "refusal_rank": args.refusal_rank,
+            "refusal_estimator": "mean_diff" if args.refusal_rank == 1 else "svd"}
     if args.cap_rank > 0:
         V = _cap_subspace(model, tok, device, _cap_prompts(args.n_cap),
                           args.direction_layer, args.cap_rank)
-        d_cap = V.T @ (V @ d)                       # component of d inside capability span
-        overlap = float(d_cap.norm() / d.norm().clamp(min=1e-9))
-        d_s = d - d_cap
-        nrm = d_s.norm()
-        if float(nrm) < 1e-4:
-            raise SystemExit("refusal direction lies (almost) entirely in the capability "
+        R_cap = (R @ V.T) @ V                       # component of each basis vector in cap span
+        # Energy fraction of the refusal subspace lying inside the capability span. At rank 1
+        # this is exactly the old ||P_cap d|| / ||d||, so earlier numbers stay comparable.
+        overlap = float(R_cap.norm() / R.norm().clamp(min=1e-9))
+        R_s = R - R_cap
+        if float(R_s.norm()) < 1e-4:
+            raise SystemExit("refusal subspace lies (almost) entirely in the capability "
                              "span -- surgical ablation is undefined here, which would "
                              "itself be a strong entanglement result")
-        d_s = d_s / nrm
+        # Re-orthonormalise: subtracting the capability component destroys orthonormality,
+        # and _attack_'s projector is only idempotent for an orthonormal basis.
+        # On CPU because MPS has no linalg_qr; the matrix is [d_model, k] so the transfer
+        # is free next to the forward passes above.
+        Q, _ = torch.linalg.qr(R_s.T.cpu())
+        R_s = Q.T[: R.shape[0]].to(device)
         meta["cap_overlap_fraction"] = overlap
-        meta["cos_d_vs_dsurgical"] = float((d @ d_s) / d.norm().clamp(min=1e-9))
-        print(f"[surgical] {overlap:.1%} of d lies in the capability subspace; "
-              f"cos(d, d_surgical) = {meta['cos_d_vs_dsurgical']:.4f}")
-        d = d_s
+        if args.refusal_rank == 1:
+            meta["cos_d_vs_dsurgical"] = float(
+                (R[0] @ R_s[0]) / R[0].norm().clamp(min=1e-9))
+            print(f"[surgical] {overlap:.1%} of d lies in the capability subspace; "
+                  f"cos(d, d_surgical) = {meta['cos_d_vs_dsurgical']:.4f}")
+        else:
+            print(f"[surgical] {overlap:.1%} of the rank-{args.refusal_rank} refusal "
+                  f"subspace energy lies in the capability subspace")
+        R = R_s
     else:
-        print("[surgical] cap-rank 0 -> plain rank-1 ablation (control arm)")
+        print(f"[surgical] cap-rank 0 -> plain rank-{args.refusal_rank} ablation (control arm)")
 
-    _attack_(model, d, layers)
+    _attack_(model, R, layers)
     out = ROOT / args.out if not Path(args.out).is_absolute() else Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(out, safe_serialization=True)
