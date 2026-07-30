@@ -27,6 +27,10 @@ working result) and **FTR** (fine-tune-resistance — iterating, not yet won).
 Model: `google/gemma-3-1b-it`.
 
 ## Naming (USE THIS — version lines collided on v5/v6/v7)
+- **The vX scheme STOPS AT v11.** New defense work is **version_A**, version_B, … (files
+  `version_a_*.py`, run ids `version_a_*`). Nothing is renamed retroactively: ABL-v8/v9/v10
+  and the v11 probe scripts keep their existing meanings. version_A = the first line to
+  train against capability-overlap as an attack axis (`experiments/version_a_attack.py`).
 - **ABL-v{n}** = abliteration line, `outputs/tamper_resistant_p1b_v{n}.pt`. **ABL-v8 = current
   product** (`train_tamper_resistant_v8.py`; conditional wall — clean is base-like, only
   abliteration self-destructs). ABL-v7 = prior (worked but clean-degraded). v8 ckpts:
