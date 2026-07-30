@@ -1,0 +1,8 @@
+{
+  "model_id": "Qwen/Qwen3-0.6B",
+  "checkpoint": null,
+  "direction_layer": 20,
+  "cap_rank": 16,
+  "cap_overlap_fraction": 0.5263535380363464,
+  "cos_d_vs_dsurgical": 0.8502657413482666
+}
