@@ -92,12 +92,25 @@ def capture_residuals(
     use_chat_template: bool = True,
     adapter=None,
     adapter_layer: int | None = None,
+    batch_size: int = 32,
 ) -> dict[int, torch.Tensor]:
     """Mean last-token residual-stream activation at EACH of *layers* per prompt.
 
     Returns ``{layer: [n_prompts, d_model]}`` (float32). Hooking every layer costs
     the same forwards as hooking one — a single forward already computes them all —
     so per-layer refusal directions are as cheap as a single-layer estimate.
+
+    Batched with RIGHT padding, which makes this bit-equivalent to the old one-prompt-
+    at-a-time loop rather than merely close. Under causal attention a real token at
+    position i attends only to 0..i, so trailing pad tokens cannot influence any real
+    position, and every sequence keeps the same positions it had unpadded (no RoPE
+    shift — the reason LEFT padding would need explicit position_ids). We then gather
+    each row at its own true final index instead of a shared -1.
+
+    This is the hot path for direction estimation: a version_A refresh captures 768
+    prompts across every layer, and at batch 1 that is 768 kernel-launch-bound forwards
+    burning a few percent of the GPU. `batch_size` only trades memory for speed; drop
+    it if a long-prompt corpus makes the padded batch too wide.
     """
     acts: dict[int, list[torch.Tensor]] = {li: [] for li in layers}
     captured: dict[int, torch.Tensor] = {}
@@ -120,25 +133,34 @@ def capture_residuals(
     for li in layers:
         handles.append(model.model.layers[li].register_forward_hook(_mk(li)))
     try:
-        for p in prompts:
-            if use_chat_template:
-                text = apply_chat_template_no_think(
-                    tok,
-                    [{"role": "user", "content": p}],
-                    tokenize=False, add_generation_prompt=True,
-                )
-            else:
-                text = p
-            ids = tok(text, return_tensors="pt").to(device)
-            model(**ids)
-            for li in layers:
-                acts[li].append(captured[li][0, -1].float().cpu())
+        texts = [
+            apply_chat_template_no_think(
+                tok, [{"role": "user", "content": p}],
+                tokenize=False, add_generation_prompt=True,
+            ) if use_chat_template else p
+            for p in prompts
+        ]
+        if tok.pad_token_id is None:          # some tokenizers ship without one
+            tok.pad_token = tok.eos_token
+        old_side, tok.padding_side = tok.padding_side, "right"
+        try:
+            for i in range(0, len(texts), max(1, batch_size)):
+                chunk = texts[i: i + max(1, batch_size)]
+                enc = tok(chunk, return_tensors="pt", padding=True).to(device)
+                model(**enc)
+                # each row's own last real token, not a shared -1 over the padded width
+                last = enc["attention_mask"].sum(1) - 1
+                rows = torch.arange(len(chunk), device=last.device)
+                for li in layers:
+                    acts[li].append(captured[li][rows, last].float().cpu())
+        finally:
+            tok.padding_side = old_side
     finally:
         for h in handles:
             h.remove()
         if adapter_handle is not None:
             adapter_handle.remove()
-    return {li: torch.stack(v) for li, v in acts.items()}
+    return {li: torch.cat(v) for li, v in acts.items()}
 
 
 def capture_residual(

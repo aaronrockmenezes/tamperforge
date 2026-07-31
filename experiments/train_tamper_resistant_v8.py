@@ -714,6 +714,10 @@ def main() -> None:
     ap.add_argument("--n-task-eval", type=int, default=400)
     ap.add_argument("--n-harmful", type=int, default=520)
     ap.add_argument("--n-benign", type=int, default=1000)
+    ap.add_argument("--grad-checkpoint", action=argparse.BooleanOptionalAction, default=True,
+                    help="Activation checkpointing. Default on (what every prior run used). "
+                         "--no-grad-checkpoint is a pure speed win when VRAM is spare -- "
+                         "identical gradients, no training change.")
     ap.add_argument("--task-batch", type=int, default=4, help="corpus texts per step")
     ap.add_argument("--refusal-batch", type=int, default=4, help="harmful prompts per step")
     ap.add_argument("--steps", type=int, default=400)
@@ -803,11 +807,19 @@ def main() -> None:
     # memory: checkpoint activations (the functional_call double-forward is the
     # peak); no KV cache during training.
     model.config.use_cache = False
-    try:
-        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
-        print("[p1b-A] gradient checkpointing on")
-    except Exception as e:  # noqa: BLE001
-        print(f"[p1b-A] gradient checkpointing unavailable: {e}")
+    if args.grad_checkpoint:
+        try:
+            model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+            print("[p1b-A] gradient checkpointing on")
+        except Exception as e:  # noqa: BLE001
+            print(f"[p1b-A] gradient checkpointing unavailable: {e}")
+    else:
+        # Trades memory for compute, and it was added for the 8B run that saturated 96GB.
+        # A 0.6B on a 24GB card sits at ~8GB, so the recomputed backward forward is paid
+        # for nothing. Gradients are mathematically identical either way -- this is a
+        # speed/memory dial, not a training change. Watch nvidia-smi if you scale the
+        # model up and turn it back on before it OOMs.
+        print("[p1b-A] gradient checkpointing OFF (--no-grad-checkpoint)")
 
     # --- data: real corpora with a held-out eval split (or --smoke for tiny) ---
     if args.smoke:
