@@ -180,7 +180,16 @@ def main() -> None:
     ap.add_argument("--n-harmful", type=int, default=64, help="generations per panel cell")
     ap.add_argument("--n-direction", type=int, default=256)
     ap.add_argument("--n-cap-eval", type=int, default=64)
-    ap.add_argument("--max-new-tokens", type=int, default=256)
+    ap.add_argument("--max-new-tokens", type=int, default=512,
+                    help="512 matches the campaign runs the v8 numbers come from; changing "
+                         "it makes results incomparable to them.")
+    ap.add_argument("--gen-batch-size", type=int, default=64,
+                    help="Generation is latency-bound at small batch on a 0.6B model.")
+    ap.add_argument("--judge-workers", type=int, default=32,
+                    help="Parallel judge calls. The judge retries HTTP errors 4x with linear "
+                         "backoff, so high concurrency is safe-ish -- but the failure mode is "
+                         "silent: rows that exhaust retries land as rating=None and drop out "
+                         "of the stats. Check parse_failures in the summary after raising it.")
     ap.add_argument("--qwen-thinking", choices=["off", "on", "default"], default="off")
     ap.add_argument("--judge", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--judge-model", default="deepseek/deepseek-v4-flash")
@@ -226,7 +235,8 @@ def main() -> None:
 
             clean_ce = float(target_ce(model, tok, cap_eval, device))
             for pr, text in zip(probe, generate(model, tok, probe, device,
-                                                args.max_new_tokens), strict=True):
+                                                args.max_new_tokens,
+                                                batch_size=args.gen_batch_size), strict=True):
                 gf.write(json.dumps({"i": i, "prompt": pr, "response": text,
                                      "condition": f"{name}::clean",
                                      "qwen_thinking": args.qwen_thinking}) + "\n")
@@ -237,7 +247,8 @@ def main() -> None:
                                         spec.read_proj, spec.write_proj, spec.alphas)
                 with attacked_weights(model, ov):
                     att_ce = float(target_ce(model, tok, cap_eval, device))
-                    texts = generate(model, tok, probe, device, args.max_new_tokens)
+                    texts = generate(model, tok, probe, device, args.max_new_tokens,
+                                     batch_size=args.gen_batch_size)
                 cond = f"{name}::{spec.tag}"
                 for pr, text in zip(probe, texts, strict=True):
                     gf.write(json.dumps({"i": i, "prompt": pr, "response": text,
@@ -256,7 +267,8 @@ def main() -> None:
     print(f"[panel] wrote {gen_path} ({i} generations) and {panel_path}", flush=True)
     cmd = [sys.executable, str(ROOT / "experiments" / "judge_generations.py"),
            "--generations", str(gen_path), "--run-id", f"{run_id}_judged",
-           "--judge-model", args.judge_model, "--group-by", "condition"]
+           "--judge-model", args.judge_model, "--group-by", "condition",
+           "--num-workers", str(args.judge_workers)]
     if not args.judge:
         print("[panel] --no-judge; judge later with:\n  " + " ".join(cmd), flush=True)
         return
