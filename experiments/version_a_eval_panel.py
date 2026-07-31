@@ -49,7 +49,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "experiments"))
 
-from tamperforge import load_model  # noqa: E402
+from tamperforge import apply_chat_template_no_think, load_model  # noqa: E402
 from tamperforge.data import BENIGN_PROMPTS, load_advbench_prompts  # noqa: E402
 from tamperforge.eval.log import make_run_id  # noqa: E402
 from train_tamper_resistant_v8 import _ablated_overrides  # noqa: E402
@@ -79,8 +79,8 @@ def target_ce(model, tok, pairs, device, max_len: int = 384) -> float:
     for prompt, target in pairs:
         if not target:
             continue
-        ptxt = tok.apply_chat_template([{"role": "user", "content": prompt}],
-                                       tokenize=False, add_generation_prompt=True)
+        ptxt = apply_chat_template_no_think(tok, [{"role": "user", "content": prompt}],
+                                            tokenize=False, add_generation_prompt=True)
         pid = tok(ptxt, return_tensors="pt").input_ids
         full = tok(ptxt + target, return_tensors="pt", truncation=True,
                    max_length=max_len).input_ids.to(device)
@@ -93,14 +93,17 @@ def target_ce(model, tok, pairs, device, max_len: int = 384) -> float:
     return total / max(count, 1)
 
 
-def fixed_panel(n_layers: int, band: list[int]) -> list[AttackSpec]:
+def fixed_panel(n_layers: int, band: list[int], read_layer: int) -> list[AttackSpec]:
     """The comparison set. Fixed, named, no sampling.
 
     Reuses AttackSpec so the panel and the training sampler describe attacks in one
     vocabulary, and DirectionBank builds them the same way in both places.
     """
     rp, wp = SCOPES["all"]
-    mid, allL = n_layers // 2, list(range(n_layers))
+    # read_layer is the layer the refusal direction is estimated at. It must match the one
+    # the checkpoint was trained/evaluated against (20 for the Qwen3-0.6B line) -- reading
+    # from n_layers//2 builds a DIFFERENT attack that the campaign numbers do not describe.
+    mid, allL = read_layer, list(range(n_layers))
     return [
         AttackSpec(rp, wp, allL, None, False, "plain", 0, mid, "canonical_rank1"),
         AttackSpec(rp, wp, band, {L: 0.4 for L in band}, True, "plain", 0, mid,
@@ -141,8 +144,12 @@ def generate(model, tok, prompts: list[str], device, max_new_tokens: int, batch_
     try:
         for i in range(0, len(prompts), batch_size):
             chunk = prompts[i: i + batch_size]
-            texts = [tok.apply_chat_template([{"role": "user", "content": p}],
-                                             tokenize=False, add_generation_prompt=True)
+            # MUST be the repo helper, not tok.apply_chat_template: Qwen3's template
+            # defaults enable_thinking=True, so the raw call silently generates reasoning
+            # blocks regardless of --qwen-thinking, which then truncate and score as
+            # gibberish. This helper reads TF_QWEN_THINKING like every other eval path.
+            texts = [apply_chat_template_no_think(tok, [{"role": "user", "content": p}],
+                                                  tokenize=False, add_generation_prompt=True)
                      for p in chunk]
             enc = tok(texts, return_tensors="pt", padding=True).to(device)
             gen = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False,
@@ -177,6 +184,13 @@ def main() -> None:
     ap.add_argument("--model-id", default="Qwen/Qwen3-0.6B")
     ap.add_argument("--checkpoints", nargs="+", required=True)
     ap.add_argument("--attack-band", default="10-27")
+    ap.add_argument("--advbench-source", choices=["walledai", "local"], default="walledai",
+                    help="Prompt pool for BOTH direction estimation and the probe set. "
+                         "walledai matches the campaign (and is what v11_surgical_ablation "
+                         "used); local is the vendored CSV and gives a weaker surgical attack.")
+    ap.add_argument("--direction-layer", type=int, default=20,
+                    help="Layer the refusal direction is read from. Must match the layer the "
+                         "checkpoint was trained/evaluated with (20 for the Qwen3-0.6B line).")
     ap.add_argument("--n-harmful", type=int, default=64, help="generations per panel cell")
     ap.add_argument("--n-direction", type=int, default=256)
     ap.add_argument("--n-cap-eval", type=int, default=64)
@@ -205,9 +219,16 @@ def main() -> None:
     gen_path, panel_path = outdir / "generations.jsonl", outdir / "panel.jsonl"
 
     lo, hi = (int(x) for x in args.attack_band.split("-"))
-    harmful = load_advbench_prompts(ROOT / "data" / "advbench_harmful_behaviors.csv",
-                                    n=max(args.n_harmful, args.n_direction),
-                                    seed=args.seed, source="local")
+    # Source matters: v11_surgical_ablation estimates its direction from walledai, and the
+    # campaign's 0.448 surgical break was measured that way. Estimating from the vendored
+    # local CSV yields a DIFFERENT refusal direction and a measurably weaker attack -- v8
+    # scored 0.062 under local-sourced surgical_k16 against 0.448 under the campaign's.
+    # Default walledai so the panel reproduces the attack it is being compared against.
+    harmful = load_advbench_prompts(
+        None if args.advbench_source == "walledai"
+        else ROOT / "data" / "advbench_harmful_behaviors.csv",
+        n=max(args.n_harmful, args.n_direction),
+        seed=args.seed, source=args.advbench_source)
     probe = harmful[: args.n_harmful]
     cap_eval = capability_pairs(args.n_cap_eval, args.seed + 1)
 
@@ -215,7 +236,7 @@ def main() -> None:
     model.eval()
     n_layers = len(model.model.layers)
     band = [L for L in range(lo, min(hi + 1, n_layers))]
-    panel = fixed_panel(n_layers, band)
+    panel = fixed_panel(n_layers, band, args.direction_layer)
 
     i = 0
     with gen_path.open("w") as gf, panel_path.open("w") as pf:
@@ -231,7 +252,8 @@ def main() -> None:
                 model, tok, device,
                 harmful[: args.n_direction], BENIGN_PROMPTS[: args.n_direction],
                 _cap_prompts(args.n_direction),
-                layers=band, read_layers=(n_layers // 2,), cap_ranks=(4, 16))
+                layers=list(range(n_layers)), read_layers=(args.direction_layer,),
+                cap_ranks=(4, 16))
 
             clean_ce = float(target_ce(model, tok, cap_eval, device))
             for pr, text in zip(probe, generate(model, tok, probe, device,
