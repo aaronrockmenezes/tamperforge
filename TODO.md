@@ -1,5 +1,32 @@
 # TamperForge — Current TODO
 
+## Replace the in-loop IFEval probe with a loglikelihood one (2026-07-31, deferred)
+
+`--ifeval-in-loop` is a weak clean-capability signal and we should stop leaning on it.
+IFEval is rule-based constraint following ("use exactly three headers", "answer with a
+bulleted list"); at the in-loop budget of `--ifeval-max-new 48` most of those constraints
+cannot physically be satisfied, so a large part of the score measures truncation rather
+than capability. n=24 also makes it noisy enough that a 4-point move means nothing.
+
+A multiple-choice loglikelihood probe (ARC-Challenge, optionally MMLU) fixes both and is
+**cheaper, not just better**: scoring choices needs forward passes only. n=100 ARC is
+~400 batched forwards against roughly 1150 sequential decode steps for a 24-prompt IFEval
+probe, and decode is ~68% of step time on Qwen3-0.6B.
+
+- [ ] Land the probe. A working draft is in `git stash` (`stash@{0}`, "WIP: in-loop ARC
+  loglikelihood capability probe"): `_arc_rows` + `_clean_arc_probe`, `--arc-probe-n`
+  (default 0 = off), logged as `clean_arc_acc`. Compiles, **never run** -- validate before
+  trusting it.
+- [ ] Match lm_eval's `arc_challenge` format exactly (`Question: ...\nAnswer:` + " {choice}",
+  summed unnormalised logprob = `acc`) so in-loop numbers compare to the campaign's lm_eval
+  runs. Draft does this but it is unverified; check against a known checkpoint
+  (clean v8 = ARC acc 0.3148 local / 0.3217 box) before believing any in-loop number.
+- [ ] Decide whether to keep IFEval alongside or drop it. Keeping both is nearly free once
+  the expensive probe is the one being removed.
+- [ ] Note: any capability probe must stay purely diagnostic -- nothing may optimise
+  against it, or we lose the one uncorrupted capability signal (same argument as keeping
+  the judge out of the loss).
+
 ## version_A: real-Heretic gate (decided 2026-07-31, before the first run finished)
 
 The training mix is a *parameterization* of Heretic's shape — broad layer coverage,
