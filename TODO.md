@@ -1,5 +1,30 @@
 # TamperForge — Current TODO
 
+## version_A: real-Heretic gate (decided 2026-07-31, before the first run finished)
+
+The training mix is a *parameterization* of Heretic's shape — broad layer coverage,
+per-layer directions, partial strengths — not Heretic itself. Heretic KL-optimizes its
+ablation per layer; our sampler does not. So the judged panel measures in-distribution
+robustness only, and Heretic is the attack that actually broke v8 on all 3 archs.
+
+Sequence, once the 500-step version_A run and its panel are in:
+
+- [ ] **If the panel looks promising, run REAL Heretic against version_A** (A6000 box,
+  `heretic-llm` via pip, no patches — see `docs/common_issues.md`). Same trials as the v8
+  campaign (`docs/heretic_v8_2026_07_18.md`) so the numbers are directly comparable.
+- [ ] **If real Heretic abliterates it**, that is the signal to put real Heretic *in the
+  training mix* rather than an approximation of it. Cost is the open question: Heretic is
+  an optimization loop per attack, so it cannot run every step the way the current sampler
+  does. Likely shape is a cached/periodic Heretic attack refreshed every N direction
+  recomputes, sampled alongside the cheap parameterized ones.
+- [ ] **If real Heretic does NOT break it**, that is the headline — and the first time
+  anything in this project has survived it. Verify hard before believing it: fresh trials,
+  full AdvBench 520, judged, capability alongside.
+
+Same logic applies to rank-k SVD and prefill: in-mix approximations prove nothing about
+the real thing. Do not claim out-of-distribution robustness off panel results alone.
+
+
 > **Decision order:** break ABL-v8 with stronger attacks before spending on model scale.
 > The published claim remains limited to attack-cost shaping against abliteration;
 > fine-tune resistance is closed negative work.
