@@ -1,0 +1,10 @@
+{
+  "model_id": "Qwen/Qwen3-0.6B",
+  "checkpoint": "outputs/version_a_qwen_500.pt",
+  "direction_layer": 20,
+  "cap_rank": 16,
+  "refusal_rank": 1,
+  "refusal_estimator": "mean_diff",
+  "cap_overlap_fraction": 0.8794734477996826,
+  "cos_d_vs_dsurgical": 0.4759479761123657
+}

@@ -1,0 +1,10 @@
+{
+  "model_id": "Qwen/Qwen3-0.6B",
+  "checkpoint": "outputs/adapters/tamper_resistant_qwen3_0p6b_v8.pt",
+  "direction_layer": 20,
+  "cap_rank": 16,
+  "refusal_rank": 1,
+  "refusal_estimator": "mean_diff",
+  "cap_overlap_fraction": 0.7817311882972717,
+  "cos_d_vs_dsurgical": 0.6236157417297363
+}
