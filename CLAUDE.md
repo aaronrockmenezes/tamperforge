@@ -1,18 +1,35 @@
 # CLAUDE.md — read first
 
-**Current state lives in `docs/handoff_2026_08_01_version_a_b.md`** — version_A/B/C.
-**Measure attacks against the BASE-model ceiling, not against defended-clean** — that
-denominator error ran through a whole day of analysis. Heretic on base Qwen3-0.6B gets 0.6596
-harmful with capability intact; against that, **Heretic is suppressed 84-99%**: version_A 0.9%
-of headroom, version_B 15.8%, version_C 16.3%. **version_A is strongest vs Heretic**;
-**version_B best demonstrates the MAD mechanism** (surgical self-destructs rather than merely
-failing); **version_C is a regression, do not build on it.** Attacker *cost* is still a dead
-claim — version_C made Heretic pay 7-13x KL across its whole front and changed nothing, so
-**never repeat "must accept 5x the perturbation".** All percentages rest on ONE 200-trial
-study per target; replicate before publishing. Read that first, then
-`docs/devlog_2026_07_17.md` (Qwen3-8B scale attempt, TamperBench third-party validation,
-Heretic cracks v8 on all three architectures), then `docs/handoff_2026_07_03_MASTER.md`
-(multi-model + attack-robustness campaign), `docs/findings_multimodel_adaptive_2026_07_02.md`,
+**Current state: `docs/handoff_2026_08_02_llama_and_mechanism.md`**, then
+`docs/handoff_2026_08_01_version_a_b.md` (Qwen results table).
+
+**THE MECHANISM (2026-08-02).** MAD fires on **read-projection** ablation. Heretic ablates
+**write projections only** (`attn.o_proj`, `mlp.down_proj`) and therefore never triggers it —
+at any direction layer, any alpha. Adding read projections to Heretic's own winning attack
+drops harm 0.3231 -> 0.0577 (82%). version_C trained write-only attacks ~60% of steps and
+still could not place the entanglement there. **This is structural, not a coverage gap: do
+not build another attack sampler.** Sampling has now failed fixed (v8), widened (version_A/B)
+and adaptive-against-a-live-optimiser (version_C).
+
+**MEASURE AGAINST THE BASE CEILING, not defended-clean** — that denominator error ran through
+a whole day of analysis. Ceilings (judged, 520 walledai, capability intact):
+Qwen 0.2577 -> 0.6596 · Llama 0.0019 -> 0.8269. Llama has ~2x the dynamic range and heretic is
+its APEX attack, so prefer it for new work.
+
+**Version status.** version_A strongest vs heretic (~0% of headroom, n=5); version_B best
+demonstrates the mechanism (rank-1 AND surgical self-destruct) and its collapse is
+**KL-dependent, firing above ~0.12**; version_C is a regression — it pushed heretic's whole
+front into the high-KL band and simultaneously lost the collapse that punishes it. **Attacker
+*cost* is a dead claim — never repeat "must accept 5x the perturbation".**
+
+**Framing is narrower than it looks.** SEAM (arXiv:2505.12186) already published the
+poison-pill idea for FINE-TUNING and ART (arXiv:2605.26526) already published
+abliteration-resistant training. Our unoccupied cell is abliteration x capability-collapse
+only. `TODO.md` [HIGH]: the Shairah extended-refusal baseline is still unrun, and until it is
+we cannot claim to beat a method that needs no adversarial training.
+
+Then `docs/devlog_2026_07_17.md` (Qwen3-8B scale, TamperBench validation),
+`docs/handoff_2026_07_03_MASTER.md`, `docs/findings_multimodel_adaptive_2026_07_02.md`,
 `MEMORY.md`, then this file for durable conventions. Older text below the line is historical
 (P0/P1) — do not act on it.
 
@@ -75,7 +92,22 @@ Model: `google/gemma-3-1b-it`.
   honest characterized-cost negative.** Don't reopen FT without a fundamentally
   different lever (loss-landscape moonshot), not another TAR knob.
 
+## Repo layout (reorganised 2026-08-02)
+Nothing lives in the repo root but `setup.sh`. Scripts are grouped by purpose under
+`scripts/{setup,runs,eval,probes,tools,archive}/` — see `scripts/README.md`. Logs are grouped
+under `logs/{training_runs,heretic,eval,probes,panels,drivers,ops}/` — see `logs/README.md`.
+`logs/panels/` and `scripts/archive/` hold known-untrustworthy v7/v8-era output; do not reuse.
+Day-to-day: `python scripts/tools/tf_status.py` and `python scripts/tools/run_monitor.py -w`.
+
 ## Hard conventions (do not violate)
+- **Guard on the artifact, not the directory.** `[ -d results/X ]` is true for a directory a
+  killed job left empty; the rerun then skips and the judge reads a file that never existed.
+  This silently destroyed four eval arms on 2026-08-01/02. Guard on `generations.jsonl`,
+  `summary.json`, `results_*.json`, `model.safetensors`.
+- **Never `pkill -f` a global pattern** — it killed three concurrent jobs. Scope to your own
+  child: `pgrep -P "$pid" -f 'VLLM::EngineCore'`.
+- **Never scale a direction layer between architectures.** Qwen peaks at L20/28, Llama at
+  L13/16; the proportional guess (L11) is a local MINIMUM. Sweep the base model and measure.
 - **Judge, not keyword.** `judge_generations.py` (DeepSeek V4 Flash via OpenRouter).
   Report `judge_asr` + `usefulness_label` (gibberish vs refused vs harmful_actionable)
   — ASR alone hides gibberish-collapse.
