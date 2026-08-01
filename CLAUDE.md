@@ -1,6 +1,6 @@
 # CLAUDE.md — read first
 
-**Current state lives in `docs/handoff_2026_08_01_version_a_b.md`** — version_A + version_B:
+**Current state lives in `docs/handoff_2026_08_01_version_a_b.md`** — version_A/B/C:
 surgical ablation closed and made self-defeating, real Heretic forced out of the layer band it
 won from and made to pay 5x the perturbation. Read that first, then
 `docs/devlog_2026_07_17.md` (Qwen3-8B scale attempt, TamperBench third-party validation,

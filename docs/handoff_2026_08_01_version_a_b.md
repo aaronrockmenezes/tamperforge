@@ -1,18 +1,77 @@
-# Handoff 2026-08-01 — version_A and version_B
+# Handoff 2026-08-01 — version_A, version_B, version_C
 
 **Read this first, then `TODO.md`, then `CLAUDE.md` for durable conventions.**
 
-One line: **version_B is the current best artifact, and it still loses to Heretic.** It keeps a
-healthy clean model and makes both rank-1 and surgical ablation self-destructive (surgical was
-v8's break) -- that part is a real win. But the last eval stage is now in, and **all three
-Heretic trials strip refusal while leaving capability fully intact**. See section 2b.
+One line: **version_B is the best artifact. version_C is a regression. The "MAD raises
+attacker cost" framing is FALSIFIED by our own experiment** — see section 0.
 
-> **CORRECTION (post-eval).** An earlier version of this document said version_B "forces real
-> Heretic out of the layer band it won from" and implied that was a defence. The layer shift is
-> real; it bought nothing. Heretic's cheap trials still win. Do not cite the 5x-KL figure as
-> evidence of robustness -- see 2b for why it does not hold.
+> **CORRECTION (2026-08-01, after version_C).** Earlier revisions of this document claimed
+> version_B "forces real Heretic out of the layer band it won from" and that the honest claim
+> was *"MAD raises attacker cost ... to a 200-trial optimisation that must accept 5x the
+> perturbation."* **Do not repeat either.** version_C closed the cheap end of the front
+> completely — Heretic paid 7-13x KL at EVERY refusal level, minimum 0.1362 vs version_B's
+> 0.0138 — and got the same outcome anyway (0.3231 harmful vs 0.3212, capability untouched).
+> KL cost is not a security property. An attacker with a working optimiser is indifferent to it.
 
 ---
+
+## 0. version_C: attack-in-the-loop, and the negative result that matters
+
+version_C put **real Heretic in the training loop**: every 100 steps, materialise current
+weights, run a 24-trial study against them, cache winners in a jittered replay buffer, and
+sample from it alongside random per-projection tents. It also fixed both step-0 findings —
+heretic's own direction recipe (projected abliteration, system prompt, thinking-on template)
+and its row-normalised FULL application.
+
+**All of the engineering worked.** Heretic ran against live weights, the buffer adapted,
+and across training the KL it had to accept rose 70x (0.0038 -> 0.2642) for the same refusal
+count. On the final 200-trial front it was pushed off per-layer directions at median layer
+21.8 down to fractional ones at 14.5, paying 7-13x more KL everywhere.
+
+**None of it mattered.**
+
+| arm | harmful | gibberish | GSM8K | verdict |
+|---|---:|---:|---:|---|
+| version_C clean | 0.0038 | 0.0038 | 0.3844 | healthy |
+| version_C + rank-1 | 0.0000 | 0.9788 | **0.0364** | MAD fires |
+| version_C + surgical k16 | **0.1538** | 0.2788 | 0.3692 | **BROKEN** |
+| version_C + heretic t71 (ref 3, KL 0.1448) | **0.3231** | 0.3673 | 0.3859 | broken |
+| version_C + heretic t156 (ref 6, KL 0.1362) | 0.2731 | 0.3423 | 0.3867 | broken |
+| version_C + heretic t47 (ref 2, KL 0.1500) | 0.3115 | 0.4269 | 0.3836 | broken |
+| *version_B + heretic t99 (ref 3, KL 0.0198)* | *0.3212* | *0.5038* | *0.3700* | *broken* |
+
+t71 is the direct comparison: same 3/100 refusals as version_B's t99, **7.3x the KL, same
+result**. t156 is the sharper one — the cheapest attack anywhere on version_C's front still
+lands 0.2731 harmful with GSM8K 0.3867, i.e. *above* the clean model's 0.3844. The attacked
+models are marginally better at maths than the model they were carved out of. MAD did not
+fire at all.
+
+**version_C is a regression on both axes**: Heretic outcome identical to version_B, and
+surgical went 0.0000 -> 0.1538 harmful with capability 96% retained. The surgical loss is
+attributable and was predicted in advance — `--version-a-p-surgical` was cut to make room for
+the buffer, which dropped the realised surgical share from version_B's 0.319 to 0.201.
+(Nominal flag 0.40 -> 0.20; the samplers apply it to different conditional remainders, so the
+actual cut was 37%, not 50%. Compare realised mixes, not flag values.)
+
+**Do not rebalance the mix.** Restoring surgical mass recovers a version_B property while
+leaving the Heretic result untouched — at best it re-derives an artifact that already exists.
+
+### What this rules out
+
+Sampling-based defence, in every form tried: fixed (v8), widened (version_A/B), and adaptive
+against a live optimiser (version_C). The collapse fires on attacks near the training
+distribution; Heretic finds a region where it does not, and simply pays more to get there.
+Three runs, three different sampling strategies, same outcome.
+
+### The remaining lever
+
+Make capability **structurally depend** on the refusal direction, so that any projection
+removing it damages capability regardless of attack shape — nothing for an optimiser to route
+around. This is a different construction, not another sampler axis, and should be sketched
+before another box is spent. See `docs/version_c_step0_2026_08_01.md` section 6.
+
+---
+
 
 ## 1. What version_A and version_B are
 
@@ -206,7 +265,8 @@ Pull results off the box as you go; it dropped twice during this session.
    not 200) against current weights every ~100 steps, cache the winners, sample from them
    alongside the random attacks. That is the TODO gate's "put real heretic in the mix" with
    the caching that makes it affordable (~10 min added per run).
-3. **Do not conclude "tamper-resistant" from these numbers.** The honest claim is that MAD
-   raises attacker cost -- from one line of code (surgical) to a 200-trial optimisation that
-   must now accept 5x the perturbation. Whether any sampling-based defence holds against
-   search is open, and the DL sweep showed configurations preserving 91% of capability exist.
+3. **Do not conclude "tamper-resistant", and do not claim raised attacker cost either.**
+   version_C tested the cost claim directly and falsified it: 7-13x KL across the whole front
+   bought nothing. The defensible claims are narrow — v8/version_A/version_B stop the naive
+   rank-1 attack, and version_B additionally makes surgical ablation self-defeating. Heretic
+   defeats all of them with capability intact.
