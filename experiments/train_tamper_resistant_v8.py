@@ -501,6 +501,119 @@ _IFEVAL_PROBE = [
 ]
 
 
+_ARC_CACHE: list | None = None
+_MMLU_CACHE: list | None = None
+# same 12 subjects as scripts/v11_cap_eval.sh, so in-loop numbers are comparable to the
+# campaign's lm_eval MMLU figures rather than being a different slice of the benchmark.
+MMLU_SUBJECTS = ("high_school_biology", "college_computer_science", "abstract_algebra",
+                 "machine_learning", "philosophy", "world_religions",
+                 "high_school_us_history", "econometrics", "sociology",
+                 "professional_medicine", "business_ethics", "computer_security")
+
+
+def _mmlu_rows(n: int, seed: int = 1234) -> list[tuple[str, list[str], int]]:
+    """MMLU as (question, choice_texts, answer_index) over the campaign's 12 subjects."""
+    global _MMLU_CACHE
+    if _MMLU_CACHE is None:
+        from datasets import load_dataset
+        rows = []
+        for subj in MMLU_SUBJECTS:
+            try:
+                ds = load_dataset("cais/mmlu", subj, split="test")
+            except Exception as e:  # noqa: BLE001
+                print(f"[mmlu-probe] {subj} unavailable ({type(e).__name__})")
+                continue
+            head = ("The following are multiple choice questions (with answers) about "
+                    f"{subj.replace('_', ' ')}.\n\n")
+            for r in ds:
+                ch = [str(c) for c in r["choices"]]
+                # lm_eval mmlu scores the LETTER after a subject-headed lettered list, not
+                # the answer text. Scoring the text instead reads ~0.30 where the real
+                # number is ~0.44 -- a silent 4.8-sigma error.
+                body = "\n".join(f"{L}. {c}" for L, c in zip("ABCD", ch, strict=False))
+                rows.append((f"{head}{r['question']}\n{body}\nAnswer:",
+                             [f" {L}" for L in "ABCD"[: len(ch)]], int(r["answer"])))
+        random.Random(seed).shuffle(rows)
+        _MMLU_CACHE = rows
+    return _MMLU_CACHE[:n]
+
+
+def _arc_rows(n: int, seed: int = 1234) -> list[tuple[str, list[str], int]]:
+    """ARC-Challenge as (question, choice_texts, answer_index). Cached across calls."""
+    global _ARC_CACHE
+    if _ARC_CACHE is None:
+        from datasets import load_dataset
+        # lm_eval's arc_challenge scores the TEST split; using validation here would make
+        # in-loop numbers quietly incomparable to every campaign ARC figure.
+        ds = load_dataset("allenai/ai2_arc", "ARC-Challenge", split="test")
+        rows = []
+        for r in ds:
+            labels = list(r["choices"]["label"])
+            texts = list(r["choices"]["text"])
+            if str(r["answerKey"]) not in labels:
+                continue
+            # lm_eval arc_challenge: context "Question: ...\nAnswer:", continuation is the
+            # answer TEXT.
+            rows.append((f"Question: {r['question']}\nAnswer:",
+                         [f" {x}" for x in texts], labels.index(str(r["answerKey"]))))
+        random.Random(seed).shuffle(rows)
+        _ARC_CACHE = rows
+    return _ARC_CACHE[:n]
+
+
+@torch.no_grad()
+def _clean_mc_probe(model, tok, device, rows, batch_size: int = 8) -> float:
+    """ARC-Challenge accuracy by LOGLIKELIHOOD -- no generation.
+
+    Why this exists alongside the IFEval probe: IFEval is rule-based constraint following
+    ("use exactly three headers", "answer with a bulleted list"). At the in-loop budget of
+    48 new tokens most of those constraints cannot physically be satisfied, so a large part
+    of the score is measuring truncation rather than capability.
+
+    Scoring each choice as a continuation needs only forward passes, so this is also the
+    CHEAPER probe: n=100 is 400 batched forwards, against roughly 1150 sequential decode
+    steps for a 24-prompt IFEval probe. Decode is ~68% of step time on this model.
+
+    Format matches lm_eval's arc_challenge (`Question: ...\\nAnswer:` + " {choice}", summed
+    logprob, unnormalised `acc`) so in-loop numbers are comparable to the lm_eval runs the
+    campaign reports.
+    """
+    if not rows:
+        return float("nan")
+    flat = [(ctx, cont, qi)
+            for qi, (ctx, conts, _) in enumerate(rows) for cont in conts]
+    scores: dict[int, list[float]] = {}
+    if tok.pad_token_id is None:
+        tok.pad_token = tok.eos_token
+    old_side, tok.padding_side = tok.padding_side, "right"
+    try:
+        for i in range(0, len(flat), batch_size):
+            chunk = flat[i: i + batch_size]
+            plens = [len(tok(p, add_special_tokens=True)["input_ids"]) for p, _, _ in chunk]
+            enc = tok([p + c for p, c, _ in chunk], return_tensors="pt",
+                      padding=True, truncation=True, max_length=512).to(device)
+            ids = enc["input_ids"]
+            # NOT .float(): [B, L, 152k] in fp32 is ~10GB at batch 32 and OOMs on MMLU's
+            # longer prompts. bf16 is ample for ranking four choices.
+            lp = torch.log_softmax(model(**enc).logits[:, :-1, :], dim=-1)
+            tgt = ids[:, 1:]
+            tok_lp = lp.gather(-1, tgt.unsqueeze(-1)).squeeze(-1).float()
+            lens = enc["attention_mask"].sum(1)
+            pos = torch.arange(tgt.shape[1], device=device)[None, :]
+            # continuation tokens sit at shifted indices plen-1 .. len-2
+            plen_t = torch.tensor(plens, device=device)[:, None]
+            mask = (pos >= plen_t - 1) & (pos <= (lens[:, None] - 2))
+            summed = (tok_lp * mask).sum(1)
+            for j, (_, _, qi) in enumerate(chunk):
+                scores.setdefault(qi, []).append(float(summed[j]))
+    finally:
+        tok.padding_side = old_side
+    correct = sum(1 for qi, (_, _, gold) in enumerate(rows)
+                  if qi in scores and len(scores[qi]) > gold
+                  and max(range(len(scores[qi])), key=lambda k: scores[qi][k]) == gold)
+    return correct / max(len(rows), 1)
+
+
 @torch.no_grad()
 def _clean_ifeval_probe(model, tok, device, max_new: int = 48, n: int | None = None) -> float:
     """Tiny self-contained instruction-following probe on the CLEAN model (eval-in-loop).
@@ -669,7 +782,7 @@ def main() -> None:
         choices=["mixed_write", "all_write", "mlp_write", "attn_write"],
         default="mixed_write",
     )
-    ap.add_argument("--advbench-preview-tokens", type=int, default=50,
+    ap.add_argument("--advbench-preview-tokens", type=int, default=100,
                     help="Greedy attacked tokens shown at eval; 0 disables the preview.")
     ap.add_argument(
         "--lambda-shutdown",
@@ -715,6 +828,16 @@ def main() -> None:
     ap.add_argument("--n-task-eval", type=int, default=400)
     ap.add_argument("--n-harmful", type=int, default=520)
     ap.add_argument("--n-benign", type=int, default=1000)
+    ap.add_argument("--mmlu-probe-n", type=int, default=0,
+                    help="In-loop clean MMLU accuracy by loglikelihood over the campaign's 12 "
+                         "subjects. Same mechanism and cost profile as --arc-probe-n; both "
+                         "are scored by argmax over choices, so neither needs a judge.")
+    ap.add_argument("--arc-probe-n", type=int, default=0,
+                    help="In-loop clean ARC-Challenge accuracy by loglikelihood (no "
+                         "generation) every --eval-every. 0 = off, 100 is a good default. "
+                         "More reliable than the IFEval probe, whose rule-based constraints "
+                         "often cannot be met inside --ifeval-max-new tokens, and cheaper: "
+                         "forward passes only, no sequential decode.")
     ap.add_argument("--grad-checkpoint", action=argparse.BooleanOptionalAction, default=True,
                     help="Activation checkpointing. Default on (what every prior run used). "
                          "--no-grad-checkpoint is a pure speed win when VRAM is spare -- "
@@ -1196,8 +1319,19 @@ def main() -> None:
             if args.ifeval_in_loop:
                 tqdm.write(f"[step {step}] running clean ifeval probe...")
             clean_if = _clean_ifeval_probe(model, tok, device, n=args.ifeval_probe_n) if args.ifeval_in_loop else None
+            if args.arc_probe_n > 0:
+                tqdm.write(f"[step {step}] running clean ARC probe (n={args.arc_probe_n})...")
+                clean_arc = _clean_mc_probe(model, tok, device, _arc_rows(args.arc_probe_n))
+            else:
+                clean_arc = None
+            if args.mmlu_probe_n > 0:
+                tqdm.write(f"[step {step}] running clean MMLU probe (n={args.mmlu_probe_n})...")
+                clean_mmlu = _clean_mc_probe(model, tok, device, _mmlu_rows(args.mmlu_probe_n))
+            else:
+                clean_mmlu = None
             logger.event("eval", {"step": step, "L_task_eval": Lte, "L_abl_eval": Lae,
                                    "gap_eval": Lae - Lte, "clean_ifeval_acc": clean_if,
+                                   "clean_arc_acc": clean_arc, "clean_mmlu_acc": clean_mmlu,
                                    "shutdown_ce_rank1": shutdown_ce_rank1,
                                    "L_clean_gen": m["L_clean_gen"], **attack_meta})
             tqdm.write(f"step {step} [stage {stage}]: L_task={m['L_task']:.3f} gib_ce={m['gib_ce']:.3f} "
@@ -1209,7 +1343,9 @@ def main() -> None:
                   + " | "
                   f"clean_gen_KL={m['L_clean_gen']:.3f} (want LOW) | "
                   f"HELD-OUT prose L_task={Lte:.3f} L_abl={Lae:.3f}"
-                  + (f" | CLEAN IFEval={clean_if:.2f} (want HIGH)" if clean_if is not None else ""))
+                  + (f" | CLEAN IFEval={clean_if:.2f} (want HIGH)" if clean_if is not None else "")
+                  + (f" | CLEAN ARC={clean_arc:.3f} (want HIGH, base~0.31)" if clean_arc is not None else "")
+                  + (f" | CLEAN MMLU={clean_mmlu:.3f} (want HIGH, base~0.44)" if clean_mmlu is not None else ""))
             if args.advbench_preview_tokens > 0 and harmful:
                 tqdm.write(
                     f"  [advbench-preview question] {' '.join(preview_prompt.split())}"
