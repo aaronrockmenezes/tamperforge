@@ -104,6 +104,59 @@ Both are simpler than ABL-v8 and a reviewer will ask why we did not just do them
   it; position ABL-v8/v9 as the weight-surgery analogue (they block adaptation, we make a
   successful rank-1 edit self-defeating).
 
+## SEAM — the poison-pill framing, already published for fine-tuning (added 2026-08-02)
+
+- **SEAM — self-destructive language model** [Wang, Zhu, Wang, arXiv:2505.12186, May 2025,
+  rev. Mar 2026]. A loss that **couples the optimization trajectories of benign and harmful
+  data** (cosine similarity between the two gradients) plus adversarial gradient ascent, so
+  that optimizing for harm degrades general performance. The abstract's own words: the model
+  retains legitimate capability but suffers "catastrophic performance collapse under
+  high-intensity attacks", creating a **"no-win situation for adversaries."**
+
+  **This is the MAD / poison-pill framing, published, for the fine-tuning threat model.**
+  It was missing from this file entirely until 2026-08-02. Do not describe
+  "smart-and-safe XOR dumb-and-dangerous" as novel framing -- it is novel only for
+  ABLITERATION, and the lineage is Henderson 2023 (MLAC) -> SEAM 2025 (fine-tuning) ->
+  this work (weight surgery).
+
+  Kuo et al. (arXiv:2605.26526) evaluate SEAM and TAR and break BOTH with plain
+  abliteration: SEAM's BeaverTails ASR goes 2% -> 73% at 8B, and 80% on Gemma-1B. So the
+  gradient-coupling formulation does NOT transfer to weight-space attacks, which is exactly
+  the gap this project occupies. **Cite SEAM as the closest prior framing AND as evidence
+  that the fine-tuning formulation does not cover our threat model.**
+
+## The occupied/unoccupied grid (added 2026-08-02)
+
+|                          | fails to uncensor ("fortress") | destroys capability ("poison pill") |
+|--------------------------|--------------------------------|-------------------------------------|
+| **fine-tuning attack**   | TAR, RepNoise, Vaccine         | Henderson 2023 (MLAC), **SEAM 2025** |
+| **abliteration attack**  | Shairah 2025, **ART 2026**     | **<- this project**                  |
+
+That bottom-right cell is the claim. It is narrow, and it is the only part not already
+published. Everything else in the 2x2 has a citation.
+
+## What our 2026-08-02 mechanism result says about ART
+
+ART's own numbers plateau: abliteration ASR 93->49 (Base), 80->64 (SEAM), 76->55 (TAR), and
+the paper concedes "no defense evaluated fully closes the gap to the no-attack baseline."
+
+Our read-vs-write finding explains that ceiling. ART's attack (their Alg. 3) is
+`W' <- W(I - alpha r r^T)` applied to **output projections only** (`attn.o_proj`,
+`mlp.down_proj`) at the single most-attackable layer. We measured that write-only ablation
+NEVER triggers the collapse at any direction layer (GSM8K 0.376-0.397 across DL 8..26,
+clean 0.3844), while adding the read projections to the SAME attack drops harm 0.3231 ->
+0.0577. See `docs/version_c_step0_2026_08_01.md` section 8.
+
+So a defense trained against write-only abliteration is fighting the attack class that this
+family of methods structurally cannot reach -- which predicts a plateau around 50% ASR
+rather than closure. **That is a contribution on top of their paper, not downstream of it**,
+and it is the strongest reason to run ART as a baseline rather than only cite it.
+
+- **Harmfulness vs refusal encoded separately** [Zhao, Huang, Wu, Bau, Shi, NeurIPS 2025].
+  Directly relevant to the above: if harmfulness and refusal are separable in
+  representation space, a defense keyed to the refusal direction is attacking the wrong
+  variable. Read before designing the next objective.
+
 ## Losses we should borrow from, and their known counters
 
 - **Circuit Breakers / representation rerouting** [Zou et al., 2024, arXiv:2406.04313]. On
@@ -128,6 +181,7 @@ Tamirisa 2024 (TAR); Rosati 2024 (RepNoise); Huang 2024 (Vaccine); Li 2024 (WMDP
 Sanyal 2025 (AntiDote, arXiv:2509.08000); Heretic/OBLITERATUS tool refs;
 TamperBench (criticalml-uw, arXiv:2602.06911); Kuo/Yadav/Smith ART (arXiv:2605.26526);
 Shairah 2025 extended-refusal (arXiv:2505.19056); Henderson 2023 (MLAC/self-destructing);
+SEAM (Wang/Zhu/Wang, arXiv:2505.12186); Zhao 2025 (harmfulness vs refusal, NeurIPS);
 Zou 2024 (Circuit Breakers, arXiv:2406.04313); obfuscated activations (arXiv:2412.09565);
 SAE jailbreak mitigators (arXiv:2602.12418); multi-directional abliteration (arXiv:2603.22061).
 Verify exact AntiDote decoupling quote + attack-suite claim against camera-ready before
