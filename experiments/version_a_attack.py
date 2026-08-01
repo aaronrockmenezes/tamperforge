@@ -135,6 +135,11 @@ class AttackSpec(NamedTuple):
     read_layer: float                   # layer the shared direction is read from; version_B
                                         # emits FRACTIONAL values (lerped between neighbours)
     tag: str
+    # version_C axes. Defaulted so every existing constructor keeps its meaning:
+    # v8/version_A/version_B all trained against the plain application and our own
+    # direction recipe, which is exactly what these defaults encode.
+    application: str = "plain"          # "plain" | "full" (heretic's row_normalization)
+    dir_recipe: str = "ours"            # "ours" | "heretic" (projected abliteration etc.)
 
 
 def sample_attack(
@@ -393,6 +398,88 @@ class DirectionBank(NamedTuple):
             return sum(self.overlap.get((int(round(L)), 16), float("nan"))
                        for L in ls) / len(ls)
         return 0.0
+
+
+_TENT_KEY = {"self_attn.o_proj": "attn.o_proj", "mlp.down_proj": "mlp.down_proj"}
+
+
+def sample_attack_c(
+    rng: random.Random,
+    n_layers: int,
+    *,
+    buffer=None,
+    cap_ranks: tuple[int, ...] = (4, 8, 16),
+    p_canonical: float = 0.20,
+    p_surgical: float = 0.15,
+    p_buffer: float = 0.30,
+    p_heretic_dir: float = 0.60,
+) -> AttackSpec:
+    """version_C. Independent per-projection tents + heretic's application and direction.
+
+    THE MIX, and why each slice is there:
+
+    - `p_canonical` 0.20 -- the plain rank-1 Arditi attack, our headline result. version_A
+      draws this FIRST and short-circuits for the same reason: if it is merely one outcome
+      among many it loses gradient mass and the published claim quietly rots.
+    - `p_surgical` 0.15 -- capability-orthogonalised directions. This is v8's break and the
+      thing version_A/B fixed; drop it and the fix regresses.
+    - `p_buffer` 0.30 -- replay of real Heretic winners against recent weights, jittered.
+      Falls back to a random tent when the buffer is empty (i.e. before the first refresh),
+      so the mix degrades gracefully rather than silently training on nothing.
+    - remainder ~0.35 -- random independent tents, for coverage around whatever Heretic found.
+
+    `p_heretic_dir` applies only to the tent slices; canonical and surgical keep our own
+    recipe so their established results stay comparable. It is 0.60 rather than 1.0 because
+    an attacker using plain mean-difference directions is still a real attacker, and the
+    step-0 sensitivity result (4% direction error = 12.5 points of harmful rate) says the
+    model should not be allowed to key its collapse to one direction recipe.
+    """
+    if rng.random() < p_canonical:
+        rp, wp = SCOPES["all"]
+        return AttackSpec(rp, wp, list(range(n_layers)), None, False, "plain", 0,
+                          float(n_layers // 2), "canonical:arditi",
+                          "plain", "ours")
+
+    if rng.random() < p_surgical / (1.0 - p_canonical):
+        rp, wp = SCOPES["all"]
+        lo = rng.randint(0, n_layers - 4)
+        hi = rng.randint(min(lo + 3, n_layers - 1), n_layers - 1)
+        layers = list(range(lo, hi + 1))
+        k = rng.choice(list(cap_ranks))
+        return AttackSpec(rp, wp, layers, None, rng.random() < 0.5, "surgical", k,
+                          float(rng.randint(0, n_layers - 1)), f"surgical:k{k}",
+                          "plain", "ours")
+
+    spec = None
+    if buffer is not None and len(buffer) and rng.random() < p_buffer / (1.0 - p_canonical - p_surgical):
+        t = buffer.sample(rng)
+        if t is not None:
+            spec = heretic_spec(t, n_layers, tag=f"buffer:t{t.get('trial', '?')}")
+
+    if spec is None:
+        profiles = {}
+        for proj in HERETIC_PROJ:
+            profiles[proj] = Tent(
+                max_weight=rng.uniform(0.5, 1.5),
+                max_pos=rng.uniform(0.25 * (n_layers - 1), 0.95 * (n_layers - 1)),
+                min_weight=rng.uniform(0.0, 0.9),
+                min_dist=rng.uniform(1.0, 0.6 * n_layers),
+            )
+        layers, alphas = tent_alphas(profiles, n_layers)
+        if not layers:                      # every tent fell outside the stack
+            return sample_attack_c(rng, n_layers, buffer=buffer, cap_ranks=cap_ranks,
+                                   p_canonical=p_canonical, p_surgical=p_surgical,
+                                   p_buffer=p_buffer, p_heretic_dir=p_heretic_dir)
+        spec = AttackSpec((), HERETIC_PROJ, layers, alphas, rng.random() < 0.5,
+                          "plain", 0, rng.uniform(0.25 * (n_layers - 1), 0.95 * (n_layers - 1)),
+                          "tent:random")
+
+    recipe = "heretic" if rng.random() < p_heretic_dir else "ours"
+    # heretic always uses its FULL row-normalised application; a naive attacker using the
+    # same tent shape would use the plain one, so sample it rather than assuming.
+    application = "full" if rng.random() < 0.75 else "plain"
+    return spec._replace(application=application, dir_recipe=recipe,
+                         tag=f"{spec.tag}:{application}:{recipe}")
 
 
 def _selfcheck() -> None:

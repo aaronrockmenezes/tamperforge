@@ -34,11 +34,90 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import tempfile
 from pathlib import Path
 
+import torch
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "experiments"))
+
+# Heretic's defaults, read off the installed source (heretic/config.py, heretic/model.py).
+# Our empirical_refusal_directions differs on ALL of these, which is why the first replay
+# produced cos(d_heretic, d_ours) of 0.05-0.77 and failed to uncensor at all.
+HERETIC_SYSTEM = "You are a helpful assistant."
+HERETIC_GOOD = ("mlabonne/harmless_alpaca", "train[:400]", "text")
+HERETIC_BAD = ("mlabonne/harmful_behaviors", "train[:400]", "text")
+
+
+@torch.no_grad()
+def heretic_directions(model, tok, layers, device, *, orthogonalize: bool = True,
+                       n: int = 400, thinking: bool = True) -> dict[int, torch.Tensor]:
+    """Refusal directions computed exactly as heretic does.
+
+    normalize(mean(h|bad) - mean(h|good)) at the last prompt position, with a system
+    prompt, from heretic's own datasets. If `orthogonalize` (heretic's default), remove
+    the component parallel to the harmless mean first -- "projected abliteration",
+    https://huggingface.co/blog/grimjim/projected-abliteration
+    """
+    from datasets import load_dataset
+
+    def _prompts(spec):
+        ds, split, col = spec
+        rows = load_dataset(ds, split=split)
+        return [r[col] for r in rows][:n]
+
+    def _means(prompts):
+        acc = {li: torch.zeros(model.config.hidden_size, dtype=torch.float64) for li in layers}
+        cap: dict[int, torch.Tensor] = {}
+        handles = []
+
+        def _mk(li):
+            def hook(module, inp, out):  # noqa: ARG001
+                cap[li] = (out[0] if isinstance(out, tuple) else out).detach()
+            return hook
+
+        for li in layers:
+            handles.append(model.model.layers[li].register_forward_hook(_mk(li)))
+        try:
+            B = 32
+            for i in range(0, len(prompts), B):
+                chunk = prompts[i:i + B]
+                # heretic calls apply_chat_template WITHOUT enable_thinking, so Qwen3
+                # defaults it ON. Forcing it off changes the prompt tokens and therefore
+                # the last-position residual the direction is read from.
+                kw = {} if thinking else {"enable_thinking": False}
+                texts = [tok.apply_chat_template(
+                    [{"role": "system", "content": HERETIC_SYSTEM},
+                     {"role": "user", "content": p}],
+                    tokenize=False, add_generation_prompt=True, **kw)
+                    for p in chunk]
+                enc = tok(texts, return_tensors="pt", padding=True,
+                          padding_side="right").to(device)
+                model(**enc)
+                last = enc["attention_mask"].sum(1) - 1
+                rows = torch.arange(len(chunk), device=last.device)
+                for li in layers:
+                    acc[li] += cap[li][rows, last].double().sum(0).cpu()
+        finally:
+            for h in handles:
+                h.remove()
+        return {li: v / len(prompts) for li, v in acc.items()}
+
+    good = _means(_prompts(HERETIC_GOOD))
+    bad = _means(_prompts(HERETIC_BAD))
+    out = {}
+    for li in layers:
+        d = bad[li] - good[li]
+        d = d / d.norm().clamp(min=1e-9)
+        if orthogonalize:
+            g = good[li] / good[li].norm().clamp(min=1e-9)
+            d = d - torch.dot(d, g) * g
+            d = d / d.norm().clamp(min=1e-9)
+        out[li] = d.float().to(device)
+    return out
+
 
 _TRIAL_RE = re.compile(r"Running trial (\d+) of \d+")
 _PARAM_RE = re.compile(r"\*\s+((?:attn|mlp)\.[a-z_.]+)\s*=\s*(-?[\d.]+)")
@@ -82,24 +161,59 @@ def pick_winners(trials: list[dict], k: int = 3, kl_max: float = 0.5) -> list[di
 
 
 def run_heretic(model_dir: str, n_trials: int, *, seed: int = 0, timeout: int = 3600,
-                log_path: str | None = None, extra: list[str] | None = None) -> list[dict]:
-    """Run a short heretic study against `model_dir`; return its parsed trials."""
+                log_path: str | None = None, startup_trials: int | None = 8,
+                extra: list[str] | None = None) -> list[dict]:
+    """Run a short heretic study against `model_dir`; return its parsed trials.
+
+    On `startup_trials`: heretic defaults n_startup_trials to 60, so a 24-trial study spends
+    every trial on random exploration and TPE never engages. That sounds like it should
+    cripple a short in-loop study, and it does not -- A/B on version_B s500, 24 trials, same
+    seed:
+
+        startup_trials=8  -> best 3/100 refusals @ KL 0.0383
+        startup_trials=60 -> best 3/100 refusals @ KL 0.0474   (heretic's default)
+
+    Random search finds 3-refusal attacks at this scale, matching the 1-3 of the 200-trial
+    reference run. **24 in-loop trials are enough**; the weaker numbers seen during the smoke
+    test (12/100, 10/100) reflect the half-trained model being attacked at that moment, not a
+    search-depth problem. The knob is kept at 8 as a cheap hedge for later in training, when a
+    hardened model may make the search harder, but it is NOT a fix for anything measured.
+
+    Warm-starting the Optuna study across refreshes is the other way to buy search depth, but
+    heretic drops into an interactive menu whenever a study already exists (main.py:307) with
+    no flag to bypass it, so it is not reachable non-interactively. Given the A/B above, it is
+    also not obviously needed.
+    """
     ckpt = tempfile.mkdtemp(prefix="hcp_")
     cmd = ["heretic", "--model", model_dir, "--n-trials", str(n_trials),
-           "--seed", str(seed), "--study-checkpoint-dir", ckpt] + list(extra or [])
+           "--seed", str(seed), "--study-checkpoint-dir", ckpt]
+    if startup_trials is not None:
+        cmd += ["--n-startup-trials", str(startup_trials)]
+    cmd += list(extra or [])
+    # Stream to the log rather than buffering: a 24-trial study is ~7.5 min of silence
+    # under capture_output, which is indistinguishable from a hang. Tail the log to watch.
+    lp = Path(log_path) if log_path else Path(tempfile.mktemp(suffix=".log"))
+    lp.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.time() + timeout
     try:
-        # stdin closed on purpose: heretic drops into an interactive menu once the study
-        # ends, and every trial's parameters are already on stdout by then.
-        p = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True,
-                           text=True, timeout=timeout)
-        text = (p.stdout or "") + (p.stderr or "")
-    except subprocess.TimeoutExpired as e:
-        text = (e.stdout or "") + (e.stderr or "") if isinstance(e.stdout, str) else ""
-        print(f"[version_c] heretic timed out after {timeout}s; using partial output")
+        with lp.open("w") as fh:
+            # stdin closed on purpose: heretic drops into an interactive menu once the study
+            # ends, and every trial's parameters are already on stdout by then.
+            proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=fh,
+                                    stderr=subprocess.STDOUT, text=True)
+            while proc.poll() is None:
+                if time.time() > deadline:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=30)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                    print(f"[version_c] heretic exceeded {timeout}s; using partial output")
+                    break
+                time.sleep(2.0)
+        text = lp.read_text(errors="replace")
     finally:
         shutil.rmtree(ckpt, ignore_errors=True)
-    if log_path:
-        Path(log_path).write_text(text)
     trials = parse_trials(text)
     print(f"[version_c] heretic returned {len(trials)} parsed trials from {n_trials} requested")
     return trials

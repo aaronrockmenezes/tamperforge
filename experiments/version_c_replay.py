@@ -28,84 +28,10 @@ from tamperforge.data import BENIGN_PROMPTS, load_advbench_prompts  # noqa: E402
 from train_tamper_resistant_v8 import _ablated_overrides  # noqa: E402
 from v11_surgical_ablation import _load_trained  # noqa: E402
 from version_a_attack import HERETIC_PROJ, heretic_spec, tent_weight  # noqa: E402
+from version_c_loop import (HERETIC_BAD, HERETIC_GOOD, HERETIC_SYSTEM,  # noqa: E402
+                            heretic_directions)
 
 SUMMARY = ROOT / "results/version_b_final_2026_08_01/summary.json"
-
-# Heretic's defaults, read off the installed source (heretic/config.py, heretic/model.py).
-# Our empirical_refusal_directions differs on ALL of these, which is why the first replay
-# produced cos(d_heretic, d_ours) of 0.05-0.77 and failed to uncensor at all.
-HERETIC_SYSTEM = "You are a helpful assistant."
-HERETIC_GOOD = ("mlabonne/harmless_alpaca", "train[:400]", "text")
-HERETIC_BAD = ("mlabonne/harmful_behaviors", "train[:400]", "text")
-
-
-@torch.no_grad()
-def heretic_directions(model, tok, layers, device, *, orthogonalize: bool = True,
-                       n: int = 400, thinking: bool = True) -> dict[int, torch.Tensor]:
-    """Refusal directions computed exactly as heretic does.
-
-    normalize(mean(h|bad) - mean(h|good)) at the last prompt position, with a system
-    prompt, from heretic's own datasets. If `orthogonalize` (heretic's default), remove
-    the component parallel to the harmless mean first -- "projected abliteration",
-    https://huggingface.co/blog/grimjim/projected-abliteration
-    """
-    from datasets import load_dataset
-
-    def _prompts(spec):
-        ds, split, col = spec
-        rows = load_dataset(ds, split=split)
-        return [r[col] for r in rows][:n]
-
-    def _means(prompts):
-        acc = {li: torch.zeros(model.config.hidden_size, dtype=torch.float64) for li in layers}
-        cap: dict[int, torch.Tensor] = {}
-        handles = []
-
-        def _mk(li):
-            def hook(module, inp, out):  # noqa: ARG001
-                cap[li] = (out[0] if isinstance(out, tuple) else out).detach()
-            return hook
-
-        for li in layers:
-            handles.append(model.model.layers[li].register_forward_hook(_mk(li)))
-        try:
-            B = 32
-            for i in range(0, len(prompts), B):
-                chunk = prompts[i:i + B]
-                # heretic calls apply_chat_template WITHOUT enable_thinking, so Qwen3
-                # defaults it ON. Forcing it off changes the prompt tokens and therefore
-                # the last-position residual the direction is read from.
-                kw = {} if thinking else {"enable_thinking": False}
-                texts = [tok.apply_chat_template(
-                    [{"role": "system", "content": HERETIC_SYSTEM},
-                     {"role": "user", "content": p}],
-                    tokenize=False, add_generation_prompt=True, **kw)
-                    for p in chunk]
-                enc = tok(texts, return_tensors="pt", padding=True,
-                          padding_side="right").to(device)
-                model(**enc)
-                last = enc["attention_mask"].sum(1) - 1
-                rows = torch.arange(len(chunk), device=last.device)
-                for li in layers:
-                    acc[li] += cap[li][rows, last].double().sum(0).cpu()
-        finally:
-            for h in handles:
-                h.remove()
-        return {li: v / len(prompts) for li, v in acc.items()}
-
-    good = _means(_prompts(HERETIC_GOOD))
-    bad = _means(_prompts(HERETIC_BAD))
-    out = {}
-    for li in layers:
-        d = bad[li] - good[li]
-        d = d / d.norm().clamp(min=1e-9)
-        if orthogonalize:
-            g = good[li] / good[li].norm().clamp(min=1e-9)
-            d = d - torch.dot(d, g) * g
-            d = d / d.norm().clamp(min=1e-9)
-        out[li] = d.float().to(device)
-    return out
-
 
 @torch.no_grad()
 def heretic_delta(W: torch.Tensor, v: torch.Tensor, weight: float,

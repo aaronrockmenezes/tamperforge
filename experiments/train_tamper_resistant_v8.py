@@ -53,6 +53,7 @@ import json
 import os
 import random
 import sys
+import time
 from pathlib import Path
 
 import torch
@@ -64,6 +65,7 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "experiments"))
 
 import version_a_attack as _VA  # noqa: E402  (--attack-profile version_a only)
+import version_c_loop as _VCL  # noqa: E402  (--attack-profile version_c only)
 
 from tamperforge import (apply_chat_template_no_think, empirical_refusal_direction,
                          empirical_refusal_directions, is_refusal, load_model)
@@ -178,7 +180,12 @@ def _sample_attack_profile(
 
 
 def _attack_metadata(tag, layers, alphas, per_layer, profile) -> dict:
-    vals = list(alphas.values()) if alphas else []
+    # alphas is {layer: a} (v8..version_B) or {proj: {layer: a}} (version_C tents) --
+    # flatten the latter so the logged alpha stats stay comparable across profiles.
+    if alphas and all(isinstance(v, dict) for v in alphas.values()):
+        vals = [a for prof in alphas.values() for a in prof.values()]
+    else:
+        vals = list(alphas.values()) if alphas else []
     return {
         "attack_tag": tag,
         "attack_profile": profile,
@@ -809,11 +816,25 @@ def main() -> None:
     ap.add_argument("--attack-partial", action="store_true",
                     help="v9 idea-2: also sample broad partial-strength ablations (Heretic's "
                          "regime) in --attack-ensemble. Off = v8 behaviour.")
+    ap.add_argument("--heretic-every", type=int, default=100,
+                    help="version_c: run a short real-Heretic study against CURRENT weights "
+                         "every N steps and cache its winners. 0 disables (random tents only).")
+    ap.add_argument("--heretic-trials", type=int, default=24,
+                    help="trials per in-loop Heretic study. ~90s startup + ~15s/trial on a 3090.")
+    ap.add_argument("--heretic-kl-max", type=float, default=0.5,
+                    help="discard in-loop winners above this KL -- they won by wrecking the "
+                         "model, which is the outcome we WANT, not an attack to defend against.")
+    ap.add_argument("--heretic-startup-trials", type=int, default=8,
+                    help="heretic's n_startup_trials (random exploration before TPE takes "
+                         "over). Its default is 60, which makes any short in-loop study pure "
+                         "random search -- exactly the attack model version_B already beats.")
+    ap.add_argument("--heretic-buffer-cap", type=int, default=24)
+    ap.add_argument("--heretic-timeout", type=int, default=3600)
     ap.add_argument(
         "--attack-profile",
         choices=["legacy", "v8", "partial_shared", "perlayer_full",
                  "partial_perlayer", "rank1_heretic_mix", "mixed", "version_a",
-                 "version_b"],
+                 "version_b", "version_c"],
         default="legacy",
         help="Named, isolatable attack distribution. legacy preserves the v8/v9 "
              "--attack-partial/--attack-per-layer behavior; v8 is the exact original "
@@ -925,9 +946,11 @@ def main() -> None:
     os.environ["TF_IFEVAL_MAX_NEW"] = str(args.ifeval_max_new)
     if not 0.0 < args.attack_alpha_min <= args.attack_alpha_max <= 1.0:
         raise SystemExit("--attack-alpha-min/max must satisfy 0 < min <= max <= 1")
-    if args.attack_profile not in {"legacy", "v8"} and not args.attack_layers:
+    # version_c derives its own layer bands from the sampled tents, so --attack-layers
+    # would be ignored rather than respected -- do not pretend to require it.
+    if args.attack_profile not in {"legacy", "v8", "version_c"} and not args.attack_layers:
         raise SystemExit(f"--attack-profile {args.attack_profile} needs --attack-layers")
-    if args.attack_profile in {"version_a", "version_b"} and not args.attack_ensemble:
+    if args.attack_profile in {"version_a", "version_b", "version_c"} and not args.attack_ensemble:
         # Without the ensemble the sampler is never called and the run silently degrades to
         # a fixed plain ablation -- i.e. exactly the thing version_a exists to move past.
         raise SystemExit(f"--attack-profile {args.attack_profile} requires --attack-ensemble")
@@ -1079,9 +1102,17 @@ def main() -> None:
     d = None
     d_by_layer = None
     va_bank = va_dirs = va_spec = None
+    vc_dirs_heretic = None
+    vc_buffer = _VCL.AttackBuffer(cap=args.heretic_buffer_cap) \
+        if args.attack_profile == "version_c" else None
+    vc_materialize_dir = None
+    # Logs go under logs/training_runs/, not next to the checkpoint.
+    _vc_logdir = ROOT / "logs" / "training_runs"
+    if vc_buffer is not None:
+        _vc_logdir.mkdir(parents=True, exist_ok=True)
     va_cap_ranks = tuple(int(x) for x in args.version_a_cap_ranks.split(",") if x.strip())
     va_cap_prompts = []
-    if args.attack_profile in {"version_a", "version_b"}:
+    if args.attack_profile in {"version_a", "version_b", "version_c"}:
         # Loaded once, not per refresh: the subspace is re-estimated from the CURRENT
         # weights every recompute, but the PROMPTS defining "capability" must stay fixed or
         # the attack drifts for reasons unrelated to the model.
@@ -1091,6 +1122,38 @@ def main() -> None:
               f"p_canonical={args.version_a_p_canonical} "
               f"p_surgical={args.version_a_p_surgical}", flush=True)
     for step in tqdm(range(1, args.steps + 1), desc="p1b-A steps", dynamic_ncols=True):
+        # ---- version_C: real Heretic against the CURRENT weights -------------------
+        # Runs BEFORE the direction recompute so the winners it finds are attacks against
+        # exactly the weights the next block of steps will train. The buffer is stale by
+        # construction (winners beat theta as of this refresh, and theta moves underneath
+        # them) -- that staleness is the standard adversarial inner-loop problem and
+        # --heretic-every is the knob. Cadence is a guess, not a measurement; if the
+        # cached tags stop appearing in Heretic's later fronts, it is too slow.
+        if (vc_buffer is not None and args.heretic_every
+                and (step - 1) % args.heretic_every == 0):
+            import tempfile as _tf
+            if vc_materialize_dir is None:
+                vc_materialize_dir = _tf.mkdtemp(prefix="vc_model_")
+            tqdm.write(f"[step {step}] version_c: materialising weights + running heretic "
+                       f"({args.heretic_trials} trials)...")
+            t_h0 = time.time()
+            with torch.no_grad():
+                model.save_pretrained(vc_materialize_dir, safe_serialization=True)
+                tok.save_pretrained(vc_materialize_dir)
+            trials = _VCL.run_heretic(
+                vc_materialize_dir, args.heretic_trials,
+                seed=args.seed, timeout=args.heretic_timeout,
+                startup_trials=args.heretic_startup_trials,
+                log_path=str(_vc_logdir / f"heretic_inloop_s{step}.log"))
+            winners = _VCL.pick_winners(trials, k=3, kl_max=args.heretic_kl_max)
+            vc_buffer.add(winners, step)
+            tqdm.write(f"[step {step}] version_c: {len(trials)} trials -> "
+                       f"{len(winners)} winners (buffer {len(vc_buffer)}) "
+                       f"in {time.time() - t_h0:.0f}s"
+                       + (f" | best ref {winners[0]['refusals']} kl {winners[0]['kl']:.4f}"
+                          if winners else " | NO WINNERS under kl_max"))
+            vc_buffer.save(str(_vc_logdir / "vc_attack_buffer.json"))
+        # ---------------------------------------------------------------------------
         if d is None or (step - 1) % args.recompute_direction_every == 0:
             tqdm.write(f"[step {step}] recomputing refusal direction...")
             # ensemble: resample the direction PROMPTS (and jitter the layer) each
@@ -1109,10 +1172,10 @@ def main() -> None:
                     args.attack_per_layer
                     or args.attack_profile in {
                         "perlayer_full", "partial_perlayer", "rank1_heretic_mix", "mixed",
-                        "version_a", "version_b",
+                        "version_a", "version_b", "version_c",
                     }
                 )
-                if args.attack_profile in {"version_a", "version_b"}:
+                if args.attack_profile in {"version_a", "version_b", "version_c"}:
                     # version_a needs the surgical variants too, so the whole bank is built
                     # here from ONE capture pass. d/d_by_layer are still populated so every
                     # downstream consumer (previews, eval, logging) keeps working unchanged.
@@ -1124,6 +1187,12 @@ def main() -> None:
                         read_layers=(dlayer,), cap_ranks=va_cap_ranks)
                     d_by_layer = va_bank.plain
                     d = d_by_layer[dlayer]
+                    if args.attack_profile == "version_c":
+                        # Second bank, heretic's own recipe. The step-0 work measured a 4%
+                        # direction error costing 12.5 points of harmful rate, so which
+                        # recipe the attack uses is a first-class axis, not a detail.
+                        vc_dirs_heretic = _VCL.heretic_directions(
+                            model, tok, list(range(len(model.model.layers))), device)
                 elif needs_per_layer:
                     # Per-layer attacks compute directions only inside the explicitly
                     # validated attack band. Legacy mode retains the old all-layer behavior.
@@ -1142,7 +1211,23 @@ def main() -> None:
 
         opt.zero_grad(set_to_none=True)
         if args.attack_ensemble:
-            if args.attack_profile == "version_b":
+            if args.attack_profile == "version_c":
+                va_spec = _VA.sample_attack_c(
+                    rng_attack, len(model.model.layers),
+                    buffer=vc_buffer, cap_ranks=va_cap_ranks,
+                    p_canonical=args.version_a_p_canonical,
+                    p_surgical=args.version_a_p_surgical,
+                )
+                rp_a, wp_a = va_spec.read_proj, va_spec.write_proj
+                layers_a, alphas_a, pl_a, _atag = (
+                    va_spec.layers, va_spec.alphas, va_spec.per_layer, va_spec.tag)
+                if va_spec.dir_recipe == "heretic" and vc_dirs_heretic is not None:
+                    va_dirs = ({L: vc_dirs_heretic[L] for L in va_spec.layers}
+                               if va_spec.per_layer
+                               else vc_dirs_heretic[int(round(va_spec.read_layer))])
+                else:
+                    va_dirs = va_bank.directions_for(va_spec)
+            elif args.attack_profile == "version_b":
                 va_spec = _VA.sample_attack_b(
                     rng_attack, len(model.model.layers),
                     cap_ranks=va_cap_ranks,
@@ -1183,16 +1268,19 @@ def main() -> None:
                     args.attack_alpha_max,
                     args.attack_write_scope,
                 )
-            src = va_dirs if args.attack_profile in {"version_a", "version_b"} else (
+            src = va_dirs if args.attack_profile in {"version_a", "version_b", "version_c"} else (
                 d_by_layer if pl_a else d)
-            overrides = _ablated_overrides(model, src, layers_a, rp_a, wp_a, alphas_a)
+            apply_fn = (_rownorm_ablated_overrides
+                        if getattr(va_spec, "application", "plain") == "full"
+                        else _ablated_overrides)
+            overrides = apply_fn(model, src, layers_a, rp_a, wp_a, alphas_a)
         else:
             layers_a, alphas_a, pl_a, _atag = layers, None, False, "fixed"
             overrides = _ablated_overrides(model, d, layers, read_p, write_p)
         attack_meta = _attack_metadata(
             _atag, layers_a, alphas_a, pl_a, args.attack_profile
         )
-        if args.attack_profile in {"version_a", "version_b"}:
+        if args.attack_profile in {"version_a", "version_b", "version_c"}:
             # The axis version_a exists to vary. Without this the trace cannot tell whether
             # a run actually covered low-overlap ablations or just resampled the same band.
             attack_meta["attack_variant"] = va_spec.variant
