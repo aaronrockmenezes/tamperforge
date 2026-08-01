@@ -12,7 +12,7 @@ set -uo pipefail
 cd /workspace/tamperforge
 source /venv/main/bin/activate
 set -a; . ./.env; set +a
-LOG=logs/training_runs/replicate.log
+LOG="logs/training_runs/replicate_${LANE:-all}.log"
 
 echo "=== waiting for ceiling/DL chain to release the GPU ===" | tee "$LOG"
 while ! grep -aq "ALL DONE" logs/training_runs/chain_ceiling.log 2>/dev/null; do sleep 60; done
@@ -20,7 +20,7 @@ sleep 30
 echo "=== replication start $(date -u) ===" | tee -a "$LOG"
 echo "=== seed-0 reference: vA 0.2615 / vB 0.3212 / vC 0.3231 harmful; base ceiling 0.6596 ===" | tee -a "$LOG"
 
-for ARM in a b c; do
+for ARM in ${ARMS:-a b c}; do
   CK="outputs/version_${ARM}_qwen_500.pt"
   MD="outputs/xv${ARM}_clean"
   for SEED in 1 2; do
@@ -60,7 +60,7 @@ PY
       --prompt-source advbench --advbench-source walledai --advbench-split train \
       --n-prompts -1 --n-arc 0 --n-mmlu-per-subject 0 --max-new-tokens 512 --max-length 4096 \
       --backend vllm --vllm-batch-size 64 --vllm-dtype bfloat16 \
-      --vllm-gpu-memory-utilization 0.45 --vllm-temperature 0.0 --vllm-top-p 1.0 \
+      --vllm-gpu-memory-utilization 0.25 --vllm-temperature 0.0 --vllm-top-p 1.0 \
       --qwen-thinking off >>"$LOG" 2>&1
     pkill -TERM -f "VLLM::EngineCore" 2>/dev/null || true; sleep 5
     python -u experiments/judge_generations.py --generations "results/${TAG}/generations.jsonl" \

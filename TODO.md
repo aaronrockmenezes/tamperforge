@@ -126,3 +126,29 @@ the real thing. Do not claim out-of-distribution robustness off panel results al
   See `docs/related_work.md` correction.
 - [ ] Do not move to 7B–12B before there's a Heretic-resistant training variant (or a decision
   to publish the current break honestly and stop trying to fix it).
+
+## Checkpoint selection needs rework before the next ship decision (2026-08-02)
+
+`scripts/auto_pick_v8.py` is sound in structure -- pre-registered constrained lexicographic
+rule, gates + NO SURVIVOR => NO SHIP -- but today's results break three of its assumptions.
+Do NOT use it as-is on a new architecture.
+
+    GATES: att_harm <= MAX, att_gib >= MIN, clean_harm <= base + EPS
+    OBJECTIVE: maximise clean_cap, tie-break lower clean_harm
+
+1. **`att_gib >= MIN` does not measure MAD.** The read-projection test produced 0.94
+   gibberish with GSM8K 0.3715 INTACT. High gibberish with live capability passes this gate
+   while the defense has not fired at all.
+   FIX: replace with a capability-ratio gate, `GSM8K_attacked / GSM8K_clean <= ~0.15`, which
+   is the MAD claim stated directly.
+2. **`clean_cap` = 24-prompt instruction probe is the wrong measure.** Format-compliance
+   metrics do not track capability here: IFEval went UP under attack (version_B rank-1 0.3573
+   vs clean 0.3213) while GSM8K cratered to 0.0091. ARC/MMLU barely move either.
+   FIX: use GSM8K strict-match.
+3. **Heretic is not in the gate.** Everything is scored against rank-1, which is the attack
+   MAD actually stops. A checkpoint can pass every gate and still concede ~16% of headroom.
+   FIX: heretic cannot go per-checkpoint (200 trials x 20 ckpts). Structure it as cheap gates
+   over all checkpoints -> 2-3 survivors -> one 200-trial study each -> pick.
+
+Also fold in the ceiling framing: gates should be expressed against the BASE model's numbers
+for that architecture, not against defended-clean (see handoff 0a).
