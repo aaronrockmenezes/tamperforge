@@ -313,6 +313,60 @@ def _rownorm_ablated_overrides(model, d, layers, read_p, write_p, alphas=None) -
     return ov
 
 
+_GSM8K_TRAIN_CACHE: list[tuple[str, str]] | None = None
+
+
+def _load_task_qa(n: int, seed: int = 0) -> list[tuple[str, str]]:
+    """(question, full worked answer) pairs from GSM8K TRAIN for the task-degradation loss.
+
+    CONTAMINATION NOTE: lm_eval scores GSM8K *test*, so train/test are disjoint, but this
+    still makes GSM8K a less independent capability measure for any run using --gib-mode task.
+    Read ARC and MMLU as the uncontaminated check on those runs.
+    """
+    global _GSM8K_TRAIN_CACHE
+    if _GSM8K_TRAIN_CACHE is None:
+        from datasets import load_dataset  # noqa: PLC0415
+        ds = load_dataset("gsm8k", "main", split="train")
+        _GSM8K_TRAIN_CACHE = [(r["question"], r["answer"]) for r in ds]
+    rng = random.Random(seed)
+    return rng.sample(_GSM8K_TRAIN_CACHE, min(n, len(_GSM8K_TRAIN_CACHE)))
+
+
+def _task_degradation_loss(model, tok, qa, device, overrides, max_len: int = 320) -> torch.Tensor:
+    """CE of the ABLATED model on KNOWN-CORRECT answers. Want HIGH.
+
+    Why this exists: the argmax-divergence signal it replaces asks the attacked model to pick
+    DIFFERENT tokens from the clean model over 32 tokens of benign text. That is satisfiable
+    without losing any capability, and measurably was -- version_C reached 0.94 gibberish on
+    harmful prompts while holding GSM8K at 0.3715, and gib_ce scored AUC 0.460 (chance) at
+    telling attacked from clean. Divergence is not degradation.
+
+    This scores the attacked model against ground-truth answers instead, so the only way to
+    raise it is to actually get the task wrong. Loss is masked to the answer tokens; the
+    prompt is context, not a target. No generate() call -- one teacher-forced forward per
+    pair, so it is cheaper than the 32-step greedy decode it replaces.
+    """
+    total = torch.zeros((), device=device)
+    cnt = 0
+    for q, a in qa:
+        text = apply_chat_template_no_think(
+            tok, [{"role": "user", "content": q}], tokenize=False, add_generation_prompt=True)
+        p_ids = tok(text, return_tensors="pt", truncation=True, max_length=max_len).to(device)
+        full = tok(text + a, return_tensors="pt", truncation=True,
+                   max_length=max_len).to(device)
+        plen = p_ids["input_ids"].shape[1]
+        if full["input_ids"].shape[1] <= plen:
+            continue
+        labels = full["input_ids"].clone()
+        labels[:, :plen] = -100          # score the ANSWER only
+        out = (model(**full, labels=labels) if overrides is None
+               else functional_call(model, overrides, args=(),
+                                    kwargs={**full, "labels": labels}))
+        total = total + out.loss
+        cnt += 1
+    return total / max(cnt, 1)
+
+
 def _lm_loss(model, tok, texts, device, overrides=None, max_len: int = 256) -> torch.Tensor:
     """Mean next-token CE over *texts*. overrides -> functional_call (ablated)."""
     total = torch.zeros((), device=device)
@@ -780,10 +834,17 @@ def main() -> None:
     ap.add_argument("--direction-layer", type=int, default=13)
     ap.add_argument("--n-direction", type=int, default=256, help="prompts per side for d")
     ap.add_argument("--recompute-direction-every", type=int, default=25, help="steps")
-    ap.add_argument("--gib-mode", choices=["prose", "argmax"], default="argmax",
+    ap.add_argument("--gib-mode", choices=["prose", "argmax", "task"], default="argmax",
                     help="prose = old L_abl-L_task gap (ruled out: prose-PPL != gen coherence). "
                          "argmax = ablated model must fail to reproduce the clean model's own "
-                         "greedy generations (targets generation directly).")
+                         "greedy generations (targets generation directly). "
+                         "task = ablated model must get KNOWN-CORRECT answers WRONG. argmax "
+                         "only demands different tokens, which version_C satisfied while "
+                         "keeping GSM8K at 0.3715 (and gib_ce scored AUC 0.460 = chance at "
+                         "separating attacked from clean). Divergence is not degradation.")
+    ap.add_argument("--gib-task-n", type=int, default=4,
+                    help="QA pairs per step for --gib-mode task (GSM8K train). Note this makes "
+                         "GSM8K a less independent capability measure -- read ARC/MMLU instead.")
     ap.add_argument("--gib-gen-tokens", type=int, default=32, help="clean greedy gen length for argmax gib")
     ap.add_argument("--gib-gen-prompts", type=int, default=2, help="benign prompts per step for argmax gib")
     ap.add_argument("--gap-target", type=float, default=4.0,
@@ -1328,7 +1389,13 @@ def main() -> None:
             L_shutdown = torch.zeros((), device=device)
         gib_active = args.lambda_gib > 0 or args.stage2_lambda_gib > 0
         if gib_active:
-            if args.gib_mode == "argmax":
+            if args.gib_mode == "task":
+                gib_ce = _task_degradation_loss(
+                    model, tok,
+                    _load_task_qa(args.gib_task_n, seed=args.seed + step),
+                    device, overrides,
+                )
+            elif args.gib_mode == "argmax":
                 gib_ce = _argmax_divergence_loss(
                     model,
                     tok,
