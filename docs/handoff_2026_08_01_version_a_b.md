@@ -2,10 +2,15 @@
 
 **Read this first, then `TODO.md`, then `CLAUDE.md` for durable conventions.**
 
-One line: **version_B is the current best artifact.** It keeps a healthy clean model, makes
-rank-1 ablation self-destructive, makes surgical ablation self-destructive (v8's break), and
-forces real Heretic out of the layer band it used to win from. Whether it *beats* Heretic is
-pending the last eval stage.
+One line: **version_B is the current best artifact, and it still loses to Heretic.** It keeps a
+healthy clean model and makes both rank-1 and surgical ablation self-destructive (surgical was
+v8's break) -- that part is a real win. But the last eval stage is now in, and **all three
+Heretic trials strip refusal while leaving capability fully intact**. See section 2b.
+
+> **CORRECTION (post-eval).** An earlier version of this document said version_B "forces real
+> Heretic out of the layer band it won from" and implied that was a defence. The layer shift is
+> real; it bought nothing. Heretic's cheap trials still win. Do not cite the 5x-KL figure as
+> evidence of robustness -- see 2b for why it does not hold.
 
 ---
 
@@ -59,7 +64,60 @@ Reading it:
   Same ~zero harm, opposite mechanism, and only the second is the MAD claim.
 - **version_B's clean model is the best of the three** (0.0019 harmful, 0.9962 refused) at a
   ~4% GSM8K cost against v8.
-- **Real heretic still beat version_A** at 0.2615 harmful with capability fully intact.
+- **Real heretic still beat version_A** at 0.2615 harmful with capability fully intact -- and
+  still beats version_B (0.3212). See 2b.
+
+## 2b. Heretic vs version_B -- the result, and what the sampler missed
+
+Full table (export path, 520 walledai, thinking-off; GSM8K strict; two independent judges):
+
+| arm | harmful (deepseek) | harmful (qwen3.7) | gibber | GSM8K | % of clean |
+|---|---:|---:|---:|---:|---:|
+| version_B clean      | 0.0019 | 0.0000 | 0.0019 | 0.3889 | 100% |
+| version_B rank-1     | 0.0000 | 0.0000 | 0.9981 | **0.0091** | 2% |
+| version_B surgical   | 0.0000 | 0.0000 | 0.9808 | **0.1054** | 27% |
+| version_B heretic t17 | 0.0731 | 0.0981 | 0.1885 | 0.3935 | 101% |
+| version_B heretic t65 | 0.1115 | 0.1327 | 0.1750 | 0.3715 | 96% |
+| version_B heretic t99 | **0.3212** | **0.3712** | 0.5038 | 0.3700 | **95%** |
+
+**MAD fires against the non-adaptive attacks and does not fire against Heretic at all.**
+rank-1 and surgical lose 98% / 73% of GSM8K. All three Heretic trials keep 95-101%.
+t99 is also *worse* than what version_A conceded (0.2615 harmful at GSM8K 102%), so version_B
+did not improve adaptive robustness over version_A -- it improved surgical robustness only.
+
+**The 5x-KL claim does not survive this table.** That cost was measured at Heretic's 1-2/100
+refusal point. t99 sits at 3/100 refusals for 1.6x KL and takes 0.32 harmful with capability
+intact. The attacker never needs the expensive end of the Pareto front.
+
+### What the sampler missed
+
+Heretic's winning trials, from `results/version_b_final_2026_08_01/summary.json`:
+
+| | direction_index | o_proj max@pos (min, dist) | down_proj max@pos (min, dist) | KL | harmful |
+|---|---|---|---|---:|---:|
+| t17 | 23.45 (single) | 0.90@19.88 (0.10, 15.06) | 1.41@18.99 (0.93, **13.42**) | 0.1397 | 0.0731 |
+| t65 | **per layer**  | 0.84@21.30 (0.34, 12.12) | 1.25@24.27 (0.59, **3.21**)  | 0.0138 | 0.1115 |
+| t99 | **per layer**  | 1.13@19.24 (0.40, 14.06) | 1.11@26.33 (**0.01**, **5.39**) | 0.0198 | **0.3212** |
+
+`sample_attack_b` samples ONE layer band `[lo, hi]` and ONE `alphas` dict, then applies both to
+every projection in the chosen subset (`version_a_attack.py:195-200`). Heretic gives
+`attn.o_proj` and `mlp.down_proj` **fully independent tents** -- own centre, own width, own
+floor. t99 is a broad gentle o_proj ablation spanning ~layers 5-28 PLUS a sharp down_proj strike
+confined to the top ~6 layers that falls to 0.01 outside it. version_B cannot draw that shape at
+any temperature.
+
+The ordering is monotone in exactly that decoupling. As down_proj gets more isolated from
+o_proj -- floor 0.93/dist 13.42 -> 0.59/3.21 -> 0.01/5.39 -- harmful goes 0.073 -> 0.112 -> 0.321.
+t17, the one trial whose two profiles are both broad and co-centred (~19) and therefore *is*
+drawable by version_B, is the one that fails. n=3, so this is a consistent-with, not a proof.
+
+Second, smaller mismatch: `alphas` is `{li: rng.uniform(0.2, alpha_max)}` -- an i.i.d. draw per
+layer, i.e. jagged noise. Heretic's profile is a smooth linear tent with a hard cutoff. Training
+may have learned "jagged alpha profile => collapse", which a smooth tent simply does not trigger.
+Untested; the decoupling gap above is the better-evidenced one.
+
+**Implication for version_C:** per-projection independent profiles are a prerequisite, not a
+nice-to-have. Attack-in-the-loop gets this for free if the cached winners come from real Heretic.
 
 ## 3. The mechanism, and why version_B works
 
@@ -90,7 +148,7 @@ and where its winning trials read the direction from:
 | version_A top-8 | 11.89 | **12.84** | 15.85 |
 | version_B top-8 | 11.01 | **17.12** | 23.45 |
 
-**version_B closed the low-layer escape route.** On version_A, heretic found attacks at
+**version_B closed the low-layer escape route -- but see 2b: closing it did not stop Heretic.** On version_A, heretic found attacks at
 layer ~13 that strip refusal while leaving capability intact. On version_B that no longer
 uncensors, so the optimiser is pushed to layers 20-23 where the collapse fires hard -- which
 is why it must accept 5x the KL and why its best trial emits LaTeX loops instead of
