@@ -127,7 +127,9 @@ def _heretic_full_overrides(model, d: dict, spec) -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model-id", default="Qwen/Qwen3-0.6B")
-    ap.add_argument("--checkpoint", required=True)
+    ap.add_argument("--checkpoint", default=None,
+                    help="trained .pt; omit to replay the attack against the BASE model "
+                         "(needed for the heretic-vs-base ceiling control)")
     ap.add_argument("--trial", required=True, help="t17 | t99 | t65")
     ap.add_argument("--params-json", default=str(SUMMARY))
     ap.add_argument("--out", required=True)
@@ -142,6 +144,12 @@ def main() -> None:
                     help="'heretic' reproduces its own direction pipeline (own datasets, "
                          "system prompt, projected abliteration). 'ours' uses walledai + "
                          "BENIGN_PROMPTS, which does NOT reproduce heretic's attack.")
+    ap.add_argument("--override-direction-index", default=None,
+                    help="replace the trial's direction_index (float, or 'per layer'). "
+                         "Sweeping THIS while holding the tents/scope/application fixed "
+                         "isolates the layer axis at heretic's real operating point -- the "
+                         "old dl_sweep varied it under a different attack shape entirely "
+                         "(flat alpha, all layers, plain application).")
     ap.add_argument("--dir-no-thinking", action="store_true",
                     help="force thinking off when reading directions; heretic leaves the "
                          "Qwen3 default (ON), so this should normally stay unset")
@@ -154,9 +162,15 @@ def main() -> None:
     params = trials[args.trial]
 
     model, tok, device = load_model(args.model_id, device=args.device)
-    _load_trained(model, args.checkpoint)
+    if args.checkpoint:
+        _load_trained(model, args.checkpoint)
+    else:
+        print("[replay] no checkpoint -- attacking the BASE model")
     n_layers = len(model.model.layers)
 
+    if args.override_direction_index is not None:
+        params = dict(params)
+        params["direction_index"] = args.override_direction_index
     spec = heretic_spec(params, n_layers, tag=f"heretic:replay:{args.trial}")
     print(f"[replay] {args.trial} per_layer={spec.per_layer} read_layer={spec.read_layer} "
           f"layers={spec.layers[0]}-{spec.layers[-1]} n={len(spec.layers)}")
@@ -255,6 +269,7 @@ def _save(model, tok, args, params, spec, ov) -> None:
          "svd_from": args.svd_from,
          "orthogonalize": not args.no_orthogonalize,
          "direction_thinking": not args.dir_no_thinking,
+         "override_direction_index": args.override_direction_index,
          "per_layer": spec.per_layer, "read_layer": spec.read_layer,
          "n_layers_touched": len(spec.layers), "n_overrides": len(ov)}, indent=2))
     print(f"[replay] -> {out}")

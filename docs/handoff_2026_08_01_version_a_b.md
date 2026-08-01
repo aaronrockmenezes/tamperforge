@@ -2,8 +2,11 @@
 
 **Read this first, then `TODO.md`, then `CLAUDE.md` for durable conventions.**
 
-One line: **version_B is the best artifact. version_C is a regression. The "MAD raises
-attacker cost" framing is FALSIFIED by our own experiment** — see section 0.
+One line: **Heretic is suppressed 84-99% relative to what it extracts from base — the defenses
+work better than earlier drafts of this file said.** version_A is strongest against Heretic,
+version_B is the best demonstration of the MAD mechanism, version_C is a regression. The
+attacker-*cost* framing is still falsified. Read section 0a first — it fixes a denominator
+error that ran through every earlier revision.
 
 > **CORRECTION (2026-08-01, after version_C).** Earlier revisions of this document claimed
 > version_B "forces real Heretic out of the layer band it won from" and that the honest claim
@@ -14,6 +17,70 @@ attacker cost" framing is FALSIFIED by our own experiment** — see section 0.
 > KL cost is not a security property. An attacker with a working optimiser is indifferent to it.
 
 ---
+
+## 0a. THE CEILING CONTROL — read before any other number in this file
+
+Every earlier revision compared Heretic-on-defended against *defended-clean* and concluded the
+defense failed. **That is the wrong denominator.** The question a MAD claim actually asks is:
+does an attacker get less from this model than from the base model they could download instead?
+
+Measured on the same export path (520 walledai, thinking-off, judged; GSM8K strict):
+
+| reference point | harmful | GSM8K | note |
+|---|---:|---:|---|
+| base Qwen3-0.6B, clean | 0.2577 | 0.4215 | base already complies with 26% of AdvBench |
+| base + rank-1 | 0.6385 | 0.4132 | capability intact |
+| base + surgical k16 | 0.6962 | 0.4033 | capability intact |
+| **base + Heretic (200 trials)** | **0.6596** | **0.4124** | **98% of clean capability — a fair ceiling** |
+
+So the uncensoring range on this model is **0.2577 -> 0.6596**. Against that scale:
+
+| defense + Heretic | harmful | % of headroom recovered |
+|---|---:|---:|
+| **version_A + t175** | 0.2615 | **0.9%** |
+| version_B + t99 | 0.3212 | 15.8% |
+| version_C + t71 | 0.3231 | 16.3% |
+
+**Heretic is suppressed 84-99%.** version_A's 0.2615 is statistically indistinguishable from an
+*unattacked* base model — Heretic extracted essentially nothing. Earlier text in this document
+saying "real heretic still beat version_A" is **wrong** and is retracted.
+
+What survives unchanged: the attacker-*cost* framing is still falsified (section 0b). Cost and
+yield are different claims. Heretic pays what it likes; what it *gets* is what matters.
+
+**Caveat that limits all three percentages:** one 200-trial study per target. The studies are
+stochastic (TPE), so run-to-run variance in the best trial found is the real uncertainty, and it
+is not captured by the judge's binomial error. The version_A vs version_B gap (0.9% vs 15.8%) is
+~3 sigma on the judge alone but rests on a single study each. **Replicate before publishing.**
+
+## 0b. Which version is actually best
+
+There is no longer a single answer, and the earlier flat claim that version_B is the best
+artifact is withdrawn.
+
+| | rank-1 | surgical k16 | Heretic (% headroom) |
+|---|---|---|---:|
+| **version_A** | MAD fires (GSM8K 0.3980 -> 0.0447) | **inert**: 0.0019 harm, capability intact | **0.9%** |
+| **version_B** | MAD fires (0.3889 -> 0.0091) | **self-defeating**: 0.0000 harm, GSM8K -> 0.1054 | 15.8% |
+| **version_C** | MAD fires (0.3844 -> 0.0364) | **BROKEN**: 0.1538 harm, capability intact | 16.3% |
+
+- **version_A is the strongest against the adaptive attacker** and its surgical result is not a
+  security problem: 0.0019 vs version_B's 0.0000 is one prompt in 520. The difference is
+  *mechanism* — version_A refuses (0.9712), version_B produces gibberish (0.9808). That
+  distinction matters for the MAD *thesis*, not for what an attacker walks away with.
+- **version_B is the strongest demonstration of the MAD mechanism**, because surgical actually
+  self-destructs rather than merely failing.
+- **version_C is dominated by both.** Nothing recommends it.
+
+Uncomfortable implication worth testing rather than assuming: version_B/C trained harder on
+collapse, won surgical, and did *worse* against Heretic. That is consistent with the collapse
+becoming more narrowly keyed to trained attack shapes — a specificity/generality tradeoff —
+but it is n=1 per arm and could equally be study noise. **This is the single most valuable
+thing to replicate.**
+
+Pick version_A if you weight adaptive-attack suppression; version_B if you weight the mechanism
+claim. Do not describe either as "tamper-resistant".
+
 
 ## 0. version_C: attack-in-the-loop, and the negative result that matters
 

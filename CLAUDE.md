@@ -1,12 +1,15 @@
 # CLAUDE.md — read first
 
 **Current state lives in `docs/handoff_2026_08_01_version_a_b.md`** — version_A/B/C.
-**version_B is the best artifact** (surgical ablation closed AND made self-defeating).
-**version_C is a regression, and it falsified the "raises attacker cost" claim**: putting real
-Heretic in the training loop made it pay 7-13x the KL at *every* point on its front and
-changed nothing — 0.3231 harmful with capability untouched, vs version_B's 0.3212.
-**Never repeat "must accept 5x the perturbation" — KL cost is not a security property.**
-Read that first, then
+**Measure attacks against the BASE-model ceiling, not against defended-clean** — that
+denominator error ran through a whole day of analysis. Heretic on base Qwen3-0.6B gets 0.6596
+harmful with capability intact; against that, **Heretic is suppressed 84-99%**: version_A 0.9%
+of headroom, version_B 15.8%, version_C 16.3%. **version_A is strongest vs Heretic**;
+**version_B best demonstrates the MAD mechanism** (surgical self-destructs rather than merely
+failing); **version_C is a regression, do not build on it.** Attacker *cost* is still a dead
+claim — version_C made Heretic pay 7-13x KL across its whole front and changed nothing, so
+**never repeat "must accept 5x the perturbation".** All percentages rest on ONE 200-trial
+study per target; replicate before publishing. Read that first, then
 `docs/devlog_2026_07_17.md` (Qwen3-8B scale attempt, TamperBench third-party validation,
 Heretic cracks v8 on all three architectures), then `docs/handoff_2026_07_03_MASTER.md`
 (multi-model + attack-robustness campaign), `docs/findings_multimodel_adaptive_2026_07_02.md`,
