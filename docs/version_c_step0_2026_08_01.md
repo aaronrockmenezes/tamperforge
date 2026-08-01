@@ -157,3 +157,27 @@ still necessary, but they are no longer the first thing:
 - `version_c_replay.py`: replay a logged trial; `heretic_directions()` implements heretic's
   recipe; `--direction-recipe {ours,heretic}`, `--no-orthogonalize`, `--dir-no-thinking`;
   `--selfcheck` asserts the tent math and t99's decoupled shape.
+
+---
+
+## 7. In flight as of 2026-08-02 (box `vast-versiona-3090`)
+
+Two chains queued; both self-sequence on the GPU and write to `logs/training_runs/`.
+
+1. **`dl_sweep_vc.sh`** (tmux `ceil`) — direction-index sweep {8, 11, 14.31, 17, 20, 23, 26} on
+   version_C, holding heretic's t71 attack fixed in every other respect (tents, write-only
+   scope, FULL row-normalised application). DL 14.31 is t71 itself and must reproduce 0.3231
+   harmful -- built-in control. Answers: is the low band geometrically special, or was
+   heretic's shift to layer ~14.5 incidental? Log: `dl_sweep_vc.log`.
+
+   NB the OLD `dl_sweep.sh` is not a substitute: it swept a shared *integer* direction layer
+   under flat alpha across ALL layers with the plain application, which differs from heretic's
+   shape on four axes. Comparing the two would confound the layer axis with the attack shape.
+
+2. **`replicate.sh`** (tmux `repl`) — 2 extra heretic seeds x {version_A, version_B, version_C},
+   200 trials each, best trial replayed and judged on the full 520. Tests whether version_A's
+   0.9%-of-headroom result is real or study noise. Log: `replicate.log`.
+
+Ceiling is already n=2 and stable: heretic-on-base t122 0.6596 / t144 0.6788 harmful (mean
+0.6692, spread 0.0192), both with capability intact. That is one study's two winners, so it
+bounds judge + trial-selection variance, NOT the seed-to-seed variance chain 2 measures.
