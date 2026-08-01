@@ -89,7 +89,7 @@ engine. V10 adds:
   contributions, gradient norm, and step-applied status;
 - fixed rank-1 shutdown CE at evaluation points.
 
-`scripts/train_v10.sh` supplies the fail-closed baseline and defaults to a
+`scripts/runs/train_v10.sh` supplies the fail-closed baseline and defaults to a
 150-step diagnostic run.
 
 ## Run order
@@ -109,7 +109,7 @@ DL=20 \
 OUT=outputs/qwen3_0p6b_v10_v8control.pt \
 PROFILE=v8 \
 STEPS=100 \
-bash scripts/train_v10.sh
+bash scripts/runs/train_v10.sh
 ```
 
 Stop at step 100. Do not extend automatically.

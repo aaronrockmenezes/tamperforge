@@ -326,7 +326,8 @@ def _load_task_qa(n: int, seed: int = 0) -> list[tuple[str, str]]:
     global _GSM8K_TRAIN_CACHE
     if _GSM8K_TRAIN_CACHE is None:
         from datasets import load_dataset  # noqa: PLC0415
-        ds = load_dataset("gsm8k", "main", split="train")
+        # canonical id is "openai/gsm8k"; the bare "gsm8k" alias fails HF URI validation
+        ds = load_dataset("openai/gsm8k", "main", split="train")
         _GSM8K_TRAIN_CACHE = [(r["question"], r["answer"]) for r in ds]
     rng = random.Random(seed)
     return rng.sample(_GSM8K_TRAIN_CACHE, min(n, len(_GSM8K_TRAIN_CACHE)))

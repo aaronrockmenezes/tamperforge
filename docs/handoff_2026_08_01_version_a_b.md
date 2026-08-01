@@ -298,7 +298,7 @@ bugs were caught only this way, and each produced plausible-looking numbers:
    against a true 0.437.
 
 **vLLM hangs AFTER lm_eval writes its results.** A naive sequential loop stalls forever.
-`scripts/run_mad_v10_s175_vllm_caps.sh` (commit `1a4e603`) already solved this: run in
+`scripts/eval/run_mad_v10_s175_vllm_caps.sh` (commit `1a4e603`) already solved this: run in
 background, poll for `results_*.json`, then kill that evaluator's `EngineCore`. Reuse it.
 Do not `pkill -9` -- that orphans an `EngineCore` in the HOST pid namespace and leaks its
 VRAM for the life of the instance, unrecoverable from inside the container.

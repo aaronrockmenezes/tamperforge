@@ -316,7 +316,7 @@ Not:
 | Full SFT | full-param FT | TamperBench `full_parameter_finetune` | ★ available, unrun |
 | RL-based | — | — | ○ future work, no tool found |
 | — | eval matrix | `scripts/eval_matrix_{qwen,llama,gemma}.sh` | ★ |
-| — | extended matrix | `scripts/eval_matrix_new.sh` | ★ |
+| — | extended matrix | `scripts/eval/eval_matrix_new.sh` | ★ |
 | — | judging | `experiments/judge_generations.py` (parse-fail guarded) | ★ |
 | — | over-refusal scoring | `scripts/external_benches/score_overrefusal.py` | ★ |
 

@@ -157,7 +157,7 @@ First pass: sequential, one checkpoint at a time, ~5-8hr estimated. Along the wa
 ## How this campaign actually ended
 
 Not the ending this doc originally expected. Snapshot selection hit a real incident before
-it hit a result: `scripts/auto_pick_v8.py` reused the same run-id as both the source
+it hit a result: `scripts/tools/auto_pick_v8.py` reused the same run-id as both the source
 generations directory and the judged-output directory, and `RunLogger` unconditionally
 unlinks `generations.jsonl`/`events.jsonl`/`judgments.jsonl` for whatever run-id it's given —
 so the picker destroyed all 30 raw generation files (15 checkpoints × attacked/clean) before

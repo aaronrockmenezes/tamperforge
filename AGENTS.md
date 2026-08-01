@@ -66,7 +66,7 @@ Vast server:
 
 There are no local `.pt`, `.bin`, or `.safetensors` payloads in either source or
 `../tamperforge-archive`. Use the private HF repo `aaronrockmenezes/tamperforge` for
-retained artifacts. Do not run `scripts/push_to_hf.py`; its artifact list and model card
+retained artifacts. Do not run `scripts/tools/push_to_hf.py`; its artifact list and model card
 are stale. `outputs/` is metadata/config only unless a new local run explicitly creates
 a temporary checkpoint.
 
@@ -77,7 +77,7 @@ only acceptable with host CUDA 12.9+.
 
 Order:
 
-1. Run `bash scripts/vast_setup.sh`.
+1. Run `bash scripts/setup/vast_setup.sh`.
 2. Smoke base Gemma.
 3. Run full walledai/AdvBench 500 generation for base + two DavidAU HF models.
 4. Judge generations with DeepSeek V4 Flash, 12 workers.

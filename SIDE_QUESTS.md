@@ -42,7 +42,7 @@ interesting (and more concerning, if true) finding than the original hypothesis.
 ## 2. Push checkpoints + eval generations to HF
 
 Per `CLAUDE.md` convention: private HF repo `aaronrockmenezes/tamperforge` backs up `.pt` +
-model dirs via `scripts/push_to_hf.py`. Do this once the Qwen3-8B DL19 training run + snapshot
+model dirs via `scripts/tools/push_to_hf.py`. Do this once the Qwen3-8B DL19 training run + snapshot
 pick + four-cell eval are done:
 - The picked v8 checkpoint (and probably the interesting s300/s375/s400-class oscillation
   snapshots too, same pattern as the gemma s300/s425/s475 candidates already on HF)

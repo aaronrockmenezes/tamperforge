@@ -88,7 +88,7 @@ Model: `google/gemma-3-1b-it`.
 - Source `results/` keeps manifests/summaries only; raw run artifacts and historical trees
   live in `../tamperforge-archive`. Do not edit or remove retained v7 files.
 - No local checkpoint payloads remain. Treat private HF as artifact storage; do not run the
-  stale `scripts/push_to_hf.py` uploader.
+  stale `scripts/tools/push_to_hf.py` uploader.
 - Judge locally via conda: `~/miniforge3/envs/env_ml/bin/python` (NOT a venv path).
 
 ## Infra

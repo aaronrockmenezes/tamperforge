@@ -242,7 +242,7 @@ projection isolates it -- rather than merely large. Concentrating it is actively
 
 ## Capability under attack — the XOR fails
 
-ARC 0-shot / MMLU-12 0-shot / GSM8K 5-shot, campaign config (`scripts/v11_cap_eval.sh`).
+ARC 0-shot / MMLU-12 0-shot / GSM8K 5-shot, campaign config (`scripts/eval/v11_cap_eval.sh`).
 
 | arm | ARC | MMLU | GSM8K | harmAct |
 |---|---:|---:|---:|---:|

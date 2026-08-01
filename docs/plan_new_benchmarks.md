@@ -18,7 +18,7 @@ facts, conversation) beyond math/instructions.
 | 3 | **MBPP** | Python code gen, pass@1 | ✅ done — Qwen (gemma-3-1b too small to code, base rate 0) |
 | 4 | **SimpleQA** | factuality (1k subset) | ✅ done — Qwen + gemma (near-floor at 1B, not discriminative — deferred to scale-up) |
 | 5 | **MT-Bench** | multi-turn instruction-following, 1–10 LLM-judge | ❌ not built — lowest priority of the 5, still needs custom harness |
-| — | **Llama extended suite** | all 4 of the above, for the third architecture | ❌ pending — `scripts/eval_matrix_new.sh` exists, needs a box run |
+| — | **Llama extended suite** | all 4 of the above, for the third architecture | ❌ pending — `scripts/eval/eval_matrix_new.sh` exists, needs a box run |
 | 6 | **MultiBreak** | multi-turn jailbreak robustness | deferred, not scoped |
 
 **Why these matter for tamperforge specifically:**
@@ -34,7 +34,7 @@ facts, conversation) beyond math/instructions.
 
 ## What's actually left
 
-1. **Llama extended suite** — run `scripts/eval_matrix_new.sh` for XSTest/OR-Bench/SimpleQA/MBPP
+1. **Llama extended suite** — run `scripts/eval/eval_matrix_new.sh` for XSTest/OR-Bench/SimpleQA/MBPP
    on Llama-3.2-1B (base/v7/v8 × clean/attacked), same as already done for Qwen+gemma. The
    infra exists; this is a box-time task, not a build task.
 2. **MT-Bench** (if still wanted) — 80 Q × 2 turns, needs multi-turn generation (turn-2

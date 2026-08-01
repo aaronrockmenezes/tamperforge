@@ -68,6 +68,11 @@ def heretic_directions(model, tok, layers, device, *, orthogonalize: bool = True
         rows = load_dataset(ds, split=split)
         return [r[col] for r in rows][:n]
 
+    # Llama/Mistral tokenisers ship without a pad token; Qwen's has one. padding=True below
+    # raises without this, so heretic_directions was Qwen-only until 2026-08-02.
+    if tok.pad_token_id is None:
+        tok.pad_token = tok.eos_token
+
     def _means(prompts):
         acc = {li: torch.zeros(model.config.hidden_size, dtype=torch.float64) for li in layers}
         cap: dict[int, torch.Tensor] = {}

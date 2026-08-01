@@ -77,7 +77,7 @@ conda env list
 # main * /venv/main
 ```
 
-Do not create a new env unless the image is broken; `scripts/vast_setup.sh`
+Do not create a new env unless the image is broken; `scripts/setup/vast_setup.sh`
 uses `python` from the active env by default.
 
 Observed good RTX 4090 package state:
@@ -98,7 +98,7 @@ nvidia-smi
 python --version
 git clone git@github.com:aaronrockmenezes/tamperforge.git
 cd tamperforge
-bash scripts/vast_setup.sh
+bash scripts/setup/vast_setup.sh
 ```
 
 If SSH is annoying:
@@ -106,13 +106,13 @@ If SSH is annoying:
 ```bash
 git clone https://github.com/aaronrockmenezes/tamperforge.git
 cd tamperforge
-bash scripts/vast_setup.sh
+bash scripts/setup/vast_setup.sh
 ```
 
 If Torch CUDA is missing on the image:
 
 ```bash
-INSTALL_TORCH=1 bash scripts/vast_setup.sh
+INSTALL_TORCH=1 bash scripts/setup/vast_setup.sh
 ```
 
 Add OpenRouter key before judge runs:

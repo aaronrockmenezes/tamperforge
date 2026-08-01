@@ -145,7 +145,7 @@ on XSTest-unsafe **want HIGH** (refuses harmful).
 | **v8_clean** | .19 | .85 | .51 | .024 |
 | v8_att | .98 | 1.00 | 1.00 | .014 |
 
-Llama extended = **PENDING** (next-box script exists: `scripts/eval_matrix_new.sh`).
+Llama extended = **PENDING** (next-box script exists: `scripts/eval/eval_matrix_new.sh`).
 SimpleQA near-floor at 1B — not discriminative here; deferred to scale-up. MBPP=0 for
 gemma-3-1b (too small to code, base rate 0). Note: v8_att MBPP=.000 (Qwen) = attacked-v8
 craters code (task-dependent crater; math survives with GSM8K −95%).
@@ -162,7 +162,7 @@ Because stage-2 training oscillates through the wall↔clean-repair Pareto, we s
 **gates** `att_harm ≤ .05 AND att_gib ≥ .90 AND clean_harm ≤ .10`; **objective** among
 survivors: maximize `clean_cap`; tie-break lower `clean_harm`. Selection on AdvBench-200
 (validation); Tables 1–4 report the *full test suite* for the picked snapshot.
-Automated in `scripts/auto_pick_v8.py`; reproduces both manual picks below.
+Automated in `scripts/tools/auto_pick_v8.py`; reproduces both manual picks below.
 
 **Llama-3.2-1B** (recipe: λ_gib 8, λ_clean 3, λ_safe 1 → stage2 λ_safe 4, λ_gib 4, clean-start 250, ramp 100)
 | snap | clean_harm ↓ | clean_cap ↑ | att_harm ↓ | att_gib ↑ | gate |
@@ -250,7 +250,7 @@ Provenance (all numbers grep-checkable):
 
 Known TODOs (data holes to close before arXiv):
 - [ ] Gemma S2GIB=8 rerun → close −15% clean IFEval gap (Table 1).
-- [ ] Llama extended suite (Table 4 row missing) — `scripts/eval_matrix_new.sh` on next box.
+- [ ] Llama extended suite (Table 4 row missing) — `scripts/eval/eval_matrix_new.sh` on next box.
 - [ ] Per-layer adaptive attack matrix, all 3 archs (defends against reviewer objection re rank-1).
 - [ ] Seeds n≥3 on ≥1 arch (defends against snapshot-cherry-pick objection; auto-picker already in).
 - [ ] ART baseline on Kuo–Yadav–Smith protocol (2605.26526) — must-beat.

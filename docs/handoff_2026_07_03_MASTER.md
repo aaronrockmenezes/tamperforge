@@ -97,7 +97,7 @@ Qwen result (AdvBench-judged, IFEval): clean gib **97%→1.5%**, clean IFEval **
 0.312)**, attack wall **held 96% gib**, attack IFEval craters 0.122. **v8 strictly dominates v7
 on the clean side, no wall loss.** Recipe (Qwen): DL 20, λ_gib 8, λ_clean 3, clean-start-step 250,
 ramp 100, stage2-λ_gib 4, 500 steps. TODO: replicate on gemma/llama (harder); n=1 seed.
-Full matrix: `scripts/eval_matrix_qwen.sh` (base/v7/v8 × clean/att × AdvBench/HarmBench/SR/JBB/
+Full matrix: `scripts/eval/eval_matrix_qwen.sh` (base/v7/v8 × clean/att × AdvBench/HarmBench/SR/JBB/
 SORRY + ARC/MMLU/IFEval/GSM8K), running. **v8_att is a DEEPER MAD than v7_att:** GSM8K crater
 v8 0.401→0.020 (−95%) vs v7 0.376→0.335 (−11%) — v7's wall is harm-narrow (stays capable),
 v8 destroys general capability under attack.
@@ -107,7 +107,7 @@ MBPP + **SimpleQA (1k subset)** now; **MultiBreak DEFERRED** (run later). Simple
 are the two explicitly-flagged high-pri items.
 
 ## EXTENDED SUITE (2026-07-04) — over-refusal/SimpleQA/MBPP; v8 FIXES v7 over-refusal
-New benches wired (`scripts/eval_matrix_new_qwen.sh` + `scripts/external_benches/`): XSTest(safe/
+New benches wired (`scripts/eval/eval_matrix_new_qwen.sh` + `scripts/external_benches/`): XSTest(safe/
 unsafe), OR-Bench-Hard-1k, SimpleQA-1k, MBPP. **HEADLINE:** v7_clean over-refuses BENIGN prompts
 **98%** (XSTest-safe + OR-Bench) — its gibberish-wall is keyword-triggered (fires on kill/terminate/
 execute regardless of harm), refuses safe AND unsafe indiscriminately. **v8_clean = base:** helps
@@ -155,7 +155,7 @@ Product ckpt = s450 = `tamper_resistant_gemma3_1b_v8_best.pt`; candidates s300/s
 adapters/gemma_v8_candidates/. **v8 = 3/3 archs but gemma is WEAKEST** (cap −17% vs Qwen=base,
 Llama=0.833). **TODO RERUN: `S2GIB=8`** (hold wall full-strength through repair instead of dropping
 8→4) — gemma's wall dissolves mid-repair, so keeping gib high may let clean cap reach base while
-the wall holds. `S2GIB=8 MODEL=google/gemma-3-1b-it DL=14 OUT=..._v8b.pt bash scripts/train_v8.sh`.
+the wall holds. `S2GIB=8 MODEL=google/gemma-3-1b-it DL=14 OUT=..._v8b.pt bash scripts/runs/train_v8.sh`.
 Also try higher λ_clean or longer ramp.
 
 ## EXISTING ISSUES / OPEN
@@ -202,7 +202,7 @@ Also try higher λ_clean or longer ramp.
   `/workspace/heretic_venv` (AGPL, separate). Logs → `/workspace/logs` (tee).
 - Judge LOCAL via `~/miniforge3/envs/env_ml/bin/python`, 64 workers, OPENROUTER_API_KEY in .env.
 - GitHub `aaronrockmenezes/tamperforge` (code/docs/results). Private HF same name (.pt + dirs,
-  `scripts/push_to_hf.py` — extended for multimodel ckpts). OG gemma v7: `outputs/hf_og/adapters/tamper_resistant_p1b_v7.pt`.
+  `scripts/tools/push_to_hf.py` — extended for multimodel ckpts). OG gemma v7: `outputs/hf_og/adapters/tamper_resistant_p1b_v7.pt`.
 - CONVENTIONS: never nohup box cmds (user watches, tmux); full datasets no subsets; judge-not-keyword;
   HF private; never vendor AGPL attacker code (separate harness + cite).
 

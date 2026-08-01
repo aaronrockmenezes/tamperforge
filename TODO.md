@@ -145,7 +145,7 @@ the real thing. Do not claim out-of-distribution robustness off panel results al
 ## Parallel closure work
 
 - [ ] Gemma: run `S2GIB=8`, pick by the locked automatic rule, then rerun the full matrix.
-- [ ] Llama: run `scripts/eval_matrix_new.sh` for XSTest, OR-Bench, SimpleQA, and MBPP.
+- [ ] Llama: run `scripts/eval/eval_matrix_new.sh` for XSTest, OR-Bench, SimpleQA, and MBPP.
 - [ ] Finish the TamperBench third-party validation sweep (`docs/devlog_2026_07_17.md` Thread
   2) — only `gemma_base` confirmed clean so far, 5 of 6 runs remain.
 - [x] ~~Update the root README, ROADMAP, and AGENTS status blocks~~ — done 2026-07-18.
@@ -169,7 +169,7 @@ the real thing. Do not claim out-of-distribution robustness off panel results al
 
 ## Checkpoint selection needs rework before the next ship decision (2026-08-02)
 
-`scripts/auto_pick_v8.py` is sound in structure -- pre-registered constrained lexicographic
+`scripts/tools/auto_pick_v8.py` is sound in structure -- pre-registered constrained lexicographic
 rule, gates + NO SURVIVOR => NO SHIP -- but today's results break three of its assumptions.
 Do NOT use it as-is on a new architecture.
 

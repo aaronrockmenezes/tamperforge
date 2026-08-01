@@ -12,7 +12,7 @@ Paste this into a fresh context to resume. Durable findings live in
 - Budget ~$4.50 of ~$5 spent at $0.232/hr
 
 ## Running now
-tmux `fin3` -> `chain2.sh`, log `logs/training_runs/final_chain2.log`.
+tmux `fin3` -> `scripts/eval/chain2.sh`, log `logs/training_runs/final_chain2.log`.
 Stage 1 (IFEval x 10 arms) DONE. Stage 2: heretic-vs-version_B trials t17/t99/t65,
 each getting p0_baseline_eval (520 walledai, thinking-off) + judge + lm_eval
 ARC / MMLU-12 / GSM8K-5shot / IFEval.
@@ -49,7 +49,7 @@ version_A conceded **0.2615 harmful with GSM8K 0.4064 intact** to heretic t175.
 3. **Run a known-answer control before trusting any harness.** Three bugs were
    caught only this way, all producing plausible numbers.
 4. vLLM hangs AFTER lm_eval writes results. Use the background+poll+kill-EngineCore
-   pattern from `scripts/run_mad_v10_s175_vllm_caps.sh` (`1a4e603`); `chain2.sh`
+   pattern from `scripts/eval/run_mad_v10_s175_vllm_caps.sh` (`1a4e603`); `scripts/eval/chain2.sh`
    copies it. Never `pkill -9` — orphans an EngineCore in the HOST pid namespace and
    leaks VRAM irrecoverably.
 5. `pkill -f <pat>` matches your own command line.

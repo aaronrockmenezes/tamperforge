@@ -45,7 +45,7 @@ NVIDIA libraries were not on `LD_LIBRARY_PATH`.
 Fix: rerun setup after pulling current code:
 
 ```bash
-bash scripts/vast_setup.sh
+bash scripts/setup/vast_setup.sh
 ```
 
 The setup script writes:
@@ -198,7 +198,7 @@ Fix:
 
 ```bash
 git status --short
-git restore pyproject.toml scripts/vast_setup.sh src/tamperforge/eval/judge.py
+git restore pyproject.toml scripts/setup/vast_setup.sh src/tamperforge/eval/judge.py
 git pull --ff-only
 ```
 
@@ -238,13 +238,13 @@ Cause: `RunLogger.__init__` unconditionally unlinks `generations.jsonl`/`events.
 appending stale rows. If a script passes the **same run-id** as both the source (raw
 generations to read) and the destination (judged output to write), construction of the
 destination `RunLogger` deletes the file before it's ever opened for reading. This is exactly
-what happened to `scripts/auto_pick_v8.py` (fixed in commit `d89872d`) — it destroyed 30 raw
+what happened to `scripts/tools/auto_pick_v8.py` (fixed in commit `d89872d`) — it destroyed 30 raw
 generation files (15 checkpoints × attacked/clean) mid pick-job.
 
 Fix: any script that judges an existing `results/<run_id>/generations.jsonl` must judge into
 a **distinct** run-id, e.g. `f"{run_id}_judged"` — never reuse the source run-id for the
-judged output. This convention is already used in `scripts/qwen3_8b_thinking_dl_sweep.sh` and
-`scripts/auto_pick_v8.py` (post-fix); follow it in any new picker/selector script.
+judged output. This convention is already used in `scripts/probes/qwen3_8b_thinking_dl_sweep.sh` and
+`scripts/tools/auto_pick_v8.py` (post-fix); follow it in any new picker/selector script.
 
 ## TamperBench (external repo) OOMs on `refusal_ablation` even after patching the obvious fp64 tensor
 
@@ -292,7 +292,7 @@ Two independent traps:
    of the two effects.
 
 Rule: for any Qwen number that will be compared against a published table, copy the flags from
-`scripts/eval_matrix_new_qwen.sh` verbatim and leave `--qwen-thinking` at `default`.
+`scripts/eval/eval_matrix_new_qwen.sh` verbatim and leave `--qwen-thinking` at `default`.
 
 **Underlying gap:** `results/*/summary.json` records only `run_id`, `device`, `backend` — not
 `max_new_tokens`, `qwen_thinking`, sampling params, or prompt source. A stored summary cannot
@@ -327,9 +327,9 @@ Fixed across 25 scripts by `fix_guards.py` / `fix_guards2.py`.
 
 ## Never `pkill -f` a pattern that can match another job (2026-08-01)
 
-`pkill -TERM -f "VLLM::EngineCore"` in `ceiling_llama.sh` killed the EngineCore of two
+`pkill -TERM -f "VLLM::EngineCore"` in `scripts/eval/ceiling_llama.sh` killed the EngineCore of two
 concurrent replication lanes, losing their generations. The pattern in
-`scripts/run_mad_v10_s175_vllm_caps.sh` (commit `1a4e603`) is the correct one and scopes the
+`scripts/eval/run_mad_v10_s175_vllm_caps.sh` (commit `1a4e603`) is the correct one and scopes the
 kill to the evaluator it started:
 
     lm_eval ... &
