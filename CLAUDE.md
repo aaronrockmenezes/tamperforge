@@ -1,12 +1,13 @@
 # CLAUDE.md — read first
 
-**Current state lives in `docs/handoff_2026_08_01_version_a_b.md` (version_A + version_B:
-surgical ablation closed, real Heretic forced to 5x the perturbation — the newest finding).
-Read that first**, then `docs/devlog_2026_07_17.md` (Qwen3-8B scale attempt, TamperBench
-third-party validation, Heretic cracks v8 on all three architectures — the newest finding).
-Read that first**, then `docs/handoff_2026_07_03_MASTER.md` (multi-model + attack-robustness
-campaign), `docs/findings_multimodel_adaptive_2026_07_02.md`, `MEMORY.md`, then this file for
-durable conventions. Older text below the line is historical (P0/P1) — do not act on it.
+**Current state lives in `docs/handoff_2026_08_01_version_a_b.md`** — version_A + version_B:
+surgical ablation closed and made self-defeating, real Heretic forced out of the layer band it
+won from and made to pay 5x the perturbation. Read that first, then
+`docs/devlog_2026_07_17.md` (Qwen3-8B scale attempt, TamperBench third-party validation,
+Heretic cracks v8 on all three architectures), then `docs/handoff_2026_07_03_MASTER.md`
+(multi-model + attack-robustness campaign), `docs/findings_multimodel_adaptive_2026_07_02.md`,
+`MEMORY.md`, then this file for durable conventions. Older text below the line is historical
+(P0/P1) — do not act on it.
 
 **One-line status (2026-07-18):** **ABL-v8 = the conditional wall, proven 3/3 architectures**
 (Qwen + Llama + gemma, all done as of 2026-07-04 — see `docs/devlog_2026_07_04.md`). v8 fixes
