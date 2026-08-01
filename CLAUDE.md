@@ -1,8 +1,12 @@
 # CLAUDE.md — read first
 
-**Current state lives in `docs/handoff_2026_08_01_version_a_b.md`** — version_A/B/C:
-surgical ablation closed and made self-defeating, real Heretic forced out of the layer band it
-won from and made to pay 5x the perturbation. Read that first, then
+**Current state lives in `docs/handoff_2026_08_01_version_a_b.md`** — version_A/B/C.
+**version_B is the best artifact** (surgical ablation closed AND made self-defeating).
+**version_C is a regression, and it falsified the "raises attacker cost" claim**: putting real
+Heretic in the training loop made it pay 7-13x the KL at *every* point on its front and
+changed nothing — 0.3231 harmful with capability untouched, vs version_B's 0.3212.
+**Never repeat "must accept 5x the perturbation" — KL cost is not a security property.**
+Read that first, then
 `docs/devlog_2026_07_17.md` (Qwen3-8B scale attempt, TamperBench third-party validation,
 Heretic cracks v8 on all three architectures), then `docs/handoff_2026_07_03_MASTER.md`
 (multi-model + attack-robustness campaign), `docs/findings_multimodel_adaptive_2026_07_02.md`,
@@ -33,7 +37,11 @@ Model: `google/gemma-3-1b-it`.
 - **The vX scheme STOPS AT v11.** New defense work is **version_A**, version_B, … (files
   `version_a_*.py`, run ids `version_a_*`). Nothing is renamed retroactively: ABL-v8/v9/v10
   and the v11 probe scripts keep their existing meanings. version_A = the first line to
-  train against capability-overlap as an attack axis (`experiments/version_a_attack.py`).
+  train against capability-overlap as an attack axis (`experiments/version_a_attack.py`);
+  version_B adds heretic's own axes (per-projection subsets, fractional direction layers,
+  alpha to 1.5) and is the **current best artifact**; version_C adds real heretic in the
+  training loop (`experiments/version_c_loop.py`) and is a **regression — do not build on it
+  without reading handoff section 0**.
 - **ABL-v{n}** = abliteration line, `outputs/tamper_resistant_p1b_v{n}.pt`. **ABL-v8 = current
   product** (`train_tamper_resistant_v8.py`; conditional wall — clean is base-like, only
   abliteration self-destructs). ABL-v7 = prior (worked but clean-degraded). v8 ckpts:
