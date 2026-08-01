@@ -894,7 +894,7 @@ def main() -> None:
     va_bank = va_dirs = va_spec = None
     va_cap_ranks = tuple(int(x) for x in args.version_a_cap_ranks.split(",") if x.strip())
     va_cap_prompts = []
-    if args.attack_profile == "version_a":
+    if args.attack_profile in {"version_a", "version_b"}:
         # Loaded once, not per refresh: the subspace is re-estimated from the CURRENT
         # weights every recompute, but the PROMPTS defining "capability" must stay fixed or
         # the attack drifts for reasons unrelated to the model.

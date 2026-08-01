@@ -260,6 +260,14 @@ class DirectionBank(NamedTuple):
         attack then asks the bank for a layer it never built -- a KeyError mid-training.
         Pass range(n_layers).
         """
+        if not len(cap_prompts):
+            # Empty here surfaces as "torch.cat(): expected a non-empty list of Tensors"
+            # from inside capture_residuals, which says nothing about the real cause: the
+            # caller did not populate cap_prompts for this attack profile.
+            raise ValueError(
+                "DirectionBank.build got an empty cap_prompts. The surgical variant needs "
+                "capability prompts to estimate the subspace -- check the trainer populated "
+                "va_cap_prompts for this --attack-profile.")
         want = sorted(set(list(layers) + list(read_layers)))
         plain = {L: v.float().to(device)
                  for L, v in empirical_refusal_directions(
