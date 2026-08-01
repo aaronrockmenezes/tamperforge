@@ -19,10 +19,18 @@ version_B s500 must reproduce its known 0.3212 harmful.
 |---|---:|---:|---:|---:|
 | known t99 (heretic's own weights) | **0.3212** | 0.5038 | 0.1269 | 0.4788 |
 | replay, our direction pipeline | 0.0000 | 0.3250 | 0.6673 | 0.0077 |
-| replay, heretic direction recipe | 0.0673 | 0.7885 | **0.1212** | 0.1442 |
+| replay, heretic direction recipe (cos 0.96) | 0.0673 | 0.7885 | **0.1212** | 0.1442 |
+| replay, SVD-recovered directions (cos 1.0) | **0.2038** | 0.5846 | 0.1538 | 0.3385 |
 
-Not passed. Second attempt strips refusal correctly (0.1212 vs 0.1269 refused — that part
-matches) but the surviving output is gibberish where heretic's is actionable.
+Not passed, but the progression localises the fault. Each fix closes part of the gap:
+0.0000 -> 0.0673 -> 0.2038 against a target of 0.3212.
+
+**The SVD run settles the direction-vs-application question: it is not (only) the
+direction.** With heretic's exact per-layer directions recovered from its own saved weights
+-- `dW = a * outer(d, d^T W)` is rank-1, so `d` is its left singular vector, and the
+recovery is self-validating because `o_proj` and `down_proj` at the same layer independently
+return the same vector (median cos 0.9967, min 0.9672, exactly as heretic constructs it) --
+the replay still lands at 0.2038.
 
 ## What was verified along the way
 
@@ -32,9 +40,31 @@ percent once the direction is right. The tent formula was checked against hereti
 (`heretic/model.py:489-499`), including the `distance > min_dist` hard cutoff and the
 `direction_index + 1` shift (which cancels — heretic's array is embedding-first).
 
-**Row normalization is NOT a factor.** `row_normalization = FULL` sounded like it might
-explain heretic's preserved coherence. Measured row-norm ratio vs clean: heretic 0.9996,
-ours 0.9996. Ruled out.
+**Heretic touches exactly the tensors we touch.** It modified 29 parameter tensors
+(`o_proj` x22, `down_proj` x7); our replay modifies the same 29, with no heretic-only
+leftovers. So the projection scope and layer bands are fully understood.
+
+**Row normalization IS a factor — an earlier "ruled out" here was wrong.** Comparing
+*final row norms* (heretic 0.9996, ours 0.9996) tests the wrong thing: `row_normalization
+= FULL` means the ablation is *computed* against row-normalized weights and then rescaled,
+which changes the delta's per-row structure while leaving overall row magnitudes alone.
+Fitting both hypotheses to heretic's actual delta by least squares:
+
+| layer / proj | residual, plain | residual, row-normalized |
+|---|---:|---:|
+| L12 o_proj  | 0.2845 | **0.2231** |
+| L20 o_proj  | 0.3710 | **0.2720** |
+| L24 o_proj  | 0.3900 | **0.2705** |
+| L24 down_proj | 0.3049 | **0.2268** |
+| L27 o_proj  | 0.2307 | **0.1775** |
+| L27 down_proj | 0.1215 | **0.0962** |
+
+Row-normalized wins everywhere, by ~25%. It does not reach zero, so it is a contributor
+rather than the whole remainder -- the rest is presumably the rank-3 LoRA approximation
+(`full_normalization_lora_rank = 3`) that makes the magnitude preservation only approximate.
+
+Fitted per-layer strengths land within ~5-10% of what the tent predicts (e.g. L27
+`down_proj`: tent 0.973, fitted 0.953-0.958), so the tent formula itself is sound.
 
 ## The real finding: our refusal direction is not heretic's
 

@@ -27,7 +27,7 @@ from tamperforge import empirical_refusal_directions, load_model  # noqa: E402
 from tamperforge.data import BENIGN_PROMPTS, load_advbench_prompts  # noqa: E402
 from train_tamper_resistant_v8 import _ablated_overrides  # noqa: E402
 from v11_surgical_ablation import _load_trained  # noqa: E402
-from version_a_attack import heretic_spec, tent_weight  # noqa: E402
+from version_a_attack import HERETIC_PROJ, heretic_spec, tent_weight  # noqa: E402
 
 SUMMARY = ROOT / "results/version_b_final_2026_08_01/summary.json"
 
@@ -107,6 +107,51 @@ def heretic_directions(model, tok, layers, device, *, orthogonalize: bool = True
     return out
 
 
+@torch.no_grad()
+def svd_directions(model, attacked_dir: str, layers, device) -> dict[int, torch.Tensor]:
+    """Recover heretic's ACTUAL per-layer directions from its saved weights.
+
+    For a write-projection ablation dW = a * outer(d, d^T W), which is rank-1, so d is the
+    left singular vector of dW. Sign is irrelevant: outer(d, d^T W) is invariant under
+    d -> -d. Measured spectral mass of the top component is 0.99+, so the recovery is clean.
+
+    This gives cos(d_recovered, d_heretic) = 1 by construction, which is the point: it
+    separates "tent/application math wrong" from "direction estimate off". If the replay
+    still fails to reproduce t99 with these, the fault is in how we APPLY the attack, not
+    in how we estimate the direction.
+    """
+    from safetensors.torch import load_file
+
+    att = load_file(str(Path(attacked_dir) / "model.safetensors"))
+    clean = {k: v.detach().float().cpu() for k, v in model.named_parameters()}
+    out: dict[int, torch.Tensor] = {}
+    agree = []
+    for li in layers:
+        cand = {}
+        for nm in HERETIC_PROJ:
+            k = f"model.layers.{li}.{nm}.weight"
+            if k not in att:
+                continue
+            dw = clean[k] - att[k].float()
+            if dw.norm() < 1e-6:
+                continue
+            U, S, _ = torch.linalg.svd(dw.double(), full_matrices=False)
+            cand[nm] = (U[:, 0], (S[0] ** 2 / (S ** 2).sum()).item())
+        if not cand:
+            continue
+        # both projections at a layer share one direction in heretic; if they disagree the
+        # rank-1 recovery is unsound and everything after this is meaningless.
+        if len(cand) == 2:
+            a, b = (v[0] for v in cand.values())
+            agree.append(abs(torch.dot(a, b).item()))
+        best = max(cand.values(), key=lambda v: v[1])
+        out[li] = best[0].float().to(device)
+    if agree:
+        print(f"[svd] o_proj-vs-down_proj direction agreement: "
+              f"min {min(agree):.4f} median {sorted(agree)[len(agree) // 2]:.4f}")
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model-id", default="Qwen/Qwen3-0.6B")
@@ -115,7 +160,10 @@ def main() -> None:
     ap.add_argument("--params-json", default=str(SUMMARY))
     ap.add_argument("--out", required=True)
     ap.add_argument("--n-direction", type=int, default=256)
-    ap.add_argument("--direction-recipe", choices=["ours", "heretic"], default="heretic",
+    ap.add_argument("--svd-from", default=None,
+                    help="attacked model dir to recover heretic's true directions from "
+                         "(requires --direction-recipe svd)")
+    ap.add_argument("--direction-recipe", choices=["ours", "heretic", "svd"], default="heretic",
                     help="'heretic' reproduces its own direction pipeline (own datasets, "
                          "system prompt, projected abliteration). 'ours' uses walledai + "
                          "BENIGN_PROMPTS, which does NOT reproduce heretic's attack.")
@@ -142,6 +190,22 @@ def main() -> None:
             ls = sorted(prof)
             print(f"   {proj:<18} layers {ls[0]}-{ls[-1]} ({len(ls)}) "
                   f"peak {max(prof.values()):.3f} floor {min(prof.values()):.3f}")
+
+    if args.direction_recipe == "svd":
+        if not args.svd_from:
+            ap.error("--direction-recipe svd requires --svd-from")
+        d = svd_directions(model, args.svd_from, spec.layers, device)
+        missing = [L for L in spec.layers if L not in d]
+        assert not missing, f"no direction recovered for layers {missing}"
+        with torch.no_grad():
+            ov = _ablated_overrides(model, d, spec.layers, spec.read_proj,
+                                    spec.write_proj, spec.alphas)
+            named = dict(model.named_parameters())
+            for k, v in ov.items():
+                named[k].copy_(v.to(named[k].dtype))
+        print(f"[replay] overrode {len(ov)} parameter tensors (SVD-recovered directions)")
+        _save(model, tok, args, params, spec, ov)
+        return
 
     if args.direction_recipe == "heretic":
         need = spec.layers if spec.per_layer else sorted(
@@ -204,6 +268,7 @@ def _save(model, tok, args, params, spec, ov) -> None:
     (out / "replay_meta.json").write_text(json.dumps(
         {"checkpoint": args.checkpoint, "trial": args.trial, "heretic_params": params,
          "direction_recipe": args.direction_recipe,
+         "svd_from": args.svd_from,
          "orthogonalize": not args.no_orthogonalize,
          "direction_thinking": not args.dir_no_thinking,
          "per_layer": spec.per_layer, "read_layer": spec.read_layer,
