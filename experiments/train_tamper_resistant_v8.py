@@ -635,7 +635,8 @@ def main() -> None:
     ap.add_argument(
         "--attack-profile",
         choices=["legacy", "v8", "partial_shared", "perlayer_full",
-                 "partial_perlayer", "rank1_heretic_mix", "mixed", "version_a"],
+                 "partial_perlayer", "rank1_heretic_mix", "mixed", "version_a",
+                 "version_b"],
         default="legacy",
         help="Named, isolatable attack distribution. legacy preserves the v8/v9 "
              "--attack-partial/--attack-per-layer behavior; v8 is the exact original "
@@ -739,10 +740,10 @@ def main() -> None:
         raise SystemExit("--attack-alpha-min/max must satisfy 0 < min <= max <= 1")
     if args.attack_profile not in {"legacy", "v8"} and not args.attack_layers:
         raise SystemExit(f"--attack-profile {args.attack_profile} needs --attack-layers")
-    if args.attack_profile == "version_a" and not args.attack_ensemble:
+    if args.attack_profile in {"version_a", "version_b"} and not args.attack_ensemble:
         # Without the ensemble the sampler is never called and the run silently degrades to
         # a fixed plain ablation -- i.e. exactly the thing version_a exists to move past.
-        raise SystemExit("--attack-profile version_a requires --attack-ensemble")
+        raise SystemExit(f"--attack-profile {args.attack_profile} requires --attack-ensemble")
     if args.lambda_shutdown > 0 and args.qwen_thinking == "on":
         raise SystemExit("v10 shutdown baseline requires --qwen-thinking off")
 
@@ -921,10 +922,10 @@ def main() -> None:
                     args.attack_per_layer
                     or args.attack_profile in {
                         "perlayer_full", "partial_perlayer", "rank1_heretic_mix", "mixed",
-                        "version_a",
+                        "version_a", "version_b",
                     }
                 )
-                if args.attack_profile == "version_a":
+                if args.attack_profile in {"version_a", "version_b"}:
                     # version_a needs the surgical variants too, so the whole bank is built
                     # here from ONE capture pass. d/d_by_layer are still populated so every
                     # downstream consumer (previews, eval, logging) keeps working unchanged.
@@ -954,7 +955,18 @@ def main() -> None:
 
         opt.zero_grad(set_to_none=True)
         if args.attack_ensemble:
-            if args.attack_profile == "version_a":
+            if args.attack_profile == "version_b":
+                va_spec = _VA.sample_attack_b(
+                    rng_attack, len(model.model.layers),
+                    cap_ranks=va_cap_ranks,
+                    p_canonical=args.version_a_p_canonical,
+                    p_surgical=args.version_a_p_surgical,
+                )
+                rp_a, wp_a = va_spec.read_proj, va_spec.write_proj
+                layers_a, alphas_a, pl_a, _atag = (
+                    va_spec.layers, va_spec.alphas, va_spec.per_layer, va_spec.tag)
+                va_dirs = va_bank.directions_for(va_spec)
+            elif args.attack_profile == "version_a":
                 va_spec = _VA.sample_attack(
                     rng_attack, len(model.model.layers),
                     attack_band=attack_layers,
@@ -984,7 +996,7 @@ def main() -> None:
                     args.attack_alpha_max,
                     args.attack_write_scope,
                 )
-            src = va_dirs if args.attack_profile == "version_a" else (
+            src = va_dirs if args.attack_profile in {"version_a", "version_b"} else (
                 d_by_layer if pl_a else d)
             overrides = _ablated_overrides(model, src, layers_a, rp_a, wp_a, alphas_a)
         else:
@@ -993,12 +1005,15 @@ def main() -> None:
         attack_meta = _attack_metadata(
             _atag, layers_a, alphas_a, pl_a, args.attack_profile
         )
-        if args.attack_profile == "version_a":
+        if args.attack_profile in {"version_a", "version_b"}:
             # The axis version_a exists to vary. Without this the trace cannot tell whether
             # a run actually covered low-overlap ablations or just resampled the same band.
             attack_meta["attack_variant"] = va_spec.variant
             attack_meta["attack_cap_rank"] = va_spec.cap_rank
             attack_meta["attack_cap_overlap"] = va_bank.realized_overlap(va_spec)
+            attack_meta["attack_read_layer"] = float(va_spec.read_layer)
+            attack_meta["attack_n_matrices"] = len(va_spec.read_proj) + len(va_spec.write_proj)
+            attack_meta["attack_write_only"] = bool(va_spec.write_proj and not va_spec.read_proj)
         L_task = _lm_loss(model, tok, task_b, device)                            # clean useful on real text
         L_safe = _refusal_loss(model, tok, ref_b, device)                       # clean refuses
         if args.lambda_uncensor > 0:

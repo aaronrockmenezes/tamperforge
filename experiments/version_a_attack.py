@@ -67,7 +67,8 @@ class AttackSpec(NamedTuple):
     per_layer: bool                     # each layer uses its own direction
     variant: str                        # "plain" | "surgical"
     cap_rank: int                       # 0 when plain
-    read_layer: int                     # which layer the shared direction was read from
+    read_layer: float                   # layer the shared direction is read from; version_B
+                                        # emits FRACTIONAL values (lerped between neighbours)
     tag: str
 
 
@@ -135,6 +136,82 @@ def sample_attack(
     return AttackSpec(rp, wp, layers, alphas, per_layer, variant, cap_rank, read_layer, tag)
 
 
+ALL_PROJ = ("self_attn.q_proj", "self_attn.k_proj", "self_attn.v_proj", "self_attn.o_proj",
+            "mlp.gate_proj", "mlp.up_proj", "mlp.down_proj")
+_WRITE = {"self_attn.o_proj", "mlp.down_proj"}
+# small subsets first: a uniform draw over all 127 non-empty subsets concentrates mass on
+# 3-4 element ones, and the low-collateral configurations an optimising attacker actually
+# picks are the small ones. Heretic's is size 2 ({o_proj, down_proj}).
+_SUBSET_SIZE_W = (0.22, 0.22, 0.16, 0.13, 0.11, 0.09, 0.07)
+
+
+def sample_attack_b(
+    rng: random.Random,
+    n_layers: int,
+    *,
+    cap_ranks=(2, 4, 8, 16),
+    p_canonical: float = 0.20,
+    p_surgical: float = 0.40,
+    p_per_layer: float = 0.50,
+    p_partial: float = 0.50,
+    alpha_max: float = 1.5,
+    dir_lo_frac: float = 0.25,
+    dir_hi_frac: float = 0.95,
+    min_band: int = 2,
+) -> AttackSpec:
+    """version_B. Same skeleton as sample_attack, three axes widened to cover real Heretic.
+
+    Measured gaps that motivate each change (see docs / commit 08b862d):
+
+    - MATRIX SUBSET. version_A had three fixed scopes, every one containing read
+      projections, so write-only was never once shown in 500 steps -- and write-only
+      (o_proj, down_proj) is exactly and only what Heretic touches. Now any non-empty
+      subset of the seven projections.
+    - FRACTIONAL, WIDE DIRECTION LAYER. version_A read from {16,20,24}; Heretic searches
+      [0.4, 0.9] x last_layer and lerps between neighbours, with its best trials at
+      12.6-14.2 -- below version_A's lowest. Range here is deliberately WIDER than
+      Heretic's so this does not overfit to one tool's search box.
+    - ALPHA TO 1.5. version_A capped at full projection; Heretic samples max_weight in
+      [0.8, 1.5], over-projecting past orthogonal. Nothing in 200 trials exceeded 1.5.
+
+    Narrow layer bands are allowed here (min_band=2), unlike version_A which clamped to
+    half the stack. Heretic's min_weight_distance goes down to ~1.0, so tight bands are
+    in its search space; version_A's clamp was protecting against under-triggering, which
+    is the behaviour we now want to train against rather than avoid.
+    """
+    dir_layer = rng.uniform(dir_lo_frac * (n_layers - 1), dir_hi_frac * (n_layers - 1))
+
+    if rng.random() < p_canonical:
+        rp = tuple(p for p in ALL_PROJ if p not in _WRITE)
+        wp = tuple(p for p in ALL_PROJ if p in _WRITE)
+        return AttackSpec(rp, wp, list(range(n_layers)), None, False, "plain", 0,
+                          dir_layer, "canonical:arditi")
+
+    k = rng.choices(range(1, len(ALL_PROJ) + 1), weights=_SUBSET_SIZE_W)[0]
+    chosen = rng.sample(ALL_PROJ, k)
+    rp = tuple(p for p in chosen if p not in _WRITE)
+    wp = tuple(p for p in chosen if p in _WRITE)
+
+    lo = rng.randint(0, max(0, n_layers - min_band))
+    hi = rng.randint(min(lo + min_band - 1, n_layers - 1), n_layers - 1)
+    layers = list(range(lo, hi + 1))
+
+    alphas = ({li: rng.uniform(0.2, alpha_max) for li in layers}
+              if rng.random() < p_partial else None)
+    per_layer = rng.random() < p_per_layer
+    if rng.random() < p_surgical:
+        variant, cap_rank = "surgical", rng.choice(list(cap_ranks))
+    else:
+        variant, cap_rank = "plain", 0
+
+    scope_tag = ("w" if wp else "") + ("r" if rp else "") + str(k)
+    tag = (f"{scope_tag}:L{dir_layer:.1f}:{lo}-{hi}"
+           f"{'' if alphas is None else ':partial'}"
+           f"{':perlayer' if per_layer else ''}"
+           f"{'' if variant == 'plain' else f':surg{cap_rank}'}")
+    return AttackSpec(rp, wp, layers, alphas, per_layer, variant, cap_rank, dir_layer, tag)
+
+
 def _subspace(H: torch.Tensor, rank: int) -> torch.Tensor:
     """Top-`rank` right singular directions of centred activations.
 
@@ -195,19 +272,53 @@ class DirectionBank(NamedTuple):
                 surg[(L, r)], ov[(L, r)] = _surgical(plain[L], Vs[r].to(device))
         return cls(plain, surg, ov)
 
+    def direction_at(self, layer: float, cap_rank: int = 0) -> torch.Tensor:
+        """Direction at a FRACTIONAL layer, lerped between neighbours then renormalised.
+
+        Mirrors heretic/model.py::abliterate exactly -- math.modf to split the index, then
+        Tensor.lerp between adjacent layers' directions, then L2 normalise. version_A could
+        only read integer layers {16,20,24}; every winning Heretic trial sat at 12.6-14.2,
+        a band it could not even express.
+
+        Surgical uses the nearest integer layer's capability subspace: the subspace is a
+        property of the layer's activations, not of the interpolated direction, and
+        interpolating two SVD bases is not meaningful.
+        """
+        import math as _math
+        frac, lo = _math.modf(float(layer))
+        lo = int(lo)
+        src = self.plain if cap_rank == 0 else None
+        if src is None:
+            key = (int(round(layer)), cap_rank)
+            return self.surgical[key]
+        hi = lo + 1
+        if hi not in src:
+            d = src[lo]
+        else:
+            d = src[lo].lerp(src[hi], frac)
+        return d / d.norm().clamp(min=1e-9)
+
     def directions_for(self, spec: AttackSpec):
-        """Return {layer: d} for per-layer attacks, else the single shared d."""
+        """Return {layer: d} for per-layer attacks, else the single shared d.
+
+        Per-layer always indexes integer layers (each attacked layer uses its own). Only the
+        SHARED direction can be fractional, and only version_B emits those.
+        """
         pick = (lambda L: self.plain[L]) if spec.variant == "plain" \
             else (lambda L: self.surgical[(L, spec.cap_rank)])
         if spec.per_layer:
             return {L: pick(L) for L in spec.layers}
-        return pick(spec.read_layer)
+        if float(spec.read_layer) != int(spec.read_layer):
+            return self.direction_at(spec.read_layer, spec.cap_rank)
+        return pick(int(spec.read_layer))
 
     def realized_overlap(self, spec: AttackSpec) -> float:
         """Log this per step -- it is the axis version_A exists to vary."""
         if spec.variant == "plain":
             ls = spec.layers if spec.per_layer else [spec.read_layer]
-            return sum(self.overlap.get((L, 16), float("nan")) for L in ls) / len(ls)
+            # round: version_B read_layers are fractional and the bank is keyed by int
+            return sum(self.overlap.get((int(round(L)), 16), float("nan"))
+                       for L in ls) / len(ls)
         return 0.0
 
 
@@ -245,6 +356,29 @@ def _selfcheck() -> None:
         assert (s.cap_rank == 0) == (s.variant == "plain")
         # sub-layer ablations under-trigger the collapse, so no window may be narrow
         assert len(s.layers) >= n_layers // 2, (s.tag, len(s.layers))
+    # ---- version_B ----
+    rngb = random.Random(0)
+    bspecs = [sample_attack_b(rngb, n_layers) for _ in range(4000)]
+    write_only = 0
+    for s in bspecs:
+        assert s.layers and all(0 <= L < n_layers for L in s.layers)
+        assert s.read_proj or s.write_proj, "empty matrix subset"
+        assert s.alphas is None or all(0.2 <= a <= 1.5 for a in s.alphas.values())
+        assert 0 <= s.read_layer <= n_layers - 1
+        if s.write_proj and not s.read_proj:
+            write_only += 1
+    frac_wo = write_only / len(bspecs)
+    frac_frac = sum(float(s.read_layer) != int(s.read_layer) for s in bspecs) / len(bspecs)
+    lo_dir = sum(s.read_layer < 16 for s in bspecs) / len(bspecs)
+    hi_alpha = sum(s.alphas is not None and max(s.alphas.values()) > 1.0 for s in bspecs) / len(bspecs)
+    # the three gaps version_B exists to close must actually appear
+    assert frac_wo > 0.03, f"write-only too rare: {frac_wo}"
+    assert lo_dir > 0.25, f"sub-16 direction layers too rare: {lo_dir}"
+    assert hi_alpha > 0.15, f"alpha>1 too rare: {hi_alpha}"
+    print(f"version_B: write_only={frac_wo:.3f} fractional_dir={frac_frac:.3f} "
+          f"dir<16={lo_dir:.3f} alpha>1={hi_alpha:.3f} "
+          f"variants={len({s.tag for s in bspecs})}")
+
     canon = sum(s.tag == "canonical:arditi" for s in specs) / n
     surg = sum(s.variant == "surgical" for s in specs) / n
     assert 0.17 < canon < 0.23, canon
