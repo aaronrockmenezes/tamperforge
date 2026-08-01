@@ -33,7 +33,7 @@ for T in t85 t175 t100; do
   for spec in "arc:arc_challenge:0" "mmlu:${MMLU}:0" "gsm8k:gsm8k:5"; do
     name="${spec%%:*}"; rest="${spec#*:}"; tasks="${rest%:*}"; shots="${rest##*:}"
     out="results/hvacap_${T}_${name}"
-    [ -d "$out" ] && continue
+    find "$out" -name 'results_*.json' -print -quit 2>/dev/null | grep -q . && continue
     lm_eval --model vllm --model_args "$a" --tasks "$tasks" --num_fewshot "$shots" \
       --batch_size auto --output_path "$out" 2>&1 | tee -a "$LOG" \
       | grep -aE "\|acc|\|exact_match" || echo "!! $name failed $T" | tee -a "$LOG"

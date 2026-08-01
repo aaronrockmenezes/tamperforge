@@ -31,7 +31,7 @@ for T in 71 156 47; do
   a="pretrained=${D},dtype=bfloat16,trust_remote_code=True,max_model_len=4096,gpu_memory_utilization=0.45"
   for spec in "arc:arc_challenge:0" "mmlu:${MMLU}:0" "gsm8k:gsm8k:5"; do
     nm="${spec%%:*}"; rest="${spec#*:}"; tk="${rest%:*}"; sh="${rest##*:}"
-    o="results/hvccap_t${T}_${nm}"; [ -d "$o" ] && continue
+    o="results/hvccap_t${T}_${nm}"; find "$o" -name 'results_*.json' -print -quit 2>/dev/null | grep -q . && continue
     lm_eval --model vllm --model_args "$a" --tasks "$tk" --num_fewshot "$sh" \
       --batch_size auto --output_path "$o" 2>&1 | tee -a "$LOG" | grep -aE "\|acc|\|exact_match"
   done

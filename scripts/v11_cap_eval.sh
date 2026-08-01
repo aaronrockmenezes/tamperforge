@@ -27,13 +27,13 @@ for tag in v8_clean v8_surg_k0 v8_surg_k16 v8_surg_k64; do
   [ -d "$p" ] || { echo "!! missing $p, skipping $tag"; continue; }
   echo "############ $tag -> $p ############"
   a="pretrained=${p},dtype=bfloat16,trust_remote_code=True,max_model_len=4096,gpu_memory_utilization=0.85"
-  [ -d "results/v11cap_${tag}_arc" ]  || lm_eval --model vllm --model_args "$a" \
+  [ -f "results/v11cap_${tag}_arc/generations.jsonl" ]  || lm_eval --model vllm --model_args "$a" \
       --tasks arc_challenge --num_fewshot 0 --batch_size auto \
       --output_path "results/v11cap_${tag}_arc"  || echo "!! arc failed $tag"
-  [ -d "results/v11cap_${tag}_mmlu" ] || lm_eval --model vllm --model_args "$a" \
+  [ -f "results/v11cap_${tag}_mmlu/generations.jsonl" ] || lm_eval --model vllm --model_args "$a" \
       --tasks "$MMLU" --num_fewshot 0 --batch_size auto \
       --output_path "results/v11cap_${tag}_mmlu" || echo "!! mmlu failed $tag"
-  [ -d "results/v11cap_${tag}_gsm8k" ] || lm_eval --model vllm --model_args "$a" \
+  [ -f "results/v11cap_${tag}_gsm8k/generations.jsonl" ] || lm_eval --model vllm --model_args "$a" \
       --tasks gsm8k --num_fewshot 5 --batch_size auto \
       --output_path "results/v11cap_${tag}_gsm8k" || echo "!! gsm8k failed $tag"
 done

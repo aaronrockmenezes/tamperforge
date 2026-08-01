@@ -13,7 +13,7 @@ PY=python
 MID="${MID:?}"; TAG="${TAG:?short prefix e.g. ll/gm}"; V7="${V7:?}"; V8="${V8:?}"
 DLBASE="${DLBASE:?}"; DLV7="${DLV7:?}"; DLV8="${DLV8:?}"
 PDIR=scripts/external_benches/prompts; O=/workspace/outputs
-mat(){ [ -d "$2" ] || $PY experiments/save_p1b_checkpoint.py --model-id "$MID" ${3:+--checkpoint "$3"} --attack "$4" --direction-layer "$5" --out "$2"; }
+mat(){ [ -f "$2/model.safetensors" ] || $PY experiments/save_p1b_checkpoint.py --model-id "$MID" ${3:+--checkpoint "$3"} --attack "$4" --direction-layer "$5" --out "$2"; }
 mat _ "$O/${TAG}_base_att" ""   all  "$DLBASE"
 mat _ "$O/${TAG}_v7_clean" "$V7" none "$DLV7"
 mat _ "$O/${TAG}_v7_att"   "$V7" all  "$DLV7"
@@ -33,7 +33,7 @@ for tag in "${!M[@]}"; do
   gen "$p" "nq${TAG}_${tag}_xstest_unsafe" "$PDIR/xstest_unsafe.jsonl"
   gen "$p" "nq${TAG}_${tag}_orbench"       "$PDIR/orbench.jsonl"
   gen "$p" "nq${TAG}_${tag}_simpleqa"      "$PDIR/simpleqa.jsonl"
-  if [ -d "results/nq${TAG}_mbpp_${tag}" ]; then echo "skip mbpp $tag"; else
+  if [ -f "results/nq${TAG}_mbpp_${tag}/generations.jsonl" ]; then echo "skip mbpp $tag"; else
     lm_eval --model vllm --model_args "pretrained=${p},dtype=bfloat16,trust_remote_code=True,max_model_len=4096,gpu_memory_utilization=0.9" \
       --tasks mbpp --num_fewshot 3 --batch_size auto --confirm_run_unsafe_code --output_path "results/nq${TAG}_mbpp_${tag}" \
       || echo "!! mbpp failed $tag"; fi

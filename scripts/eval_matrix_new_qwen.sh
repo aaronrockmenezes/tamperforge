@@ -12,7 +12,7 @@ PY=python; MID="Qwen/Qwen3-0.6B"
 V7=outputs/tamper_resistant_qwen3_0p6b_v7.pt
 V8=outputs/tamper_resistant_qwen3_0p6b_v8.pt
 PDIR=scripts/external_benches/prompts; O=/workspace/outputs
-mat(){ [ -d "$2" ] || $PY experiments/save_p1b_checkpoint.py --model-id "$MID" ${3:+--checkpoint "$3"} --attack "$4" --direction-layer "$5" --out "$2"; }
+mat(){ [ -f "$2/model.safetensors" ] || $PY experiments/save_p1b_checkpoint.py --model-id "$MID" ${3:+--checkpoint "$3"} --attack "$4" --direction-layer "$5" --out "$2"; }
 mat _ "$O/nq_base_att"  ""   all  20
 mat _ "$O/nq_v7_clean"  "$V7" none 14
 mat _ "$O/nq_v7_att"    "$V7" all  14
@@ -34,7 +34,7 @@ for tag in "${!M[@]}"; do
   gen "$p" "nq_${tag}_xstest_unsafe" "$PDIR/xstest_unsafe.jsonl"
   gen "$p" "nq_${tag}_orbench"       "$PDIR/orbench.jsonl"
   gen "$p" "nq_${tag}_simpleqa"      "$PDIR/simpleqa.jsonl"
-  if [ -d "results/nq_mbpp_${tag}" ]; then echo "skip mbpp $tag (exists)"; else
+  if [ -f "results/nq_mbpp_${tag}/generations.jsonl" ]; then echo "skip mbpp $tag (exists)"; else
     lm_eval --model vllm --model_args "pretrained=${p},dtype=bfloat16,trust_remote_code=True,max_model_len=4096,gpu_memory_utilization=0.9" \
       --tasks mbpp --num_fewshot 3 --batch_size auto --confirm_run_unsafe_code --output_path "results/nq_mbpp_${tag}" \
       || echo "!! mbpp failed for $tag (non-fatal, continuing)"; fi

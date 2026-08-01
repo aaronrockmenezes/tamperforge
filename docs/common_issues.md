@@ -298,3 +298,45 @@ Rule: for any Qwen number that will be compared against a published table, copy 
 `max_new_tokens`, `qwen_thinking`, sampling params, or prompt source. A stored summary cannot
 be checked against the config that produced it, which is why the above took three runs to
 diagnose. Worth persisting the generation config into the summary before the next campaign.
+
+## Resume guards must test the ARTIFACT, not the directory (2026-08-02)
+
+**Symptom:** an eval "completes" but its judged summary is missing, or a judge run reports on
+a file that does not exist. Silent -- the script exits 0.
+
+**Cause:** `[ -d "results/<tag>" ] || python -u experiments/p0_baseline_eval.py ...`
+
+A directory left behind by a killed job is still a directory. The guard sees it, skips
+regeneration, and the judge then runs against a `generations.jsonl` that was never written.
+This destroyed four eval arms on 2026-08-01/02 (`lbase_clean`, `rep_vb_s1`, `rep_vc_s1`, and
+`lbase_rank1`'s judge step) after a stray `pkill` killed the jobs mid-generation.
+
+**Rule:** guard on the artifact the step actually produces.
+
+| step | guard on |
+|---|---|
+| `p0_baseline_eval.py` | `results/<id>/generations.jsonl` |
+| `judge_generations.py` | `results/<id>_judged/summary.json` |
+| `lm_eval` | `find "$out" -name 'results_*.json' -print -quit \| grep -q .` (nested by date) |
+| `save_p1b_checkpoint.py` / model export | `<dir>/model.safetensors` |
+
+`[ -d ... ]` remains correct for checking an INPUT exists
+(`[ -d "outputs/$D" ] \|\| { echo "!! missing $D"; continue; }`) -- those were left alone.
+
+Fixed across 25 scripts by `fix_guards.py` / `fix_guards2.py`.
+
+## Never `pkill -f` a pattern that can match another job (2026-08-01)
+
+`pkill -TERM -f "VLLM::EngineCore"` in `ceiling_llama.sh` killed the EngineCore of two
+concurrent replication lanes, losing their generations. The pattern in
+`scripts/run_mad_v10_s175_vllm_caps.sh` (commit `1a4e603`) is the correct one and scopes the
+kill to the evaluator it started:
+
+    lm_eval ... &
+    pid=$!
+    # poll for results_*.json, then:
+    ep="$(pgrep -P "$pid" -f 'VLLM::EngineCore' | head -1)"
+    kill -TERM "$ep"
+
+Also note `pkill -f <pat>` matches the killing shell's own command line if that string
+appears in it -- that killed an ssh session earlier in the campaign.

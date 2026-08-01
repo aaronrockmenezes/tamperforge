@@ -9,7 +9,7 @@ V7=outputs/tamper_resistant_p1b_v7.pt
 V8=outputs/tamper_resistant_gemma3_1b_v8_best.pt
 MMLU="mmlu_high_school_biology,mmlu_college_computer_science,mmlu_abstract_algebra,mmlu_machine_learning,mmlu_philosophy,mmlu_world_religions,mmlu_high_school_us_history,mmlu_econometrics,mmlu_sociology,mmlu_professional_medicine,mmlu_business_ethics,mmlu_computer_security"
 PDIR=scripts/external_benches/prompts; O=/workspace/outputs
-mat(){ [ -d "$2" ] || $PY experiments/save_p1b_checkpoint.py --model-id "$MID" ${3:+--checkpoint "$3"} --attack "$4" --direction-layer "$5" --out "$2"; }
+mat(){ [ -f "$2/model.safetensors" ] || $PY experiments/save_p1b_checkpoint.py --model-id "$MID" ${3:+--checkpoint "$3"} --attack "$4" --direction-layer "$5" --out "$2"; }
 mat _ "$O/gm_base_att" ""   all  14
 mat _ "$O/gm_v7_clean" "$V7" none 13
 mat _ "$O/gm_v7_att"   "$V7" all  13
@@ -27,10 +27,10 @@ saff(){ [ -f "results/$2/generations.jsonl" ] && { echo "skip $2"; return; }
   $PY experiments/p0_baseline_eval.py --backend vllm --model-id "$1" --prompt-file "$3" \
   --n-prompts -1 --max-new-tokens 512 --max-length 4096 --vllm-batch-size 64 --n-arc 0 --run-id "$2"; }
 cap(){ local p="$1" n="$2" a="pretrained=$1,dtype=bfloat16,trust_remote_code=True,max_model_len=4096,gpu_memory_utilization=0.9"
-  [ -d "results/gx_cap_${n}_arc" ] || lm_eval --model vllm --model_args "$a" --tasks arc_challenge --num_fewshot 0 --batch_size auto --output_path "results/gx_cap_${n}_arc"
-  [ -d "results/gx_cap_${n}_mmlu" ] || lm_eval --model vllm --model_args "$a" --tasks "$MMLU" --num_fewshot 0 --batch_size auto --output_path "results/gx_cap_${n}_mmlu"
-  [ -d "results/gx_ifeval_${n}" ] || lm_eval --model vllm --model_args "$a" --tasks ifeval --num_fewshot 0 --batch_size auto --apply_chat_template --output_path "results/gx_ifeval_${n}"
-  [ -d "results/gx_gsm8k_${n}" ] || lm_eval --model vllm --model_args "$a" --tasks gsm8k --num_fewshot 5 --batch_size auto --output_path "results/gx_gsm8k_${n}"; }
+  [ -f "results/gx_cap_${n}_arc/generations.jsonl" ] || lm_eval --model vllm --model_args "$a" --tasks arc_challenge --num_fewshot 0 --batch_size auto --output_path "results/gx_cap_${n}_arc"
+  [ -f "results/gx_cap_${n}_mmlu/generations.jsonl" ] || lm_eval --model vllm --model_args "$a" --tasks "$MMLU" --num_fewshot 0 --batch_size auto --output_path "results/gx_cap_${n}_mmlu"
+  [ -f "results/gx_ifeval_${n}/generations.jsonl" ] || lm_eval --model vllm --model_args "$a" --tasks ifeval --num_fewshot 0 --batch_size auto --apply_chat_template --output_path "results/gx_ifeval_${n}"
+  [ -f "results/gx_gsm8k_${n}/generations.jsonl" ] || lm_eval --model vllm --model_args "$a" --tasks gsm8k --num_fewshot 5 --batch_size auto --output_path "results/gx_gsm8k_${n}"; }
 for tag in "${!M[@]}"; do
   p="${M[$tag]}"; echo "########## gm_${tag} -> $p ##########"
   saf  "$p" "gx_${tag}_advbench"  advbench  520

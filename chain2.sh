@@ -59,7 +59,7 @@ for T in t17 t99 t65; do
       --qwen-thinking off >>"$LOG" 2>&1
     cleanup_leftovers
   fi
-  [ -d "results/hvb_${T}_judged" ] || python -u experiments/judge_generations.py \
+  [ -f "results/hvb_${T}_judged/summary.json" ] || python -u experiments/judge_generations.py \
     --generations "results/hvb_${T}/generations.jsonl" --run-id "hvb_${T}_judged" \
     --num-workers 32 >>"$LOG" 2>&1
   run_lm "results/hvbcap_${T}_arc"    "$D" arc_challenge 0

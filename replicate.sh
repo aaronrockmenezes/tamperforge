@@ -52,7 +52,7 @@ PY
     T=$(python -c "import json;print(list(json.load(open('results/${TAG}_trial.json'))['heretic_trials'])[0])" 2>/dev/null)
     [ -z "$T" ] && { echo "  skip (no winner)" | tee -a "$LOG"; continue; }
     D="outputs/${TAG}_att"
-    [ -d "results/${TAG}_judged" ] && { echo "  already judged" | tee -a "$LOG"; continue; }
+    [ -f "results/${TAG}_judged/summary.json" ] && { echo "  already judged" | tee -a "$LOG"; continue; }
     python -u experiments/version_c_replay.py --checkpoint "$CK" --trial "$T" \
       --params-json "results/${TAG}_trial.json" \
       --direction-recipe heretic --application heretic_full --out "$D" 2>&1 | tail -3 | tee -a "$LOG"

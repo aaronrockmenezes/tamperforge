@@ -27,12 +27,12 @@ run () {  # $1=tag  $2=application
   local APP=$2
   local D="outputs/${TAG}"
   echo "########## ${TAG} (application=${APP}) ##########" | tee -a "$LOG"
-  [ -d "$D" ] || python -u experiments/version_c_replay.py \
+  [ -f "$D/model.safetensors" ] || python -u experiments/version_c_replay.py \
       --checkpoint outputs/version_c_qwen_500.pt --trial t71 \
       --params-json results/heretic_vc_trials.json \
       --direction-recipe heretic --application "$APP" --add-read-proj \
       --out "$D" 2>&1 | tail -4 | tee -a "$LOG"
-  [ -d "results/${TAG}" ] || python -u experiments/p0_baseline_eval.py \
+  [ -f "results/${TAG}/generations.jsonl" ] || python -u experiments/p0_baseline_eval.py \
     --run-id "$TAG" --model-id "$D" \
     --prompt-source advbench --advbench-source walledai --advbench-split train \
     --n-prompts -1 --n-arc 0 --n-mmlu-per-subject 0 --max-new-tokens 512 --max-length 4096 \
@@ -40,7 +40,7 @@ run () {  # $1=tag  $2=application
     --vllm-gpu-memory-utilization 0.45 --vllm-temperature 0.0 --vllm-top-p 1.0 \
     --qwen-thinking off >>"$LOG" 2>&1
   pkill -TERM -f "VLLM::EngineCore" 2>/dev/null || true; sleep 5
-  [ -d "results/${TAG}_judged" ] || python -u experiments/judge_generations.py \
+  [ -f "results/${TAG}_judged/summary.json" ] || python -u experiments/judge_generations.py \
     --generations "results/${TAG}/generations.jsonl" --run-id "${TAG}_judged" \
     --num-workers 32 >>"$LOG" 2>&1
   lm_eval --model vllm \
