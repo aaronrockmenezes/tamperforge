@@ -25,7 +25,8 @@ sys.path.insert(0, str(ROOT / "experiments"))
 
 from tamperforge import empirical_refusal_directions, load_model  # noqa: E402
 from tamperforge.data import BENIGN_PROMPTS, load_advbench_prompts  # noqa: E402
-from train_tamper_resistant_v8 import _ablated_overrides  # noqa: E402
+from train_tamper_resistant_v8 import (_ablated_overrides,  # noqa: E402
+                                       _rownorm_ablated_overrides)
 from v11_surgical_ablation import _load_trained  # noqa: E402
 from version_a_attack import HERETIC_PROJ, heretic_spec, tent_weight  # noqa: E402
 from version_c_loop import (HERETIC_BAD, HERETIC_GOOD, HERETIC_SYSTEM,  # noqa: E402
@@ -144,6 +145,13 @@ def main() -> None:
                     help="'heretic' reproduces its own direction pipeline (own datasets, "
                          "system prompt, projected abliteration). 'ours' uses walledai + "
                          "BENIGN_PROMPTS, which does NOT reproduce heretic's attack.")
+    ap.add_argument("--add-read-proj", action="store_true",
+                    help="ALSO ablate the read projections (q/k/v/gate/up), which heretic "
+                         "never touches. The DL sweep showed heretic's write-only shape never "
+                         "triggers the collapse at ANY direction layer, while rank-1 "
+                         "(read+write) does -- so this isolates whether read projections are "
+                         "what MAD is keyed to. q/k/v inherit attn.o_proj's tent, gate/up "
+                         "inherit mlp.down_proj's.")
     ap.add_argument("--override-direction-index", default=None,
                     help="replace the trial's direction_index (float, or 'per layer'). "
                          "Sweeping THIS while holding the tents/scope/application fixed "
@@ -172,6 +180,19 @@ def main() -> None:
         params = dict(params)
         params["direction_index"] = args.override_direction_index
     spec = heretic_spec(params, n_layers, tag=f"heretic:replay:{args.trial}")
+    if args.add_read_proj:
+        # pair each read projection with the tent of the write projection in its own block
+        pair = {"self_attn.q_proj": "self_attn.o_proj", "self_attn.k_proj": "self_attn.o_proj",
+                "self_attn.v_proj": "self_attn.o_proj",
+                "mlp.gate_proj": "mlp.down_proj", "mlp.up_proj": "mlp.down_proj"}
+        alphas = dict(spec.alphas)
+        for rp, src in pair.items():
+            if src in alphas:
+                alphas[rp] = dict(alphas[src])
+        spec = spec._replace(read_proj=tuple(pair), alphas=alphas,
+                             tag=spec.tag + ":+read")
+        print(f"[replay] +read: now ablating {len(spec.read_proj)} read + "
+              f"{len(spec.write_proj)} write projections")
     print(f"[replay] {args.trial} per_layer={spec.per_layer} read_layer={spec.read_layer} "
           f"layers={spec.layers[0]}-{spec.layers[-1]} n={len(spec.layers)}")
     for proj, prof in spec.alphas.items():
@@ -187,7 +208,13 @@ def main() -> None:
         missing = [L for L in spec.layers if L not in d]
         assert not missing, f"no direction recovered for layers {missing}"
         with torch.no_grad():
-            if args.application == "heretic_full":
+            if args.application == "heretic_full" and spec.read_proj:
+                # heretic_delta only implements the WRITE-projection form; the trainer's
+                # row-normalised override handles both and is pinned to the same math.
+                dd = d if isinstance(d, dict) else {L: d for L in spec.layers}
+                ov = _rownorm_ablated_overrides(model, dd, spec.layers, spec.read_proj,
+                                                spec.write_proj, spec.alphas)
+            elif args.application == "heretic_full":
                 ov = _heretic_full_overrides(model, d, spec)
             else:
                 ov = _ablated_overrides(model, d, spec.layers, spec.read_proj,
@@ -217,7 +244,9 @@ def main() -> None:
         with torch.no_grad():
             if args.application == "heretic_full":
                 dd = d if isinstance(d, dict) else {L: d for L in spec.layers}
-                ov = _heretic_full_overrides(model, dd, spec)
+                ov = (_rownorm_ablated_overrides(model, dd, spec.layers, spec.read_proj,
+                                                 spec.write_proj, spec.alphas)
+                      if spec.read_proj else _heretic_full_overrides(model, dd, spec))
             else:
                 ov = _ablated_overrides(model, d, spec.layers, spec.read_proj,
                                         spec.write_proj, spec.alphas)
@@ -270,6 +299,7 @@ def _save(model, tok, args, params, spec, ov) -> None:
          "orthogonalize": not args.no_orthogonalize,
          "direction_thinking": not args.dir_no_thinking,
          "override_direction_index": args.override_direction_index,
+         "add_read_proj": args.add_read_proj,
          "per_layer": spec.per_layer, "read_layer": spec.read_layer,
          "n_layers_touched": len(spec.layers), "n_overrides": len(ov)}, indent=2))
     print(f"[replay] -> {out}")

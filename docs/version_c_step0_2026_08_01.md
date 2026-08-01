@@ -181,3 +181,75 @@ Two chains queued; both self-sequence on the GPU and write to `logs/training_run
 Ceiling is already n=2 and stable: heretic-on-base t122 0.6596 / t144 0.6788 harmful (mean
 0.6692, spread 0.0192), both with capability intact. That is one study's two winners, so it
 bounds judge + trial-selection variance, NOT the seed-to-seed variance chain 2 measures.
+
+---
+
+## 8. MECHANISM (2026-08-02): MAD is keyed to READ-projection ablation
+
+Two experiments, both against version_C s500. Full numbers in
+`results/version_c_mechanism_2026_08_02/summary.json`.
+
+### 8a. The layer hypothesis is REFUTED
+
+Swept `direction_index` over {8, 11, 14.31, 17, 20, 23, 26} holding heretic's t71 attack fixed
+in every other respect (per-projection tents, write-only, FULL row-normalised application).
+DL 14.31 is t71 itself and reproduced it at 0.3327 vs 0.3231 -- control passed.
+
+| DL | harmful | GSM8K |
+|---|---:|---:|
+| 8.0 | 0.0038 | 0.3965 |
+| 11.0 | 0.1308 | 0.3859 |
+| **14.31** | **0.3327** | 0.3920 |
+| 17.0 | 0.2038 | 0.3806 |
+| 20.0 | 0.2173 | 0.3813 |
+| 23.0 | 0.0423 | 0.3768 |
+| 26.0 | 0.1538 | 0.3760 |
+
+**GSM8K never moves** (0.376-0.397 against clean 0.3844). The collapse does not fire at ANY
+direction layer under heretic's shape. So "MAD lives in the upper layers and heretic escapes
+to a low band" is wrong: harm varies only with whether the attack strips refusal at all, and
+14.31 is the peak of that curve. Heretic's search found the optimum; it was not dodging
+anything. (Earlier text in this repo proposing the layer-escape story is superseded.)
+
+### 8b. Read projections are the trigger
+
+Took t71 EXACTLY and added the read projections (`q/k/v` inherit `attn.o_proj`'s tent,
+`gate/up` inherit `mlp.down_proj`'s). Nothing else changed.
+
+| t71 variant | harmful | gibberish | GSM8K |
+|---|---:|---:|---:|
+| write-only (as heretic ran it) | **0.3231** | 0.3673 | 0.3859 |
+| + read projections, FULL | **0.0577** | **0.9365** | 0.3715 |
+| + read projections, plain | 0.0923 | 0.8827 | 0.3700 |
+
+Harm drops 82%. Application (FULL vs plain) makes no difference, so this is the read/write
+axis alone.
+
+**But the trigger is NOT capability collapse.** GSM8K holds at 0.3715 (97% of clean). What
+happens is **prompt-conditional gibberish** -- garbage on harmful prompts, intact maths on
+benign ones. Capability destruction appears only under the much more aggressive rank-1 attack
+(read+write, all layers, full alpha -> GSM8K 0.0364).
+
+### 8c. Why this is bad news
+
+| ablation touches | outcome on version_C |
+|---|---|
+| read + write, all layers, full alpha (rank-1) | capability destroyed, GSM8K 0.0364 |
+| read + write, tent band (t71+read) | conditional gibberish, capability intact |
+| **write only, any layer, any alpha (heretic)** | **nothing -- attack succeeds** |
+
+One fact explains v8, version_A, version_B and version_C all landing in the same place against
+heretic: **the defense fires on read-projection ablation and heretic only ablates write
+projections.** And the attacker chooses the attack -- adding read projections costs them 82%
+of their yield, so heretic's write-only parameterisation is the reason it wins, not a handicap
+it labours under. A defense that only fires when the attacker opts in is not a defense.
+
+version_C trained write-only attacks on ~60% of steps (all tent and buffer slices are
+`o_proj`/`down_proj`) and still could not place the entanglement there. Untested mechanistic
+guess: write projections contribute INTO the residual stream, so ablating a direction there
+removes what the layer adds but leaves its computation intact; read projections determine what
+the layer consumes, so corrupting them propagates. If that holds, write-only entanglement may
+be unachievable, which is a limit on the approach rather than a tuning problem.
+
+**Next test if picked up:** whether ANY training procedure can make write-only ablation
+self-defeating. That is the question the whole ABL thread now rests on.
