@@ -15,22 +15,45 @@ version_B s500 must reproduce its known 0.3212 harmful.
 
 ## The gate
 
-| | harmful | gibberish | refused | asr |
-|---|---:|---:|---:|---:|
-| known t99 (heretic's own weights) | **0.3212** | 0.5038 | 0.1269 | 0.4788 |
-| replay, our direction pipeline | 0.0000 | 0.3250 | 0.6673 | 0.0077 |
-| replay, heretic direction recipe (cos 0.96) | 0.0673 | 0.7885 | **0.1212** | 0.1442 |
-| replay, SVD-recovered directions (cos 1.0) | **0.2038** | 0.5846 | 0.1538 | 0.3385 |
+Two axes matter: how the refusal DIRECTION is obtained, and how the ablation is APPLIED.
 
-Not passed, but the progression localises the fault. Each fix closes part of the gap:
-0.0000 -> 0.0673 -> 0.2038 against a target of 0.3212.
+| | harmful | gibberish | refused | benign | asr |
+|---|---:|---:|---:|---:|---:|
+| known t99 (heretic's own weights) | **0.3212** | 0.5038 | 0.1269 | 0.0481 | 0.4788 |
+| our direction + plain application | 0.0000 | 0.3250 | 0.6673 | 0.0077 | 0.0077 |
+| heretic recipe (cos 0.96) + plain | 0.0673 | 0.7885 | 0.1212 | 0.0231 | 0.1442 |
+| heretic recipe + FULL | 0.1308 | 0.7346 | 0.0865 | 0.0481 | 0.2923 |
+| SVD direction (cos 1.0) + plain | 0.2038 | 0.5846 | 0.1538 | 0.0577 | 0.3385 |
+| **SVD direction + FULL** | **0.2558** | 0.5538 | 0.1423 | 0.0481 | 0.4154 |
 
-**The SVD run settles the direction-vs-application question: it is not (only) the
-direction.** With heretic's exact per-layer directions recovered from its own saved weights
--- `dW = a * outer(d, d^T W)` is rank-1, so `d` is its left singular vector, and the
-recovery is self-validating because `o_proj` and `down_proj` at the same layer independently
-return the same vector (median cos 0.9967, min 0.9672, exactly as heretic constructs it) --
-the replay still lands at 0.2038.
+**Gate NOT passed** -- best reconstruction is 0.2558 against 0.3212, a 0.065 gap (~3 sigma
+at n=520). But the contributions now decompose cleanly:
+
+| step | harmful | delta |
+|---|---:|---:|
+| our direction + plain | 0.0000 | -- |
+| fix the direction recipe (4 differences) | 0.0673 | +0.067 |
+| fix the application (row_normalization=FULL) | 0.1308 | +0.064 |
+| direction cos 0.96 -> 1.00 | 0.2558 | **+0.125** |
+| unexplained remainder | 0.3212 | +0.065 |
+
+## The sensitivity result
+
+**A 4% direction error costs 12.5 points of harmful rate** (0.1308 -> 0.2558 is purely
+cos 0.96 -> cos 1.00, application held fixed). That is the largest single term in the table,
+larger than either the direction-recipe fix or the application fix.
+
+This is the knife-edge reading, now quantified: version_B's collapse is so close to firing
+on t99 that small errors in reconstructing the attack flip the attacked model between
+"uncensored and usable" and "uncensored and broken".
+
+**It also has a direct methodological consequence.** A real attacker never has this error --
+heretic computes its own direction and uses exactly that, so it gets cos 1.0 by
+construction. The 4% is OUR error in trying to reproduce heretic's direction from outside.
+So replay-based training is fragile in a way that in-the-loop attack generation is not:
+running heretic against current weights sidesteps direction reconstruction entirely.
+**That is now an argument for version_C step 2 (attack-in-the-loop) OVER replay-based
+training, independent of the coverage argument.**
 
 ## What was verified along the way
 

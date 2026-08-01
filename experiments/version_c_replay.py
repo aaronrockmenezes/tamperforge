@@ -108,6 +108,35 @@ def heretic_directions(model, tok, layers, device, *, orthogonalize: bool = True
 
 
 @torch.no_grad()
+def heretic_delta(W: torch.Tensor, v: torch.Tensor, weight: float,
+                  r: int = 3, seed: int = 0) -> torch.Tensor:
+    """Heretic's actual weight delta, `row_normalization = FULL`.
+
+    Transcribed from heretic/model.py:551-597. The ablation is computed against
+    ROW-NORMALIZED weights, the result is renormalized and rescaled to the original row
+    magnitudes, and the resulting delta is then approximated by a rank-`r` randomized SVD
+    (it has to fit in a LoRA adapter). None of that is the plain
+    `W - a * outer(v, v @ W)` we train against.
+
+    Approximates https://huggingface.co/blog/grimjim/norm-preserving-biprojected-abliteration
+    """
+    W_org = W
+    rn = W.norm(dim=1, keepdim=True).clamp(min=1e-12)
+    Wn = W / rn
+    lora_A = (v @ Wn).view(1, -1)
+    lora_B = (-weight * v).view(-1, 1)
+    Wa = Wn + lora_B @ lora_A
+    Wa = Wa / Wa.norm(dim=1, keepdim=True).clamp(min=1e-12)
+    Wa = Wa * rn
+    D = Wa - W_org
+    # svd_lowrank is randomized; heretic reseeds immediately before the call. q and niter
+    # are heretic's (2r+4, 6), which is accurate enough that the seed barely matters here.
+    torch.manual_seed(seed)
+    U, S, V = torch.svd_lowrank(D, q=2 * r + 4, niter=6)
+    return (U[:, :r] * S[:r]) @ V[:, :r].T
+
+
+@torch.no_grad()
 def svd_directions(model, attacked_dir: str, layers, device) -> dict[int, torch.Tensor]:
     """Recover heretic's ACTUAL per-layer directions from its saved weights.
 
@@ -152,6 +181,23 @@ def svd_directions(model, attacked_dir: str, layers, device) -> dict[int, torch.
     return out
 
 
+@torch.no_grad()
+def _heretic_full_overrides(model, d: dict, spec) -> dict:
+    """Apply heretic's FULL row-normalized delta per (layer, projection)."""
+    params = dict(model.named_parameters())
+    ov = {}
+    for li in spec.layers:
+        for nm in spec.write_proj + spec.read_proj:
+            a = spec.alphas.get(nm, {}).get(li, 0.0) if isinstance(
+                next(iter(spec.alphas.values())), dict) else spec.alphas[li]
+            if a <= 0.0:
+                continue
+            key = f"model.layers.{li}.{nm}.weight"
+            W = params[key].float()
+            ov[key] = (W + heretic_delta(W, d[li].to(W.device), a)).to(params[key].dtype)
+    return ov
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model-id", default="Qwen/Qwen3-0.6B")
@@ -160,6 +206,9 @@ def main() -> None:
     ap.add_argument("--params-json", default=str(SUMMARY))
     ap.add_argument("--out", required=True)
     ap.add_argument("--n-direction", type=int, default=256)
+    ap.add_argument("--application", choices=["plain", "heretic_full"], default="plain",
+                    help="'plain' = W - a*outer(d, d@W), what we train against. "
+                         "'heretic_full' = heretic's row_normalization=FULL delta.")
     ap.add_argument("--svd-from", default=None,
                     help="attacked model dir to recover heretic's true directions from "
                          "(requires --direction-recipe svd)")
@@ -198,8 +247,11 @@ def main() -> None:
         missing = [L for L in spec.layers if L not in d]
         assert not missing, f"no direction recovered for layers {missing}"
         with torch.no_grad():
-            ov = _ablated_overrides(model, d, spec.layers, spec.read_proj,
-                                    spec.write_proj, spec.alphas)
+            if args.application == "heretic_full":
+                ov = _heretic_full_overrides(model, d, spec)
+            else:
+                ov = _ablated_overrides(model, d, spec.layers, spec.read_proj,
+                                        spec.write_proj, spec.alphas)
             named = dict(model.named_parameters())
             for k, v in ov.items():
                 named[k].copy_(v.to(named[k].dtype))
@@ -223,12 +275,17 @@ def main() -> None:
             d = torch.lerp(a, b, frac)
             d = d / d.norm().clamp(min=1e-9)
         with torch.no_grad():
-            ov = _ablated_overrides(model, d, spec.layers, spec.read_proj,
-                                    spec.write_proj, spec.alphas)
+            if args.application == "heretic_full":
+                dd = d if isinstance(d, dict) else {L: d for L in spec.layers}
+                ov = _heretic_full_overrides(model, dd, spec)
+            else:
+                ov = _ablated_overrides(model, d, spec.layers, spec.read_proj,
+                                        spec.write_proj, spec.alphas)
             named = dict(model.named_parameters())
             for k, v in ov.items():
                 named[k].copy_(v.to(named[k].dtype))
-        print(f"[replay] overrode {len(ov)} parameter tensors (heretic direction recipe)")
+        print(f"[replay] overrode {len(ov)} tensors "
+              f"(heretic direction recipe, application={args.application})")
         _save(model, tok, args, params, spec, ov)
         return
 
@@ -268,6 +325,7 @@ def _save(model, tok, args, params, spec, ov) -> None:
     (out / "replay_meta.json").write_text(json.dumps(
         {"checkpoint": args.checkpoint, "trial": args.trial, "heretic_params": params,
          "direction_recipe": args.direction_recipe,
+         "application": args.application,
          "svd_from": args.svd_from,
          "orthogonalize": not args.no_orthogonalize,
          "direction_thinking": not args.dir_no_thinking,
