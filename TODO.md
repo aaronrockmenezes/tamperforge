@@ -1,5 +1,45 @@
 # TamperForge — Current TODO
 
+## [HIGH] Run Shairah extended-refusal as a baseline (added 2026-08-02)
+
+**Blocked on: locking the training recipe. Do this the moment a version is frozen.**
+
+`docs/related_work.md` has flagged this since 2026-07-25 and it is still not run. It is the
+single biggest reviewer risk in the project.
+
+**The claim we currently cannot make:** "we beat a method that needs no adversarial
+training." Shairah et al. (*An Embarrassingly Simple Defense Against LLM Abliteration
+Attacks*, arXiv:2505.19056) fine-tune on **extended refusals** -- neutral overview, then
+explicit refusal, then ethical rationale -- so the refusal signal spreads over many token
+positions instead of concentrating in one latent direction. No adversarial training, no
+attack simulation, no inner loop. They report refusal rates dropping **at most 10% under
+abliteration, vs 70-80% for conventional safety tuning**, on Llama-2-7B-Chat and
+Qwen2.5-Instruct 1.5B/3B.
+
+If a dataset change gets most of what our whole adversarial-training pipeline gets, the
+pipeline needs to justify itself on something else. Right now we do not know which it is.
+
+**What running it must produce, on OUR protocol (export path, 520 walledai, judged, GSM8K
+strict, plus the base-ceiling denominator from handoff 0a):**
+
+- [ ] Extended-refusal SFT on Qwen3-0.6B. Their recipe is cheap -- generate extended
+  refusals for the alignment set, fine-tune, done. No attack machinery.
+- [ ] Score it on the same arms as version_A/B/C: clean, rank-1, surgical k16, and a
+  200-trial heretic study. Same judge, same prompts.
+- [ ] **Report capability under attack, which they do not.** Their claim is refusal
+  RETENTION (fortress). Ours is capability COLLAPSE (poison pill). If extended-refusal also
+  craters GSM8K under abliteration, our differentiator evaporates and we need to know before
+  a reviewer finds out. If it does not -- refusal holds but capability survives -- that is
+  the cleanest possible demonstration of the fortress/poison-pill distinction and belongs in
+  the paper's first table.
+
+**Do not skip the multi-seed treatment.** 2026-08-02 replication found heretic's outcome
+varies 0.23 in harmful rate across TPE seeds on version_B (0.3212 vs 0.0923). A single
+study against the baseline would be as meaningless as a single study against ours.
+
+Related: `docs/related_work.md` "Abliteration-specific defenses (must-cite, must-baseline)".
+
+
 ## Replace the in-loop IFEval probe with a loglikelihood one (2026-07-31, deferred)
 
 `--ifeval-in-loop` is a weak clean-capability signal and we should stop leaning on it.
