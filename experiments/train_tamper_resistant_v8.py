@@ -259,6 +259,53 @@ def _ablated_overrides(model, d, layers, read_p, write_p, alphas=None) -> dict:
     return ov
 
 
+def _rownorm_ablated_overrides(model, d, layers, read_p, write_p, alphas=None) -> dict:
+    """Differentiable version of heretic's `row_normalization = FULL` ablation.
+
+    heretic/model.py:551-597 does: ablate against ROW-NORMALIZED weights, renormalize the
+    rows, restore the original row magnitudes, then compress the delta to a rank-3
+    randomized SVD so it fits a LoRA adapter. Everything except the rank-3 truncation is
+    differentiable, and the truncation is a storage detail -- the delta carries 0.997 of its
+    spectral mass in the top component, so dropping it changes essentially nothing while
+    keeping the graph clean. `experiments/version_c_replay.py::heretic_delta` is the exact
+    (non-differentiable) form; `tests/test_rownorm_ablation.py` pins them together.
+
+    This is NOT what v8/version_A/version_B trained against -- they used the plain
+    `W - a * outer(d, d^T W)`, which differs from heretic's delta by 25-47% relative error.
+    """
+    params = dict(model.named_parameters())
+    dev = next(iter(params.values())).device
+    shared = None if isinstance(d, dict) else d.detach().to(dev)
+    per_proj = bool(alphas) and all(isinstance(v, dict) for v in alphas.values())
+
+    def _a(li: int, name: str) -> float:
+        if alphas is None:
+            return 1.0
+        if per_proj:
+            return alphas.get(name, {}).get(li, 0.0)
+        return alphas[li]
+
+    ov: dict[str, torch.Tensor] = {}
+    for li in layers:
+        dd = shared if shared is not None else d[li].detach().to(dev)
+        base = f"model.layers.{li}."
+        for name in tuple(read_p) + tuple(write_p):
+            a = _a(li, name)
+            if a == 0.0:
+                continue
+            key = base + name + ".weight"
+            W = params[key].float()
+            rn = W.norm(dim=1, keepdim=True).clamp(min=1e-12)
+            Wn = W / rn
+            if name in write_p:
+                Wa = Wn - a * torch.outer(dd, dd @ Wn)
+            else:
+                Wa = Wn - a * torch.outer(Wn @ dd, dd)
+            Wa = Wa / Wa.norm(dim=1, keepdim=True).clamp(min=1e-12) * rn
+            ov[key] = Wa.to(params[key].dtype)
+    return ov
+
+
 def _lm_loss(model, tok, texts, device, overrides=None, max_len: int = 256) -> torch.Tensor:
     """Mean next-token CE over *texts*. overrides -> functional_call (ablated)."""
     total = torch.zeros((), device=device)
