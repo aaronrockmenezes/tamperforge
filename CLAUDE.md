@@ -1,6 +1,8 @@
 # CLAUDE.md — read first
 
-**Current state lives in `docs/devlog_2026_07_17.md` (Qwen3-8B scale attempt, TamperBench
+**Current state lives in `docs/handoff_2026_08_01_version_a_b.md` (version_A + version_B:
+surgical ablation closed, real Heretic forced to 5x the perturbation — the newest finding).
+Read that first**, then `docs/devlog_2026_07_17.md` (Qwen3-8B scale attempt, TamperBench
 third-party validation, Heretic cracks v8 on all three architectures — the newest finding).
 Read that first**, then `docs/handoff_2026_07_03_MASTER.md` (multi-model + attack-robustness
 campaign), `docs/findings_multimodel_adaptive_2026_07_02.md`, `MEMORY.md`, then this file for
