@@ -226,16 +226,33 @@ def _ablated_overrides(model, d, layers, read_p, write_p, alphas=None) -> dict:
     params = dict(model.named_parameters())
     dev = next(iter(params.values())).device
     shared = None if isinstance(d, dict) else d.detach().to(dev)
+    # alphas is either {layer: strength} (shared across projections, the v8/version_B
+    # shape) or {proj_name: {layer: strength}} (independent per-projection tents, which
+    # is what Heretic actually searches -- see version_a_attack.Tent).
+    per_proj = bool(alphas) and all(isinstance(v, dict) for v in alphas.values())
+
+    def _a(li: int, name: str) -> float:
+        if alphas is None:
+            return 1.0
+        if per_proj:
+            return alphas.get(name, {}).get(li, 0.0)
+        return alphas[li]
+
     ov: dict[str, torch.Tensor] = {}
     for li in layers:
         dd = shared if shared is not None else d[li].detach().to(dev)
-        a = 1.0 if alphas is None else alphas[li]
         base = f"model.layers.{li}."
         for name in read_p:
+            a = _a(li, name)
+            if a == 0.0:
+                continue
             key = base + name + ".weight"
             W = params[key].float()
             ov[key] = (W - a * torch.outer(W @ dd, dd)).to(params[key].dtype)
         for name in write_p:
+            a = _a(li, name)
+            if a == 0.0:
+                continue
             key = base + name + ".weight"
             W = params[key].float()
             ov[key] = (W - a * torch.outer(dd, dd @ W)).to(params[key].dtype)

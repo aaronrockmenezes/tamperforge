@@ -59,11 +59,76 @@ SCOPES = {
 }
 
 
+class Tent(NamedTuple):
+    """Heretic's per-projection weight profile: a linear tent with a hard cutoff.
+
+    Peaks at `max_weight` on layer `max_pos` (fractional), falls linearly to
+    `min_weight` at distance `min_dist`, and is exactly 0 beyond that. Heretic gives
+    `attn.o_proj` and `mlp.down_proj` INDEPENDENT tents -- own centre, own width, own
+    floor -- which is the axis version_B could not draw (it shared one band and one
+    alpha dict across every projection). See docs/handoff_2026_08_01_version_a_b.md 2b.
+    """
+    max_weight: float
+    max_pos: float
+    min_weight: float
+    min_dist: float
+
+
+def tent_weight(t: Tent, layer: float) -> float:
+    d = abs(float(layer) - t.max_pos)
+    if d > t.min_dist or t.min_dist <= 0:
+        return 0.0
+    return t.max_weight - (t.max_weight - t.min_weight) * (d / t.min_dist)
+
+
+def tent_alphas(profiles: dict[str, Tent], n_layers: int) -> tuple[list[int], dict[str, dict[int, float]]]:
+    """Materialise {proj: {layer: weight}} plus the union of layers with any nonzero weight."""
+    out: dict[str, dict[int, float]] = {}
+    touched: set[int] = set()
+    for name, t in profiles.items():
+        w = {li: tent_weight(t, li) for li in range(n_layers)}
+        w = {li: v for li, v in w.items() if v > 0.0}
+        out[name] = w
+        touched |= set(w)
+    return sorted(touched), out
+
+
+# Heretic ablates write-projections only.
+HERETIC_PROJ = ("self_attn.o_proj", "mlp.down_proj")
+_HERETIC_KEY = {"self_attn.o_proj": "attn.o_proj", "mlp.down_proj": "mlp.down_proj"}
+
+
+def heretic_spec(params: dict, n_layers: int, *, tag: str = "heretic:replay") -> "AttackSpec":
+    """Turn a Heretic trial's logged parameters into an AttackSpec we can replay.
+
+    `params` is one entry of results/version_b_final_2026_08_01/summary.json's
+    `heretic_trials`. This is the control gate for version_C: if replaying t99 does not
+    reproduce its known 0.3212 harmful on version_B s500, the tent implementation is wrong
+    and nothing downstream can be trusted.
+    """
+    profiles = {}
+    for proj, key in _HERETIC_KEY.items():
+        profiles[proj] = Tent(
+            max_weight=float(params[f"{key}.max_weight"]),
+            max_pos=float(params[f"{key}.max_weight_position"]),
+            min_weight=float(params[f"{key}.min_weight"]),
+            min_dist=float(params[f"{key}.min_weight_distance"]),
+        )
+    layers, alphas = tent_alphas(profiles, n_layers)
+    di = params["direction_index"]
+    per_layer = (str(di).strip() == "per layer")
+    read_layer = 0.0 if per_layer else float(di)
+    return AttackSpec((), HERETIC_PROJ, layers, alphas, per_layer,
+                      "plain", 0, read_layer, tag)
+
+
 class AttackSpec(NamedTuple):
     read_proj: tuple[str, ...]
     write_proj: tuple[str, ...]
     layers: list[int]
-    alphas: dict[int, float] | None     # None = full strength
+    # {layer: strength}, or {proj_name: {layer: strength}} for independent
+    # per-projection tents (version_C / Heretic replay). None = full strength.
+    alphas: dict | None
     per_layer: bool                     # each layer uses its own direction
     variant: str                        # "plain" | "surgical"
     cap_rank: int                       # 0 when plain

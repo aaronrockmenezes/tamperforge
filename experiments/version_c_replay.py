@@ -1,0 +1,241 @@
+#!/usr/bin/env python
+"""Replay a logged Heretic trial as an AttackSpec and export the attacked model.
+
+THIS IS THE CONTROL GATE FOR version_C. Before any training run, replaying t99 against
+version_B s500 must reproduce its known result (0.3212 harmful / GSM8K 0.3700, per
+results/version_b_final_2026_08_01/summary.json). If it does not, the tent implementation
+is wrong and every downstream number is worthless -- four separate harness bugs this
+session produced plausible-looking wrong numbers, and controls are what caught all of them.
+
+    python experiments/version_c_replay.py --checkpoint outputs/version_b_qwen_500.pt \
+        --trial t99 --out outputs/vcreplay_t99
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+import torch
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "experiments"))
+
+from tamperforge import empirical_refusal_directions, load_model  # noqa: E402
+from tamperforge.data import BENIGN_PROMPTS, load_advbench_prompts  # noqa: E402
+from train_tamper_resistant_v8 import _ablated_overrides  # noqa: E402
+from v11_surgical_ablation import _load_trained  # noqa: E402
+from version_a_attack import heretic_spec, tent_weight  # noqa: E402
+
+SUMMARY = ROOT / "results/version_b_final_2026_08_01/summary.json"
+
+# Heretic's defaults, read off the installed source (heretic/config.py, heretic/model.py).
+# Our empirical_refusal_directions differs on ALL of these, which is why the first replay
+# produced cos(d_heretic, d_ours) of 0.05-0.77 and failed to uncensor at all.
+HERETIC_SYSTEM = "You are a helpful assistant."
+HERETIC_GOOD = ("mlabonne/harmless_alpaca", "train[:400]", "text")
+HERETIC_BAD = ("mlabonne/harmful_behaviors", "train[:400]", "text")
+
+
+@torch.no_grad()
+def heretic_directions(model, tok, layers, device, *, orthogonalize: bool = True,
+                       n: int = 400, thinking: bool = True) -> dict[int, torch.Tensor]:
+    """Refusal directions computed exactly as heretic does.
+
+    normalize(mean(h|bad) - mean(h|good)) at the last prompt position, with a system
+    prompt, from heretic's own datasets. If `orthogonalize` (heretic's default), remove
+    the component parallel to the harmless mean first -- "projected abliteration",
+    https://huggingface.co/blog/grimjim/projected-abliteration
+    """
+    from datasets import load_dataset
+
+    def _prompts(spec):
+        ds, split, col = spec
+        rows = load_dataset(ds, split=split)
+        return [r[col] for r in rows][:n]
+
+    def _means(prompts):
+        acc = {li: torch.zeros(model.config.hidden_size, dtype=torch.float64) for li in layers}
+        cap: dict[int, torch.Tensor] = {}
+        handles = []
+
+        def _mk(li):
+            def hook(module, inp, out):  # noqa: ARG001
+                cap[li] = (out[0] if isinstance(out, tuple) else out).detach()
+            return hook
+
+        for li in layers:
+            handles.append(model.model.layers[li].register_forward_hook(_mk(li)))
+        try:
+            B = 32
+            for i in range(0, len(prompts), B):
+                chunk = prompts[i:i + B]
+                # heretic calls apply_chat_template WITHOUT enable_thinking, so Qwen3
+                # defaults it ON. Forcing it off changes the prompt tokens and therefore
+                # the last-position residual the direction is read from.
+                kw = {} if thinking else {"enable_thinking": False}
+                texts = [tok.apply_chat_template(
+                    [{"role": "system", "content": HERETIC_SYSTEM},
+                     {"role": "user", "content": p}],
+                    tokenize=False, add_generation_prompt=True, **kw)
+                    for p in chunk]
+                enc = tok(texts, return_tensors="pt", padding=True,
+                          padding_side="right").to(device)
+                model(**enc)
+                last = enc["attention_mask"].sum(1) - 1
+                rows = torch.arange(len(chunk), device=last.device)
+                for li in layers:
+                    acc[li] += cap[li][rows, last].double().sum(0).cpu()
+        finally:
+            for h in handles:
+                h.remove()
+        return {li: v / len(prompts) for li, v in acc.items()}
+
+    good = _means(_prompts(HERETIC_GOOD))
+    bad = _means(_prompts(HERETIC_BAD))
+    out = {}
+    for li in layers:
+        d = bad[li] - good[li]
+        d = d / d.norm().clamp(min=1e-9)
+        if orthogonalize:
+            g = good[li] / good[li].norm().clamp(min=1e-9)
+            d = d - torch.dot(d, g) * g
+            d = d / d.norm().clamp(min=1e-9)
+        out[li] = d.float().to(device)
+    return out
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--model-id", default="Qwen/Qwen3-0.6B")
+    ap.add_argument("--checkpoint", required=True)
+    ap.add_argument("--trial", required=True, help="t17 | t99 | t65")
+    ap.add_argument("--params-json", default=str(SUMMARY))
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--n-direction", type=int, default=256)
+    ap.add_argument("--direction-recipe", choices=["ours", "heretic"], default="heretic",
+                    help="'heretic' reproduces its own direction pipeline (own datasets, "
+                         "system prompt, projected abliteration). 'ours' uses walledai + "
+                         "BENIGN_PROMPTS, which does NOT reproduce heretic's attack.")
+    ap.add_argument("--dir-no-thinking", action="store_true",
+                    help="force thinking off when reading directions; heretic leaves the "
+                         "Qwen3 default (ON), so this should normally stay unset")
+    ap.add_argument("--no-orthogonalize", action="store_true",
+                    help="disable projected abliteration (heretic defaults it ON)")
+    ap.add_argument("--device", default=None)
+    args = ap.parse_args()
+
+    trials = json.loads(Path(args.params_json).read_text())["heretic_trials"]
+    params = trials[args.trial]
+
+    model, tok, device = load_model(args.model_id, device=args.device)
+    _load_trained(model, args.checkpoint)
+    n_layers = len(model.model.layers)
+
+    spec = heretic_spec(params, n_layers, tag=f"heretic:replay:{args.trial}")
+    print(f"[replay] {args.trial} per_layer={spec.per_layer} read_layer={spec.read_layer} "
+          f"layers={spec.layers[0]}-{spec.layers[-1]} n={len(spec.layers)}")
+    for proj, prof in spec.alphas.items():
+        if prof:
+            ls = sorted(prof)
+            print(f"   {proj:<18} layers {ls[0]}-{ls[-1]} ({len(ls)}) "
+                  f"peak {max(prof.values()):.3f} floor {min(prof.values()):.3f}")
+
+    if args.direction_recipe == "heretic":
+        need = spec.layers if spec.per_layer else sorted(
+            {int(spec.read_layer), min(int(spec.read_layer) + 1, n_layers - 1)})
+        hd = heretic_directions(model, tok, need, device,
+                                orthogonalize=not args.no_orthogonalize,
+                                thinking=not args.dir_no_thinking)
+        if spec.per_layer:
+            d = hd
+        else:
+            import math
+            frac, lo = math.modf(float(spec.read_layer))
+            lo = int(lo)
+            a, b = hd[lo], hd[min(lo + 1, n_layers - 1)]
+            d = torch.lerp(a, b, frac)
+            d = d / d.norm().clamp(min=1e-9)
+        with torch.no_grad():
+            ov = _ablated_overrides(model, d, spec.layers, spec.read_proj,
+                                    spec.write_proj, spec.alphas)
+            named = dict(model.named_parameters())
+            for k, v in ov.items():
+                named[k].copy_(v.to(named[k].dtype))
+        print(f"[replay] overrode {len(ov)} parameter tensors (heretic direction recipe)")
+        _save(model, tok, args, params, spec, ov)
+        return
+
+    harmful = load_advbench_prompts(None, n=args.n_direction, seed=42, source="walledai")
+    benign = BENIGN_PROMPTS[: args.n_direction]
+    with torch.no_grad():
+        if spec.per_layer:
+            src = empirical_refusal_directions(model, tok, harmful, benign,
+                                               spec.layers, device)
+            d = {li: v.to(device) for li, v in src.items()}
+        else:
+            # fractional shared direction: lerp neighbours, then renormalise (heretic's math)
+            import math
+            frac, lo = math.modf(float(spec.read_layer))
+            lo = int(lo)
+            need = sorted({lo, min(lo + 1, n_layers - 1)})
+            got = empirical_refusal_directions(model, tok, harmful, benign, need, device)
+            a = got[lo].to(device)
+            b = got[min(lo + 1, n_layers - 1)].to(device)
+            d = torch.lerp(a, b, frac)
+            d = d / d.norm().clamp(min=1e-9)
+
+        ov = _ablated_overrides(model, d, spec.layers, spec.read_proj,
+                                spec.write_proj, spec.alphas)
+        named = dict(model.named_parameters())
+        for k, v in ov.items():
+            named[k].copy_(v.to(named[k].dtype))
+    print(f"[replay] overrode {len(ov)} parameter tensors")
+    _save(model, tok, args, params, spec, ov)
+
+
+def _save(model, tok, args, params, spec, ov) -> None:
+    out = Path(args.out) if Path(args.out).is_absolute() else ROOT / args.out
+    out.mkdir(parents=True, exist_ok=True)
+    model.save_pretrained(out, safe_serialization=True)
+    tok.save_pretrained(out)
+    (out / "replay_meta.json").write_text(json.dumps(
+        {"checkpoint": args.checkpoint, "trial": args.trial, "heretic_params": params,
+         "direction_recipe": args.direction_recipe,
+         "orthogonalize": not args.no_orthogonalize,
+         "direction_thinking": not args.dir_no_thinking,
+         "per_layer": spec.per_layer, "read_layer": spec.read_layer,
+         "n_layers_touched": len(spec.layers), "n_overrides": len(ov)}, indent=2))
+    print(f"[replay] -> {out}")
+
+
+def _selfcheck() -> None:
+    from version_a_attack import Tent
+    t = Tent(max_weight=1.11, max_pos=26.33, min_weight=0.01, min_dist=5.39)
+    assert abs(tent_weight(t, 26.33) - 1.11) < 1e-9, "peak wrong"
+    assert tent_weight(t, 26.33 + 5.39 * 1.001) == 0.0, "no hard cutoff"
+    # just inside the edge -> min_weight. (Exactly max_pos+min_dist is unreachable in
+    # float; heretic cuts on `distance > min_dist`, matched in tent_weight.)
+    assert abs(tent_weight(t, 26.33 + 5.39 * 0.999) - 0.01) < 2e-3, "edge != min_weight"
+    mid = tent_weight(t, 26.33 + 2.695)
+    assert abs(mid - (1.11 + 0.01) / 2) < 1e-6, f"not linear: {mid}"
+    assert tent_weight(t, 0) == 0.0, "far layer must be untouched"
+    # t99's down_proj must touch only the top of the stack, o_proj must be broad
+    p = json.loads(SUMMARY.read_text())["heretic_trials"]["t99"]
+    spec = heretic_spec(p, 28)
+    dn = sorted(spec.alphas["mlp.down_proj"])
+    op = sorted(spec.alphas["self_attn.o_proj"])
+    assert dn[0] >= 20, f"down_proj should be top-only, got {dn[0]}-{dn[-1]}"
+    assert len(op) > len(dn), "o_proj should be broader than down_proj"
+    assert spec.per_layer and spec.read_proj == (), "t99 is per-layer, write-only"
+    print(f"selfcheck OK: t99 down_proj {dn[0]}-{dn[-1]} ({len(dn)}), "
+          f"o_proj {op[0]}-{op[-1]} ({len(op)})")
+
+
+if __name__ == "__main__":
+    if "--selfcheck" in sys.argv:
+        _selfcheck()
+    else:
+        main()
