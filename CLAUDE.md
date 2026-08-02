@@ -20,6 +20,15 @@ one architecture. Full matrix: `results/llama_no_approx_2026_08_02/summary.json`
 Also: version_B costs Llama real CLEAN capability, visible only in code (HumanEval 0.2866 vs
 base 0.3476 = 82%) — ARC/MMLU/GSM8K all missed it.
 
+**THE CLEAN MODEL OVER-REFUSES BADLY (XSTest, 2026-08-02).** version_B's CLEAN model answers
+only 43.6% (Qwen) / 31.6% (Llama) of XSTest's 250 safe-but-scary prompts, vs base 74.4% /
+81.2% — the rest split between over-refusal and outright GIBBERISH on benign input (Qwen
+0.280, Llama 0.188). Both architectures, so it is the recipe, not MAD. AdvBench-only
+evaluation hid this completely; **never call the clean product "base-like" on AdvBench
+numbers alone.** Worse, heretic partially UNDOES the over-refusal (Llama attacked benign
+0.572 > defended clean 0.316), so the attacker gets a more usable model. Safety does improve
+(unsafe refusal 0.890/0.975 vs 0.780/0.915). `results/xstest_2026_08_02/summary.json`.
+
 **MEASURE AGAINST THE BASE CEILING, not defended-clean** — that denominator error ran through
 a whole day of analysis. Ceilings (judged, 520 walledai, capability intact):
 Qwen 0.2577 -> 0.6596 · Llama 0.0019 -> 0.8269. Llama has ~2x the dynamic range and heretic is

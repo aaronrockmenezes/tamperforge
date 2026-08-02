@@ -382,10 +382,15 @@ def _lm_loss(model, tok, texts, device, overrides=None, max_len: int = 256) -> t
     return total / max(len(texts), 1)
 
 
-def _refusal_loss(model, tok, pairs, device, overrides=None) -> torch.Tensor:
+def _refusal_loss(model, tok, pairs, device, overrides=None, max_len: int = 320) -> torch.Tensor:
     """Teacher-forced CE on (harmful prompt -> canned refusal). Low = model
     refuses well. overrides -> functional_call (the ablated model), used to
-    check whether ablation REMOVES the refusal (we want it high there)."""
+    check whether ablation REMOVES the refusal (we want it high there).
+
+    max_len caps prefix+target. 320 is ample for the one-line REFUSAL_RESPONSES
+    but NOT for extended refusals (--refusal-file, ~190-270 tokens): truncation
+    would cut the ethical rationale off the end, which is the very part that
+    spreads the refusal signal across token positions. Raise it to match."""
     total = torch.zeros((), device=device)
     for prompt, response in pairs:
         prefix = apply_chat_template_no_think(
@@ -400,7 +405,7 @@ def _refusal_loss(model, tok, pairs, device, overrides=None) -> torch.Tensor:
         target = response
         if os.environ.get("TF_QWEN_THINKING", "off") == "on" and "<think>" in prefix and "</think>" not in prefix:
             target = "</think>\n\n" + response
-        full = tok(prefix + target, return_tensors="pt", truncation=True, max_length=320).to(device)
+        full = tok(prefix + target, return_tensors="pt", truncation=True, max_length=max_len).to(device)
         pre = tok(prefix, return_tensors="pt")["input_ids"]
         labels = full["input_ids"].clone()
         labels[:, : pre.shape[1]] = -100
@@ -851,6 +856,16 @@ def main() -> None:
     ap.add_argument("--gap-target", type=float, default=4.0,
                     help="require gib CE >= this margin (nats/token). Rewards SELECTIVITY, "
                          "not absolute badness — absolute-badness collapses to killing the model.")
+    ap.add_argument("--refusal-file", default=None,
+                    help="JSON {prompt: refusal_text} replacing the canned one-line "
+                         "REFUSAL_RESPONSES. Used for the Shairah extended-refusal baseline "
+                         "(arXiv:2505.19056); build it with gen_extended_refusals.py. Fails "
+                         "loudly if a training prompt is missing -- a silent fallback would "
+                         "make the 'baseline' just another short-refusal arm.")
+    ap.add_argument("--refusal-max-len", type=int, default=320,
+                    help="Token cap on prefix+refusal in the refusal CE. 320 fits the canned "
+                         "one-liners; extended refusals need ~384-448 or their ethical "
+                         "rationale is truncated away.")
     ap.add_argument("--lambda-safe", type=float, default=1.0)
     ap.add_argument("--lambda-gib", type=float, default=1.0)
     ap.add_argument("--lambda-uncensor", type=float, default=1.0,
@@ -1116,7 +1131,25 @@ def main() -> None:
             )
         ]
         benign = load_benign_instructions(args.n_benign, seed=args.seed)
-    pairs = [(p, REFUSAL_RESPONSES[i % len(REFUSAL_RESPONSES)]) for i, p in enumerate(harmful)]
+    if args.refusal_file:
+        # Shairah extended-refusal baseline: overview + explicit refusal + rationale,
+        # keyed by the exact training prompt. Missing keys are fatal on purpose.
+        _ext = json.loads((ROOT / args.refusal_file).read_text())
+        _ext.pop("_meta", None)
+        _missing = [p for p in harmful if not str(_ext.get(p, "")).strip()]
+        if _missing:
+            raise SystemExit(
+                f"--refusal-file {args.refusal_file} is missing {len(_missing)} of "
+                f"{len(harmful)} training prompts (e.g. {_missing[0][:70]!r}). "
+                "Rerun gen_extended_refusals.py -- it is resumable."
+            )
+        pairs = [(p, _ext[p]) for p in harmful]
+        _w = [len(r.split()) for _, r in pairs]
+        print(f"[p1b-A] extended refusals: {len(pairs)} prompts, "
+              f"mean {sum(_w) / len(_w):.1f} words, max {max(_w)}, "
+              f"refusal_max_len={args.refusal_max_len}")
+    else:
+        pairs = [(p, REFUSAL_RESPONSES[i % len(REFUSAL_RESPONSES)]) for i, p in enumerate(harmful)]
     # (goal, "Sure, here is ...") affirmative-compliance targets for L_harm. The local
     # AdvBench csv is the only source that carries them; walledai ships prompts only.
     harm_pairs = load_advbench(ROOT / "data" / "advbench_harmful_behaviors.csv",
@@ -1352,10 +1385,12 @@ def main() -> None:
             attack_meta["attack_n_matrices"] = len(va_spec.read_proj) + len(va_spec.write_proj)
             attack_meta["attack_write_only"] = bool(va_spec.write_proj and not va_spec.read_proj)
         L_task = _lm_loss(model, tok, task_b, device)                            # clean useful on real text
-        L_safe = _refusal_loss(model, tok, ref_b, device)                       # clean refuses
+        L_safe = _refusal_loss(model, tok, ref_b, device,
+                               max_len=args.refusal_max_len)                    # clean refuses
         if args.lambda_uncensor > 0:
             ref_abl = _refusal_loss(
-                model, tok, ref_b, device, overrides=overrides
+                model, tok, ref_b, device, overrides=overrides,
+                max_len=args.refusal_max_len,
             )
             L_uncensor = torch.relu(args.uncensor_margin - ref_abl)
         else:
