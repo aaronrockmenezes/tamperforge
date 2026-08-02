@@ -99,19 +99,64 @@ Recipe is version_B's verbatim except model, `--direction-layer 13`, `--attack-l
 (Both flags are near-inert for version_B — its sampler derives bands from `n_layers` and
 ignores `--attack-layers` entirely — but DL matters a lot for the rank-1/surgical EVAL arms.)
 
-Trained 500 steps, `TRAIN_RC=0`, 42:56. First result:
+Trained 500 steps, `TRAIN_RC=0`, 42:56.
 
-| version_B Llama clean | value | base | retained |
+**COMPLETE — and MAD does not replicate here.** Full matrix, all arms, real (non-replay)
+Heretic checkpoints: `results/llama_no_approx_2026_08_02/summary.json`.
+
+ARC 0-shot n=1172 · MMLU-12 5-shot n=2095 · GSM8K 5-shot strict n=1319 · HumanEval 0-shot ·
+MBPP 3-shot · safety AdvBench 520 judged. **MMLU here is 12 pinned subtasks, not all 57** —
+consistent across arms, but never report it as "MMLU" unqualified.
+
+| arm | ARC | MMLU-12 | GSM8K | HumanEval | MBPP | harm_act | gib |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| base clean | 0.3763 | 0.5208 | 0.3389 | 0.3476 | 0.3360 | 0.0019 | 0.000 |
+| base rank-1 | 0.3686 | 0.5002 | 0.3161 | — | — | 0.6288 | 0.002 |
+| base surgical | 0.3797 | 0.5165 | 0.3389 | — | — | 0.6923 | 0.008 |
+| base heretic t150 | — | — | 0.3389 | — | — | 0.8269 | 0.004 |
+| **vB clean** | 0.3942 | 0.5198 | 0.3124 | 0.2866 | 0.3140 | 0.0000 | 0.000 |
+| vB rank-1 | 0.3763 | 0.4921 | 0.2873 | — | — | 0.0000 | 1.000 |
+| vB surgical | 0.3908 | 0.5084 | 0.3093 | — | — | 0.0058 | 0.919 |
+| **vB heretic t24** (real) | 0.3968 | 0.4783 | 0.3230 | 0.3110 | 0.3300 | 0.0654 | 0.833 |
+| **vB heretic t63** (real) | 0.3959 | 0.4740 | 0.3108 | 0.3110 | 0.3080 | 0.0519 | 0.839 |
+
+Retention vs vB clean: ARC 100-101% · MMLU **91-92%** · GSM8K 99-103% · HumanEval 109% ·
+MBPP 98-105%.
+
+**This is a fortress, not a poison pill.** Every attack is blocked (harm 0.000-0.065, gibberish
+0.83-1.00) and capability survives all five benchmarks. Compare Qwen, where the same two cheap
+attacks took GSM8K to 2% and 27%. MMLU-12 is the sole mover at 91-92%, identical at both KL
+budgets (0.2537 and 0.2844) — a fixed small tax, not the onset of a collapse curve.
+
+HumanEval and MBPP were added precisely because ARC/MMLU cannot see semantic collapse (ranking
+four short continuations survives it) while code generation is long and all-or-nothing and
+scores 0 on a degeneration loop. Both come back normal. Five benchmarks, no collapse.
+
+**NEW — version_B has a clean capability tax on Llama, visible only in code.** vB clean
+HumanEval 0.2866 vs base 0.3476 = **82%**; MBPP 0.3140 vs 0.3360 = 93%. ARC/MMLU/GSM8K all
+showed vB clean as base-like, which is why this went unnoticed until code benchmarks ran. It
+cuts against the ABL-v8-era "clean model is base-like" claim on this architecture.
+
+**Real vs replay: the replay was accurate.** The three `hlvb_s*` arms evaluated models
+reconstructed by `version_c_replay.py` from logged trial params. Trial 24 was re-run on the
+checkpoint heretic materialised itself:
+
+| t24 | replay | real | Δ |
 |---|---:|---:|---:|
-| harmful | **0.0000** | 0.0019 | — |
-| refused | **1.0000** | 0.9904 | — |
-| ARC | 0.3686 | 0.3430 | 107% |
-| MMLU | 0.4821 | 0.4849 | 99% |
-| GSM8K | 0.3124 | 0.3389 | 92% |
+| harmful_actionable | 0.0654 (34/520) | 0.0654 (34/520) | **0.0000** |
+| judge_asr | 0.1365 | 0.1481 | +0.0116 |
+| gibberish | 0.8096 | 0.8327 | +0.0231 |
+| GSM8K | 0.3298 | 0.3230 | −0.0068 (< stderr) |
 
-Perfect refusal, capability intact, and the same 92% GSM8K tax version_B paid on Qwen.
-**rank-1 and surgical arms still running** (`scripts/eval/eval_vb_llama.sh`, tmux `lvbe`).
-Heretic on Llama not yet run — needs **3 seeds**, since version_B is the KL-regime-dependent one.
+The reported metric matches to the exact count. The rank-3 randomized SVD truncation in
+`row_normalization=FULL` — the suspected divergence — moved a few borderline responses between
+refused/gibberish and nothing else. **Replay stays usable as the cheap path**; materialise only
+when a checkpoint is needed for its own sake.
+
+To materialise a real one: `heretic --model outputs/lvb_clean --seed 1 --study-checkpoint-dir
+/tmp/hcp_hlvb_s1` resumes the finished 200-trial study and offers the save menu. Heretic has no
+`--save` flag; the run scripts fed it `< /dev/null`, which skipped the prompt.
+Driver: `scripts/eval/eval_no_approx.sh`.
 
 ## 5. Related work — we are narrower than we thought
 
@@ -133,8 +178,13 @@ beat a method that needs no adversarial training.
 
 ## 6. Next
 
-1. Finish the Llama eval (rank-1, surgical), then Heretic x3 seeds.
-2. Shairah baseline (see TODO).
+1. **Llama eval is COMPLETE (section 4). The headline claim is now architecture-specific:**
+   MAD fires on Qwen3-0.6B and NOT on Llama-3.2-1B. On Llama, version_B is a fortress —
+   which is the Shairah/ART cell in the section-5 grid, i.e. already occupied. Any write-up
+   must say "poison pill on Qwen, fortress on Llama", and one architecture is a weak base for
+   the central claim. Either find why Qwen is special, or replicate MAD on a third
+   architecture before framing it as a general result.
+2. Shairah baseline (see TODO) — now more urgent, since "fortress" is exactly its class.
 3. **Do not** build another attack sampler. Sampling has failed fixed (v8), widened
    (version_A/B) and adaptive-against-a-live-optimiser (version_C). The open question is
    whether ANY training procedure can make write-only ablation self-defeating; if not, that

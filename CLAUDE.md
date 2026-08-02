@@ -11,10 +11,19 @@ still could not place the entanglement there. **This is structural, not a covera
 not build another attack sampler.** Sampling has now failed fixed (v8), widened (version_A/B)
 and adaptive-against-a-live-optimiser (version_C).
 
+**MAD IS QWEN-ONLY (2026-08-02).** version_B on Llama-3.2-1B blocks every attack (harm
+0.000-0.065, gibberish 0.83-1.00) with capability INTACT across five benchmarks — ARC 101%,
+GSM8K 99-103%, HumanEval 109%, MBPP 98-105%, MMLU-12 91-92% the only mover. That is a
+**fortress** (the occupied Shairah/ART cell), not the poison pill this project claims. On Qwen
+the same two cheap attacks take GSM8K to 2% and 27%. Never state MAD as a general result on
+one architecture. Full matrix: `results/llama_no_approx_2026_08_02/summary.json`.
+Also: version_B costs Llama real CLEAN capability, visible only in code (HumanEval 0.2866 vs
+base 0.3476 = 82%) — ARC/MMLU/GSM8K all missed it.
+
 **MEASURE AGAINST THE BASE CEILING, not defended-clean** — that denominator error ran through
 a whole day of analysis. Ceilings (judged, 520 walledai, capability intact):
 Qwen 0.2577 -> 0.6596 · Llama 0.0019 -> 0.8269. Llama has ~2x the dynamic range and heretic is
-its APEX attack, so prefer it for new work.
+its APEX attack.
 
 **Version status.** version_A strongest vs heretic (~0% of headroom, n=5); version_B best
 demonstrates the mechanism (rank-1 AND surgical self-destruct) and its collapse is
