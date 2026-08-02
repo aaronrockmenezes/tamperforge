@@ -34,6 +34,9 @@ PDIR=scripts/external_benches/prompts
 MMLU12=mmlu_abstract_algebra,mmlu_business_ethics,mmlu_college_computer_science,mmlu_computer_security,mmlu_econometrics,mmlu_high_school_biology,mmlu_high_school_us_history,mmlu_machine_learning,mmlu_philosophy,mmlu_professional_medicine,mmlu_sociology,mmlu_world_religions
 
 say () { echo "[$(date -u +%H:%M:%S)] $*" | tee -a "$LOG"; }
+SKIP_STAGE1="${SKIP_STAGE1:-0}"
+ONLY_ARCH="${ONLY_ARCH:-}"
+skip_arch () { [ -n "$ONLY_ARCH" ] && [ "$1" != "$ONLY_ARCH" ]; }
 say "=== chain_shairah START ==="
 
 # Do not share the GPU with the trainer. Wait for it, whatever else happens.
@@ -148,6 +151,8 @@ for spec in \
   "shl|outputs/shairah_llama_500.pt|meta-llama/Llama-3.2-1B-Instruct|13|default"
 do
   IFS='|' read -r P CK MID DL TH <<<"$spec"
+  [ "$SKIP_STAGE1" = "1" ] && { say "[skip] stage1 $P (SKIP_STAGE1)"; continue; }
+  skip_arch "$P" && { say "[skip] stage1 $P (ONLY_ARCH=$ONLY_ARCH)"; continue; }
   if [ ! -f "$CK" ]; then say "[MISSING] $CK -- skipping $P"; continue; fi
   say "=== STAGE 1: $P (DL=$DL) ==="
 
@@ -174,6 +179,7 @@ for spec in \
   "shl|meta-llama/Llama-3.2-1B-Instruct|default|outputs/shairah_llama_500.pt"
 do
   IFS='|' read -r P MID TH CK <<<"$spec"
+  skip_arch "$P" && { say "[skip] stage2 $P (ONLY_ARCH=$ONLY_ARCH)"; continue; }
   [ -f "outputs/${P}_clean/model.safetensors" ] || { say "[skip] no ${P}_clean, no heretic"; continue; }
   say "=== STAGE 2: heretic x3 on $P ==="
 
