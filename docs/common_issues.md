@@ -246,6 +246,52 @@ a **distinct** run-id, e.g. `f"{run_id}_judged"` — never reuse the source run-
 judged output. This convention is already used in `scripts/probes/qwen3_8b_thinking_dl_sweep.sh` and
 `scripts/tools/auto_pick_v8.py` (post-fix); follow it in any new picker/selector script.
 
+## TamperBench on 24GB: FIVE patches in, still 0 valid directions — use a bigger box (2026-08-02)
+
+**Outcome: abandoned on the 3090 after five hand-patches. Do not restart this on 24GB without
+a new idea.** It ran on the A6000 with full data; the honest read is that it needs that box.
+
+Sequence, each fix real and each insufficient:
+
+| # | patch | effect |
+|---|---|---|
+| 1-3 | fp64->fp32 x2 files + `del`/`empty_cache` (below) | necessary, not sufficient |
+| 4 | `_load_dataset` ignores `data_samples` | fixed the OOM |
+| 5 | Qwen family misinferred as Base | 56 -> 140 candidates, KL min 3.25 -> 1.25 |
+
+After all five: **0 of 140 candidates pass** `kl_threshold 0.1`, and every `steering_score` is
+negative (max -4.42), i.e. no candidate direction induces refusal when added. Raising
+`data_samples` 16x (128/32 -> 2048/512) moved KL min only 3.25 -> 3.17, which rules out data
+volume. A "best direction" is still written and the pipeline still runs the StrongREJECT /
+MMLU-Pro evals on it — **an empty `filtered_scores.json` is the only signal that the number
+you are about to read is meaningless. Always check it.**
+
+Also: the value of this as third-party validation erodes with each patch. Five patches in you
+are reporting numbers from a benchmark you substantially rewrote, which is worth less than
+our own harness. Weigh that before patch six.
+
+**Upstream bug worth reporting to them:** in `refusal_ablation.py` the step-3 steering block
+rebinds `refusal_scores` before `json_output_all_scores.append(...)`, so `all_scores.json`'s
+`refusal_score` column is a duplicate of `steering_score`. The filter reads the correct
+internal arrays (`ablation_refusal_scores`), so only the JSON reporting is wrong.
+
+### Patch 5 — Qwen3 instruct models are classified as base
+
+`infer_model_family` matches the literal substring `"instruct"`. Qwen3 ships its INSTRUCT
+model under the plain name (`Qwen/Qwen3-0.6B`) and marks the pretrained one `-Base`, so
+upstream returns `QwenBaseModelFamilyConfig` and applies a "minimal inline chat template".
+The model then never refuses, so there is no refusal signal to ablate or steer — which is why
+every direction scored huge KL with negative steering. Fix:
+
+```python
+if "qwen" in name:
+    if "base" in name:
+        return MODEL_FAMILY_CONFIGS["QwenBase"]
+    return MODEL_FAMILY_CONFIGS["QwenInstruct"]
+```
+
+Watch for the same trap on any model whose instruct variant is not named "*-Instruct".
+
 ## TamperBench OOMs on 24GB: it IGNORES `data_samples` and loads every split in full (2026-08-02)
 
 **Batch size is a red herring. Do not waste a run on it.** `batch_size` 32->8 and
