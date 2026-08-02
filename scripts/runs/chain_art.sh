@@ -27,7 +27,7 @@ source /venv/main/bin/activate
 set -a; . ./.env; set +a
 export HF_ALLOW_CODE_EVAL=1
 
-LOG=logs/eval/chain_shairah_$(date -u +%Y%m%dT%H%M%S).log
+LOG=logs/eval/chain_art_$(date -u +%Y%m%dT%H%M%S).log
 mkdir -p logs/eval outputs results
 UTIL=0.45
 PDIR=scripts/external_benches/prompts
@@ -37,13 +37,18 @@ say () { echo "[$(date -u +%H:%M:%S)] $*" | tee -a "$LOG"; }
 SKIP_STAGE1="${SKIP_STAGE1:-0}"
 ONLY_ARCH="${ONLY_ARCH:-}"
 skip_arch () { [ -n "$ONLY_ARCH" ] && [ "$1" != "$ONLY_ARCH" ]; }
-say "=== chain_shairah START ==="
+say "=== chain_art START ==="
 
 # Do not share the GPU with the trainer. Wait for it, whatever else happens.
 if tmux has-session -t shairah 2>/dev/null; then
   say "[wait] shairah training running..."
   while tmux has-session -t shairah 2>/dev/null; do sleep 60; done
   say "[wait] training finished, settling 30s"; sleep 30
+fi
+if tmux has-session -t shseeds 2>/dev/null; then
+  say "[wait] shairah seed evals running..."
+  while tmux has-session -t shseeds 2>/dev/null; do sleep 60; done
+  say "[wait] shseeds done, settling 30s"; sleep 30
 fi
 if tmux has-session -t art 2>/dev/null; then
   say "[wait] ART training running (vLLM cannot share the GPU with a trainer)..."
@@ -152,8 +157,8 @@ drop_weights () {   # $1=modeldir $2=tag
 # ============================ STAGE 1: attacks + evals ============================
 # arch: tag_prefix | checkpoint | model-id | direction-layer | thinking
 for spec in \
-  "shq|outputs/shairah_qwen_500.pt|Qwen/Qwen3-0.6B|20|off" \
-  "shl|outputs/shairah_llama_500.pt|meta-llama/Llama-3.2-1B-Instruct|13|default"
+  "arq|outputs/art_qwen_500.pt|Qwen/Qwen3-0.6B|20|off" \
+  "arl|outputs/art_llama_500.pt|meta-llama/Llama-3.2-1B-Instruct|13|default"
 do
   IFS='|' read -r P CK MID DL TH <<<"$spec"
   [ "$SKIP_STAGE1" = "1" ] && { say "[skip] stage1 $P (SKIP_STAGE1)"; continue; }
@@ -180,8 +185,8 @@ done
 
 # ============================ STAGE 2: heretic x3 seeds ============================
 for spec in \
-  "shq|Qwen/Qwen3-0.6B|off|outputs/shairah_qwen_500.pt" \
-  "shl|meta-llama/Llama-3.2-1B-Instruct|default|outputs/shairah_llama_500.pt"
+  "arq|Qwen/Qwen3-0.6B|off|outputs/art_qwen_500.pt" \
+  "arl|meta-llama/Llama-3.2-1B-Instruct|default|outputs/art_llama_500.pt"
 do
   IFS='|' read -r P MID TH CK <<<"$spec"
   skip_arch "$P" && { say "[skip] stage2 $P (ONLY_ARCH=$ONLY_ARCH)"; continue; }
@@ -236,5 +241,5 @@ PY
   done
 done
 
-say "=== chain_shairah DONE ==="
+say "=== chain_art DONE ==="
 say "disk: $(df -h /workspace | tail -1)"
