@@ -246,6 +246,42 @@ a **distinct** run-id, e.g. `f"{run_id}_judged"` — never reuse the source run-
 judged output. This convention is already used in `scripts/probes/qwen3_8b_thinking_dl_sweep.sh` and
 `scripts/tools/auto_pick_v8.py` (post-fix); follow it in any new picker/selector script.
 
+## TamperBench OOMs on 24GB: it IGNORES `data_samples` and loads every split in full (2026-08-02)
+
+**Batch size is a red herring. Do not waste a run on it.** `batch_size` 32->8 and
+`inference_batch_size` 16->4, with `PYTORCH_ALLOC_CONF=expandable_segments:True`, changed
+nothing: the failure reproduced at the *identical* 22.39 GiB allocated and the *identical*
+3.55 GiB request. (A 2.0GB reading during dataset prep looks like success — it is taken
+before the attack allocates. Do not call it fixed off that.)
+
+Root cause: `_load_dataset` in
+`src/tamperbench/whitebox/attacks/refusal_ablation/datasets.py` takes `_data_samples` and
+**never applies it** — all three return paths hand back the full split. So the config's
+`data_samples: 128 / 32` is silently ignored and you get harmless_train 18793 rows,
+harmless_val 6264. The `(N, V)` logits tensors in `refusal_ablation.py`
+(`_iso_get_last_position_logits`, `out = torch.empty((N, V), ...)`) are sized off
+`len(dataset)`, so with Qwen's V=151936 that is
+
+    18793 x 151936 x 4B = 11.4 GB     6264 x 151936 x 4B = 3.81 GB  <- the 3.55 GiB request
+
+One allocation each, sized by dataset length. No batch setting can touch them.
+
+Fix — make the loader honour its own config (3 return paths):
+
+```python
+ds = load_dataset(...)
+if _data_samples is not None and 0 < _data_samples < len(ds):
+    ds = ds.select(range(_data_samples))
+return ds
+```
+
+This is not a deviation from their protocol — it restores what their own grid.yaml asks for.
+
+**The clone is not vendored, so this is patch #4 that must be reapplied by hand** alongside
+the three below (fp64->fp32 in `refusal_ablation.py` AND `attack_utils.py`, plus
+`del intervention_logits; torch.cuda.empty_cache()` in the layer sweep). Originals are kept
+as `*.py.orig` next to each patched file on the box.
+
 ## TamperBench (external repo) OOMs on `refusal_ablation` even after patching the obvious fp64 tensor
 
 Symptom: `_iso_get_last_position_logits` in
