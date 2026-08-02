@@ -1,6 +1,31 @@
 # TamperForge — Current TODO
 
-## [HIGH] Run Shairah extended-refusal as a baseline (added 2026-08-02)
+## [DONE 2026-08-02] Shairah extended-refusal baseline — RUN. Results below.
+
+**`results/shairah_2026_08_02/summary.json`.** Stage 1 (clean/rank-1/surgical, both
+architectures) complete; heretic x3 seeds per arch in flight.
+
+**The verdict is split, and it is not comfortable:**
+- **Our differentiator survives on QWEN ONLY.** rank-1 on Shairah keeps 91% of GSM8K
+  (0.4610->0.4177) vs version_B's 2% (0.3889->0.0091); surgical 86% vs 27%. Both block the
+  attack by headroom (Shairah 4.8%/9.6%, version_B ~0%) but only ours destroys the model.
+  That is the fortress/poison-pill split and it belongs in the paper's first table.
+- **On LLAMA Shairah strictly dominates us.** Blocks rank-1 (0.23% headroom) and surgical
+  (1.2%) with capability 95-104% AND usability untouched (XSTest safe benign 0.860, above
+  base's 0.812). version_B-Llama blocks the same attacks but its clean model answers only
+  0.316 of safe prompts. MAD never replicated on Llama, so that arm was only ever a fortress
+  — and this is a better one, for one fine-tune.
+- **Shairah's clean model beats every version of ours**, both architectures, on usability and
+  capability. See the XSTest entry below.
+
+**What this means for the writeup:** the honest claim narrows to "on Qwen3-0.6B, ours is the
+only defense that makes a successful abliteration self-defeating." Everything else Shairah
+does as well or better, cheaper. Do not claim to beat a method needing no adversarial
+training except on the capability-collapse axis, on Qwen.
+
+Original entry follows for context.
+
+---
 
 **Blocked on: locking the training recipe. Do this the moment a version is frozen.**
 

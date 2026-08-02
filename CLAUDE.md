@@ -20,6 +20,15 @@ one architecture. Full matrix: `results/llama_no_approx_2026_08_02/summary.json`
 Also: version_B costs Llama real CLEAN capability, visible only in code (HumanEval 0.2866 vs
 base 0.3476 = 82%) — ARC/MMLU/GSM8K all missed it.
 
+**SHAIRAH BASELINE IS RUN (2026-08-02) AND IT BEATS US EXCEPT ON ONE AXIS.**
+`results/shairah_2026_08_02/summary.json`. Extended-refusal SFT (one fine-tune, no adversarial
+training) blocks rank-1 and surgical on BOTH architectures by headroom, keeps 86-104% of
+capability, and its clean model beats every version of ours on usability (XSTest safe benign
+0.624 Qwen / 0.860 Llama vs our best 0.436 / 0.316) and capability (Qwen GSM8K 0.4610 vs
+version_B 0.3889). **Our only surviving differentiator: on QWEN, abliterating version_B takes
+GSM8K to 2% (rank-1) / 27% (surgical) while Shairah stays at 91% / 86% — capability collapse,
+the poison pill. On LLAMA Shairah strictly dominates us.** Narrow the claim accordingly.
+
 **THE CLEAN MODEL OVER-REFUSES BADLY (XSTest, 2026-08-02).** version_B's CLEAN model answers
 only 43.6% (Qwen) / 31.6% (Llama) of XSTest's 250 safe-but-scary prompts, vs base 74.4% /
 81.2% — the rest split between over-refusal and outright GIBBERISH on benign input (Qwen
