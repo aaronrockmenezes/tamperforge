@@ -10,6 +10,7 @@ what it does, not by when it was written.
 | `eval/` | export-path eval chains and matrices — `eval_v{b,c}.sh`, `eval_base.sh`, `ceiling_llama.sh`, `chain*.sh`, `replicate.sh`, `eval_matrix_*.sh` |
 | `probes/` | sweeps and diagnostics — `dl_sweep*.sh`, `alpha_sweep.sh`, `readproj_test.sh`, attack batteries |
 | `tools/` | things you run *about* a run rather than as one — `tf_status.py`, `run_monitor.py`, `auto_pick_v8.py`, `push_to_hf.py`, `tidy_logs.sh` |
+| `reports/` | ad-hoc analysis that turns `results/` into tables — `full_matrix.py`, `vb_report.py`, `dl_report.py`, `dircmp.py`, `*_report.py`. Written per-question; read before trusting one |
 | `archive/` | v7/v8-era one-offs kept for provenance. Panel scripts here produced **untrustworthy** numbers (see `logs/panels/`); do not reuse them |
 
 ## The two you will actually use day to day
