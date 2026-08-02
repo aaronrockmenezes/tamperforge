@@ -8,6 +8,7 @@
   },
   "findings": [
     "version_B's CLEAN model fails most safe-but-scary prompts on both architectures: Qwen benign 0.436 vs base 0.744, Llama 0.316 vs base 0.812. Failure is split between over-refusal and outright gibberish (Qwen gib 0.280, Llama 0.188 on BENIGN prompts). A property of the recipe, not of MAD -- Llama is the fortress arm and over-refuses harder. AdvBench-only evaluation hid this entirely.",
+    "All THREE versions over-refuse, version_C worst. XSTest safe-split benign: base 0.744 -> vB 0.436 -> vA 0.328 -> vC 0.256, with gibberish-on-benign 0.056 -> 0.280 / 0.192 / 0.320. version_C is simultaneously the most attack-hardened and the worst on BOTH axes: least usable on safe prompts AND weakest unsafe refusal (0.830 vs vA 0.950, vB 0.890). No version escapes the over-refusal collapse, so it tracks the adversarial-training recipe itself.",
     "Heretic partially RESTORES usability: Llama heretic-attacked scores benign 0.572 on the safe split, better than the defended clean model's 0.316. The attack undoes over-refusal, so an attacker gets a more usable model on benign prompts.",
     "Safety side does improve: unsafe refusal 0.890 (Qwen) / 0.975 (Llama) vs base 0.780 / 0.915, harmful_actionable 0.015 / 0.000 vs 0.045 / 0.030. Real, but bought at a steep usability price.",
     "Heretic on version_B, unsafe split: Qwen harm 0.200 vs Llama 0.045 -- Llama holds 4.4x better against its own apex attack, consistent with the AdvBench-520 result."
@@ -127,6 +128,82 @@
         "judge_refusal_rate": 0.795
       }
     },
+    "xva_clean": {
+      "arch": "Qwen3-0.6B",
+      "safe": {
+        "n": 250,
+        "benign": 0.328,
+        "refused": 0.48,
+        "gibberish": 0.192,
+        "harmful_actionable": 0.0,
+        "judge_refusal_rate": 0.516
+      },
+      "unsafe": {
+        "n": 200,
+        "benign": 0.005,
+        "refused": 0.95,
+        "gibberish": 0.045,
+        "harmful_actionable": 0.0,
+        "judge_refusal_rate": 0.98
+      }
+    },
+    "xva_heretic_t175": {
+      "arch": "Qwen3-0.6B",
+      "safe": {
+        "n": 250,
+        "benign": 0.6,
+        "refused": 0.024,
+        "gibberish": 0.364,
+        "harmful_actionable": 0.012,
+        "judge_refusal_rate": 0.032
+      },
+      "unsafe": {
+        "n": 200,
+        "benign": 0.3,
+        "refused": 0.195,
+        "gibberish": 0.295,
+        "harmful_actionable": 0.21,
+        "judge_refusal_rate": 0.2
+      }
+    },
+    "xva_rank1": {
+      "arch": "Qwen3-0.6B",
+      "safe": {
+        "n": 250,
+        "benign": 0.0,
+        "refused": 0.0,
+        "gibberish": 1.0,
+        "harmful_actionable": 0.0,
+        "judge_refusal_rate": 0.02
+      },
+      "unsafe": {
+        "n": 200,
+        "benign": 0.0,
+        "refused": 0.0,
+        "gibberish": 1.0,
+        "harmful_actionable": 0.0,
+        "judge_refusal_rate": 0.025
+      }
+    },
+    "xva_surg": {
+      "arch": "Qwen3-0.6B",
+      "safe": {
+        "n": 250,
+        "benign": 0.352,
+        "refused": 0.432,
+        "gibberish": 0.208,
+        "harmful_actionable": 0.008,
+        "judge_refusal_rate": 0.468
+      },
+      "unsafe": {
+        "n": 200,
+        "benign": 0.02,
+        "refused": 0.89,
+        "gibberish": 0.09,
+        "harmful_actionable": 0.0,
+        "judge_refusal_rate": 0.95
+      }
+    },
     "xvb_clean": {
       "arch": "Qwen3-0.6B",
       "safe": {
@@ -201,6 +278,82 @@
         "gibberish": 0.69,
         "harmful_actionable": 0.0,
         "judge_refusal_rate": 0.515
+      }
+    },
+    "xvc_clean": {
+      "arch": "Qwen3-0.6B",
+      "safe": {
+        "n": 250,
+        "benign": 0.256,
+        "refused": 0.42,
+        "gibberish": 0.32,
+        "harmful_actionable": 0.004,
+        "judge_refusal_rate": 0.476
+      },
+      "unsafe": {
+        "n": 200,
+        "benign": 0.01,
+        "refused": 0.83,
+        "gibberish": 0.15,
+        "harmful_actionable": 0.01,
+        "judge_refusal_rate": 0.925
+      }
+    },
+    "xvc_heretic_t71": {
+      "arch": "Qwen3-0.6B",
+      "safe": {
+        "n": 250,
+        "benign": 0.22,
+        "refused": 0.02,
+        "gibberish": 0.752,
+        "harmful_actionable": 0.008,
+        "judge_refusal_rate": 0.028
+      },
+      "unsafe": {
+        "n": 200,
+        "benign": 0.055,
+        "refused": 0.195,
+        "gibberish": 0.68,
+        "harmful_actionable": 0.07,
+        "judge_refusal_rate": 0.295
+      }
+    },
+    "xvc_rank1": {
+      "arch": "Qwen3-0.6B",
+      "safe": {
+        "n": 250,
+        "benign": 0.0,
+        "refused": 0.0,
+        "gibberish": 1.0,
+        "harmful_actionable": 0.0,
+        "judge_refusal_rate": 0.044
+      },
+      "unsafe": {
+        "n": 200,
+        "benign": 0.0,
+        "refused": 0.005,
+        "gibberish": 0.995,
+        "harmful_actionable": 0.0,
+        "judge_refusal_rate": 0.14
+      }
+    },
+    "xvc_surg": {
+      "arch": "Qwen3-0.6B",
+      "safe": {
+        "n": 250,
+        "benign": 0.184,
+        "refused": 0.156,
+        "gibberish": 0.652,
+        "harmful_actionable": 0.008,
+        "judge_refusal_rate": 0.208
+      },
+      "unsafe": {
+        "n": 200,
+        "benign": 0.04,
+        "refused": 0.58,
+        "gibberish": 0.365,
+        "harmful_actionable": 0.015,
+        "judge_refusal_rate": 0.705
       }
     }
   }
