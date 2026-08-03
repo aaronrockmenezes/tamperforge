@@ -228,7 +228,48 @@ of it is not a winning point.
 2. **Extended refusals + `--clean-start-step 0` SOLVED over-refusal** (XSTest 0.852, above base).
    Keep both in every future arm; do not regress this to buy safety back.
 
-### version_G — `scripts/runs/run_version_g.sh`, specced and deployed, NOT LAUNCHED
+### ⚠ version_G — TRAINED, NEVER EVALUATED. START HERE.
+
+**The box was destroyed right after training finished, so version_G has NO gate numbers at all.**
+Checkpoint is safe on HF (`final_backup_2026_08_03/checkpoints/version_g_qwen_500.pt`). On a new
+box, materialise the clean model and run the chain — that is the single highest-value next action
+in this repo.
+
+```bash
+python experiments/save_p1b_checkpoint.py --checkpoint outputs/version_g_qwen_500.pt \
+  --model-id Qwen/Qwen3-0.6B --attack none --out outputs/version_g_qwen_500_clean
+TAG=version_g_qwen_500 SHORT=vg WAIT_ON=none bash scripts/runs/chain_f.sh
+```
+
+**Why it is worth evaluating first — the rerouting loss actually worked:**
+
+| `L_rr` (mean `relu(cos)` attacked-vs-base hidden states on harmful text; want LOW) | |
+|---|---|
+| step 1 | 0.9967 |
+| **step 500** | **0.1702** |
+| min | 0.1561 |
+| mean of last 50 steps | 0.2154 |
+
+Attacked and base representations went from near-identical to near-orthogonal on harmful input.
+That is the mechanism doing exactly what it is supposed to, and **no previous arm has ever
+produced a comparable signal.**
+
+**smoke5 is clean AND refuses** — `"2 + 2 = 4."`, `"The capital of France is **Paris**."`, and
+`"...However, I cannot help you commit identity theft"`. Contrast version_F, whose clean model
+handed out phishing steps. Held-out prose also separated (clean 3.57 vs ablated 5.07 at step 450),
+so the wall shows on unseen text, not just training attacks.
+
+**Do not read that as success.** Nothing is measured: no gate 0 (clean AdvBench), no MT-Bench, no
+heretic, no rank-1/surgical. version_F also looked fine at smoke5 on 4 of 5 prompts and then
+failed on clean safety at 0.1404. Run the gates.
+
+**A methodological warning I generated myself:** I called `L_rr` "not moving, rerouting is not
+happening" at step 137 when it read 0.977, and concluded the loss geometry was at fault. It then
+fell to 0.17. **`L_rr` has a long flat warmup — do not judge it before ~step 300.** More
+generally, four separate mid-run reads today (wall forming / not forming / rr dead / rr alive)
+were all noise. The in-loop metrics oscillate; only end-of-run gates decide anything.
+
+### version_G config — `scripts/runs/run_version_g.sh`
 
 The first arm whose wall is not made of fluency damage. `--lambda-rr 4` (Circuit-Breakers
 representation rerouting, `_reroute_loss` at `train_tamper_resistant_v8.py:569`) with
@@ -340,12 +381,23 @@ trainers: vLLM cannot share with one at any util, which is why step 0 waits.
 
 **Local repo is master.** Pushed to GitHub `aaronrockmenezes/tamperforge`.
 
+**THE BOX WAS DESTROYED on 2026-08-03.** Everything below is what survived. `vast-versiona-3090`
+no longer exists; a new box must be provisioned and the repo re-deployed by rsync.
+
 | location | holds |
 |---|---|
-| local repo (**master**) | all code, docs, `results/` **summaries only** (`summary.json`, `results_*.json`, `*_trial.json`, `mtbench_single_scores.json`) |
-| `../tamperforge-archive/box_2026_08_03/` | `logs/` (70 MB, full box logs), `generations/` (168 MB, 228 raw `generations.jsonl`), `alpaca_sft_1000.jsonl`, `models/` (`vb_sft1000` + `vb_sft1000_rank1`, 2.4 GB) |
-| private HF `aaronrockmenezes/tamperforge` | **`vb_sft_2026_08_03/`** (repaired model + its rank-1 + demos + alpaca prompts, 16 files) plus existing `version_{a,b,c}_*`, `attacked_snapshots/`, `heretic/`, `adapters/`, `server_backup_2026-07-27/` |
-| box `/workspace/tamperforge/outputs` | 84 GB of checkpoints — **NOT fully backed up**, treat as scratch |
+| local repo (**master**) | all code, docs, `results/` summaries + **`events.jsonl` training metrics** (220 MB). Pushed to GitHub. Note `.gitignore` keeps `results/**` out of git except `manifest.json`/`summary.json`, so the metrics live in the working tree and the archive, not on GitHub |
+| `../tamperforge-archive/box_2026_08_03/` | `logs/` 89 MB (complete box logs) · `generations/` 480 MB (all raw `generations.jsonl` + `judgments.jsonl`) · `metrics/` 40 MB (420 `events.jsonl`) · `models/` 2.2 GB (`vb_sft1000` + rank-1, md5-verified) · `data/` 1.9 MB · `prompts/` 4.6 MB · `alpaca_sft_1000.jsonl` |
+| private HF `aaronrockmenezes/tamperforge` (**74.37 GB**) | `final_backup_2026_08_03/checkpoints/` — **12 `.pt` files, every checkpoint the box had that HF lacked**, incl. **`version_g_qwen_500.pt`** · `final_backup_2026_08_03/data/` (mined harm targets + extended refusals) · `vb_sft_2026_08_03/` · existing `version_{a,b,c}_*`, `attacked_snapshots/`, `heretic/`, `adapters/`, `server_backup_2026-07-27/` |
+
+**Deliberately NOT backed up, because all of it regenerates from a `.pt`:**
+- `*_clean/` HF dirs → `save_p1b_checkpoint.py --attack none` (~1 min each)
+- attacked snapshots (`*_rank1`, `*_surg_k16`, `heretic_*_att`) → `v11_surgical_ablation.py` /
+  `version_c_replay.py --params-json results/<tag>_trial.json`
+- `va_timing.pt` — a timing probe, not a result
+
+That skipped ~40 GB of derived weights on a repo that had just hit its quota. Every `*_trial.json`
+needed to replay a heretic winner IS saved, in both the repo and the archive.
 
 ### HF quota — hit, diagnosed, RESOLVED 2026-08-03
 

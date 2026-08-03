@@ -39,7 +39,28 @@ All MT-Bench numbers below are PINNED judge at **3 repeats** (bar >= 4.04).
 | Shairah-Qwen | not run | 0.5365-0.7865 FAIL | rejected |
 | ART-Qwen | 4.42 PASS | 0.7058 FAIL | rejected on gate 2 only |
 | vb_sft1000 | 4.22 PASS | heretic not run; rank-1 0.3673 | rejected -- repair removed the wall |
-| **version_F** | **4.00 FAIL** (bar 4.14) | not reached | **rejected on gate 1 + CLEAN SAFETY** |
+| version_F | 4.00 FAIL (bar 4.14) | not reached | rejected on gate 1 + CLEAN SAFETY |
+| **version_G** | **NOT RUN** | **NOT RUN** | **trained, box died first — EVALUATE THIS FIRST** |
+
+### ⚠ version_G IS TRAINED AND UNEVALUATED — the top of the queue
+
+Checkpoint on HF: `final_backup_2026_08_03/checkpoints/version_g_qwen_500.pt`. First arm to use
+`--lambda-rr` (Circuit-Breakers rerouting). **`L_rr` fell 0.9967 -> 0.1702** over 500 steps
+(min 0.1561), i.e. attacked and base representations went from near-identical to near-orthogonal
+on harmful text — a signal no previous arm has produced. smoke5 is coherent AND refuses. Held-out
+prose separated (clean 3.57 / ablated 5.07).
+
+None of that is a gate. Run gate 0 -> 1 -> 2 before believing any of it; version_F also passed
+4 of 5 smoke5 prompts and then failed clean safety at 0.1404.
+
+```bash
+python experiments/save_p1b_checkpoint.py --checkpoint outputs/version_g_qwen_500.pt \
+  --model-id Qwen/Qwen3-0.6B --attack none --out outputs/version_g_qwen_500_clean
+TAG=version_g_qwen_500 SHORT=vg WAIT_ON=none bash scripts/runs/chain_f.sh
+```
+
+**`L_rr` has a long flat warmup — do not judge it before ~step 300.** It read 0.977 at step 137
+and I wrongly concluded rerouting was geometrically impossible.
 
 ### ⚠ NEW GATE NEEDED — GATE 0, CLEAN-MODEL SAFETY (version_F, 2026-08-03)
 

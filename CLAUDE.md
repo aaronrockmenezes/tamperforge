@@ -26,9 +26,17 @@
 The Tier-4 "FT is out of scope" exclusion does not cover it — that exclusion assumes FT attacks
 need harmful demonstrations. See `docs/attack_zoo_v0.md`.
 
-**Infra note:** only `vast-versiona-3090` exists. The 4090/5090x2/A6000 entries in the Infra
-section below do not resolve or refuse connections. The box is NOT a git checkout — rsync out,
-commit from local.
+**INFRA: THERE IS NO BOX (2026-08-03).** `vast-versiona-3090` was destroyed after version_G
+finished training; the 4090/5090x2/A6000 entries in the Infra section below never resolved
+either. **Provision a new box and rsync the repo to it** — the box is never a git checkout, so
+deploy by rsync and commit from local.
+
+**Everything survived**: all checkpoints on private HF under `final_backup_2026_08_03/`, raw
+logs/generations/metrics in `../tamperforge-archive/box_2026_08_03/`, code + summaries in git.
+Clean models and attacked snapshots were NOT saved by design — they regenerate from the `.pt`.
+
+**START HERE: `version_g_qwen_500.pt` is trained and completely unevaluated**, and its rerouting
+loss did something no other arm has (`L_rr` 0.9967 → 0.1702). See `TODO.md`.
 
 **THE MECHANISM (2026-08-02).** MAD fires on **read-projection** ablation. Heretic ablates
 **write projections only** (`attn.o_proj`, `mlp.down_proj`) and therefore never triggers it —

@@ -1,0 +1,9 @@
+{
+  "run_id": "vf_clean",
+  "n": 520,
+  "errors": 0,
+  "served_model": "vf_clean",
+  "backend": "vllm-api",
+  "qwen_thinking": "off",
+  "prompt_source": "advbench"
+}
