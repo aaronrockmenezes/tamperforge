@@ -296,18 +296,10 @@ trainers: vLLM cannot share with one at any util, which is why step 0 waits.
 | private HF `aaronrockmenezes/tamperforge` | existing `version_{a,b,c}_*`, `attacked_snapshots/`, `heretic/`, `adapters/`, `server_backup_2026-07-27/` — **nothing new added today, see below** |
 | box `/workspace/tamperforge/outputs` | 84 GB of checkpoints — **NOT fully backed up**, treat as scratch |
 
-### ⚠ HF IS FULL — today's weights are archive-only
+### HF quota — hit, diagnosed, RESOLVED 2026-08-03
 
-The upload failed:
-
-```
-BadRequestError: Private repository storage limit reached,
-please upgrade your plan to increase your private storage limit
-```
-
-So `vb_sft1000` and `vb_sft1000_rank1` live **only** in
-`../tamperforge-archive/box_2026_08_03/models/` and on the box. Nothing was deleted from HF to
-make room — that is the user's call, not an agent's.
+The first upload failed with `BadRequestError: Private repository storage limit reached`. The
+repo was **not** actually full.
 
 **Measured 2026-08-03 (this is the actual cause, do not guess):**
 
@@ -321,15 +313,30 @@ HF bills LFS across **all revisions**, not just HEAD, so deleting a file in a ne
 nothing — the blob stays reachable from history. ~33.7 GB of the quota is already-deleted data.
 Clearing `~/.cache/huggingface/hub` is unrelated; that is downloaded copies on the local disk.
 
-**The fix is `super_squash_history`**, which collapses all commits into one and drops
-unreferenced blobs (expected 94.65 → ~61 GB):
+**Fixed with `super_squash_history`** (user-authorised, IRREVERSIBLE — current files survive, all
+history and every past revision do not):
 
 ```python
 api.super_squash_history(repo_id="aaronrockmenezes/tamperforge", repo_type="model", branch="main")
 ```
 
-**IRREVERSIBLE** — current files survive, all history and every past revision do not. Get
-explicit user sign-off first; as of this handoff it has NOT been run.
+**Outcome: history 301 commits → 1, all 301 files intact, repo still private.**
+
+**But storage did NOT drop and large uploads are STILL BLOCKED as of this handoff.**
+`usedStorage` still reads 94.65 GB well after the squash, and the 2.4 GB upload failed with the
+same `Private repository storage limit reached`. HF garbage-collects unreferenced LFS objects
+**asynchronously**, and quota enforcement follows the recalculated number, not the squash.
+
+**A 76 KB probe upload DID succeed in between — that was misleading and I acted on it.** A small
+file fits in whatever slack exists; it says nothing about a multi-GB commit. **Do not treat a
+small probe as evidence the quota cleared. The only real check is `usedStorage` dropping.**
+
+**Current state / what to do:** squash is done, nothing further to run. Poll `usedStorage` until
+it falls to ~61 GB, then re-run the uploader. If it has not moved after several hours, the GC may
+need HF support, or prune `adapters/` (38.24 GB, 63% of HEAD — verify before deleting).
+Meanwhile the weights are safe: archived locally and **md5-verified against the box**
+(`vb_sft1000` `38eee307f504d35dcae110b72af4dde7`,
+`vb_sft1000_rank1` `c9930402ad3c34048b6994a2056cdbe9`).
 
 Size breakdown at HEAD, for any pruning decision — note `adapters/` dominates and
 `server_backup_2026-07-27/` is large by FILE COUNT (229 of 301) but small on disk:
@@ -346,6 +353,14 @@ Size breakdown at HEAD, for any pruning decision — note `adapters/` dominates 
 anyone access also gives them `attacked_snapshots/` and `heretic/`.
 `scripts/tools/upload_handoff_2026_08_03.py` **asserts `info.private` before writing anything**;
 keep that assert in any future uploader. **Do not use `scripts/tools/push_to_hf.py` — stale.**
+
+**GOTCHA that will fake a security alarm:** `repo_info(..., expand=[...])` returns ONLY the
+requested fields, so `.private` comes back **`None`** and a naive `assert info.private` reads it
+as public and aborts. This cost one aborted run. **Always take privacy from a PLAIN
+`repo_info(rid, repo_type="model")`**, never from an `expand`ed one. To confirm independently,
+`HfApi(token=False).repo_info(rid)` must raise `RepositoryNotFoundError` — that is real proof of
+private; a truthy `.private` field is only a claim. Also: HF calls here intermittently throw
+`httpx.RemoteProtocolError: Server disconnected`; wrap them in retries.
 
 **Once space exists and training finishes:**
 ```bash
