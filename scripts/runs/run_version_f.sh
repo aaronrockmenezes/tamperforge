@@ -32,6 +32,17 @@
 #    gate 2 alone (Shairah 0.5365-0.7865, ART 0.7058). Whether they compose is unmeasured, and
 #    it is the only untested combination left that does not require a new sampler.
 #
+# 5. THE ATTACK MIX: --version-a-p-canonical 0.10 --version-b-p-heretic 0.35. Arditi drops from
+#    20% to 10% and an explicit Heretic-SHAPED slice takes 35% -- write-only (o_proj, down_proj),
+#    independent per-projection tents. Measured over 200k draws at 28 layers this moves
+#    write-only from 5.9% of steps to 39.1%, where Heretic is write-only on EVERY trial and the
+#    default sampler hits its actual shape 0.04% of the time. Reweighting the subset draw cannot
+#    do this: write-only needs `chosen` inside a 2-element set out of 7, so all mass on k=1 still
+#    caps it at 28.6%. Guarded by experiments/test_sampler_mix.py.
+#    This is NOT a new sampler -- it is a mix change on version_B's existing one, and it is not a
+#    re-run of version_C, which went to ~60% write-only and regressed. 0.35 is deliberately well
+#    short of that.
+#
 # WHAT IS DELIBERATELY NOT HERE: a new attack sampler. Sampling has failed fixed (v8), widened
 # (version_A/B) and adaptive-against-a-live-optimiser (version_C, which trained write-only ~60%
 # of steps and regressed). Measured on version_B's sampler, write-only is 5.9% of steps and
@@ -85,6 +96,7 @@ else
     --model-id Qwen/Qwen3-0.6B --out "outputs/${TAG}.pt" \
     --train-scope all --abliterate-layers all --attack-ensemble \
     --attack-profile version_b --attack-layers 10-27 --direction-layer 20 \
+    --version-a-p-canonical 0.10 --version-b-p-heretic 0.35 \
     --no-grad-checkpoint --recompute-direction-every 25 \
     --lambda-gib 2 --stage2-lambda-gib 2 \
     --lambda-uncensor 4 --uncensor-margin 4 \
