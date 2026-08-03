@@ -309,10 +309,38 @@ So `vb_sft1000` and `vb_sft1000_rank1` live **only** in
 `../tamperforge-archive/box_2026_08_03/models/` and on the box. Nothing was deleted from HF to
 make room — that is the user's call, not an agent's.
 
-**To unblock HF, one of:** upgrade the plan, or prune `server_backup_2026-07-27/` (229 of the
-301 files, by far the largest tenant and the most likely to be redundant — **verify before
-deleting**), or keep large artifacts in the archive permanently and treat HF as
-checkpoints-only.
+**Measured 2026-08-03 (this is the actual cause, do not guess):**
+
+| | |
+|---|---|
+| quota counts (`usedStorage`) | **94.65 GB** |
+| current files at HEAD | 60.96 GB |
+| **orphaned LFS blobs in git history** | **~33.7 GB** |
+
+HF bills LFS across **all revisions**, not just HEAD, so deleting a file in a new commit frees
+nothing — the blob stays reachable from history. ~33.7 GB of the quota is already-deleted data.
+Clearing `~/.cache/huggingface/hub` is unrelated; that is downloaded copies on the local disk.
+
+**The fix is `super_squash_history`**, which collapses all commits into one and drops
+unreferenced blobs (expected 94.65 → ~61 GB):
+
+```python
+api.super_squash_history(repo_id="aaronrockmenezes/tamperforge", repo_type="model", branch="main")
+```
+
+**IRREVERSIBLE** — current files survive, all history and every past revision do not. Get
+explicit user sign-off first; as of this handoff it has NOT been run.
+
+Size breakdown at HEAD, for any pruning decision — note `adapters/` dominates and
+`server_backup_2026-07-27/` is large by FILE COUNT (229 of 301) but small on disk:
+
+| path | GB |
+|---|---|
+| `adapters/` | 38.24 |
+| `attacked_snapshots/` | 6.93 |
+| `heretic/` | 6.10 |
+| `version_{a,b,c}_*` | 2.64 each |
+| `server_backup_2026-07-27/` | 1.76 |
 
 **HF repo is PRIVATE and must stay so** — it holds uncensored and attacked weights. Granting
 anyone access also gives them `attacked_snapshots/` and `heretic/`.
