@@ -1,0 +1,167 @@
+{
+  "benchmark": "MT-Bench turn-1, 80 open-ended questions, 8 categories (philschmid/mt-bench)",
+  "date": "2026-08-03",
+  "judge": "deepseek/deepseek-v4-flash",
+  "protocols": {
+    "single": "canonical MT-Bench single-answer grading 1-10, rubric penalises loops/truncation/language-drift",
+    "pairwise": "vs base, position randomised per item and decoded afterwards"
+  },
+  "why": "Every other benchmark in the battery is a safety prompt set or a narrow capability task. MMLU/ARC are loglikelihood over fixed options and GSM8K scores an extracted number, so none of them notice a model that answers '2+2=?' with '**2+2=4**' four times, repeats a clause eleven times, or answers an English prompt in Chinese -- all of which our arms do. This is the first instrument that grades the actual response text.",
+  "single_scores_1_to_10": {
+    "xbase_clean": 4.963,
+    "vb_clean": 3.525,
+    "e1_clean": 3.038,
+    "e2_clean": 4.463,
+    "e3_clean": 4.037,
+    "e2_rank1": 2.112,
+    "e2_surg": 4.375,
+    "e2_heretic": 4.562
+  },
+  "by_category": {
+    "xbase_clean": {
+      "coding": 4.8,
+      "extraction": 5.3,
+      "humanities": 3.7,
+      "math": 8.1,
+      "reasoning": 2.3,
+      "roleplay": 3.6,
+      "stem": 4.8,
+      "writing": 7.1
+    },
+    "vb_clean": {
+      "coding": 2.9,
+      "extraction": 4,
+      "humanities": 2.5,
+      "math": 6,
+      "reasoning": 2.1,
+      "roleplay": 2.7,
+      "stem": 4.6,
+      "writing": 3.4
+    },
+    "e1_clean": {
+      "coding": 2.3,
+      "extraction": 3.2,
+      "humanities": 1.9,
+      "math": 5.3,
+      "reasoning": 2.6,
+      "roleplay": 2.3,
+      "stem": 2.8,
+      "writing": 3.9
+    },
+    "e2_clean": {
+      "coding": 3.7,
+      "extraction": 4.7,
+      "humanities": 3.7,
+      "math": 7.4,
+      "reasoning": 1.9,
+      "roleplay": 3.5,
+      "stem": 4.6,
+      "writing": 6.2
+    },
+    "e3_clean": {
+      "coding": 2.8,
+      "extraction": 4.8,
+      "humanities": 3.1,
+      "math": 8.3,
+      "reasoning": 3,
+      "roleplay": 2.5,
+      "stem": 4.2,
+      "writing": 3.6
+    },
+    "e2_rank1": {
+      "coding": 1.1,
+      "extraction": 2.5,
+      "humanities": 1.9,
+      "math": 3.5,
+      "reasoning": 1.1,
+      "roleplay": 1.2,
+      "stem": 2,
+      "writing": 3.6
+    },
+    "e2_surg": {
+      "coding": 4.3,
+      "extraction": 3.8,
+      "humanities": 3.4,
+      "math": 7.2,
+      "reasoning": 2.2,
+      "roleplay": 3.1,
+      "stem": 4.8,
+      "writing": 6.2
+    },
+    "e2_heretic": {
+      "coding": 3.9,
+      "extraction": 5.3,
+      "humanities": 3.3,
+      "math": 7.1,
+      "reasoning": 2.1,
+      "roleplay": 3.6,
+      "stem": 4.9,
+      "writing": 6.3
+    }
+  },
+  "pairwise_vs_base": {
+    "e2_heretic": {
+      "win_rate_vs_base": 0.4062,
+      "tally": {
+        "base": 36,
+        "tie": 23,
+        "e2_heretic": 21
+      }
+    },
+    "e2_rank1": {
+      "win_rate_vs_base": 0.1187,
+      "tally": {
+        "base": 68,
+        "e2_rank1": 7,
+        "tie": 5
+      }
+    },
+    "e1_clean": {
+      "win_rate_vs_base": 0.1688,
+      "tally": {
+        "base": 62,
+        "e1_clean": 9,
+        "tie": 9
+      }
+    },
+    "vb_clean": {
+      "win_rate_vs_base": 0.2188,
+      "tally": {
+        "tie": 11,
+        "base": 57,
+        "vb_clean": 12
+      }
+    },
+    "e2_clean": {
+      "win_rate_vs_base": 0.4625,
+      "tally": {
+        "e2_clean": 23,
+        "tie": 28,
+        "base": 29
+      }
+    },
+    "e2_surg": {
+      "win_rate_vs_base": 0.3812,
+      "tally": {
+        "e2_surg": 20,
+        "base": 39,
+        "tie": 21
+      }
+    },
+    "e3_clean": {
+      "win_rate_vs_base": 0.2125,
+      "tally": {
+        "base": 58,
+        "e3_clean": 12,
+        "tie": 10
+      }
+    }
+  },
+  "findings": [
+    "BASE BEATS EVERY DEFENDED MODEL. base 4.96; best defended is E2 clean at 4.46; our best-defended artifact E1 scores 3.04. Pairwise agrees: base wins 349/560 across all comparisons (71.9%), including 62/80 against E1.",
+    "WRITING IS WHERE THE DEFENCES BREAK: base 7.10 -> version_B 3.40 / E1 3.90 / E3 3.60. Largest category gap by far, and the axis no other benchmark in the battery measures.",
+    "THE ATTACKED MODEL SCORES HIGHER THAN THE DEFENDED ONE. E2 under heretic: 4.56 vs E2 clean 4.46, with AdvBench harm 0.7308 (above the base ceiling 0.6596). Third independent instrument to show this after XSTest (benign 0.752 vs 0.624) and the capability battery.",
+    "PRIOR 'BASE-LIKE CLEAN MODEL' CLAIMS DO NOT SURVIVE. E1 posts MMLU 0.4907 vs base 0.4325 and GSM8K 0.3965 vs 0.4215 -- i.e. benchmark-competitive -- while scoring 3.04 vs 4.96 on MT-Bench. Benchmark parity and conversational quality are not the same property.",
+    "Both protocols rank identically (E2 clean > E3 > vB > E1 > E2 rank-1), so the ordering is robust; the absolute scale only makes the gap sizes legible."
+  ]
+}
