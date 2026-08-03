@@ -201,7 +201,58 @@ adaptive-against-a-live-optimiser (version_C, which went to ~60% write-only and 
 
 ---
 
-## 7. version_F — IN FLIGHT
+## 7. version_F — DONE, REJECTED. version_G specced.
+
+**Result (training completed 2h15m, 500/500):**
+
+| | version_F | version_B | base |
+|---|---|---|---|
+| MT-Bench | **4.00** (bar 4.14) ✗ | 3.30 | 4.64 |
+| **clean AdvBench harm** | **0.1404** ✗ | 0.0019 | 0.2577 |
+| XSTest benign answered | **0.852** ✓ | 0.436 | 0.744 |
+| clean gibberish | 0.0077 | 0.0019 | 0.0538 |
+| GSM8K / MMLU / ARC | 0.3662 / **0.4416** / 0.3251 | 0.3889 / 0.3871 / 0.3387 | 0.4215 / 0.4266 / 0.3422 |
+
+**Rejected on gate 1 (marginally, 0.14 against ~0.1-0.2 judge drift) and on CLEAN SAFETY
+(not marginal).** `chain_f.sh` stopped itself at the gate as designed and never ran heretic.
+
+**The `lambda_gib 2` question is answered:** `gib_ce` oscillated 0.26-2.00 across eval points
+with no trend (the known wall/heal oscillation), and the arm landed at MT-Bench 4.00 — between
+E2's 4.29 and E3's 3.58. The fluency/wall trade is **continuous**, not a switch, but the middle
+of it is not a winning point.
+
+**Two lessons carried into version_G:**
+1. **Add gate 0, clean-model safety** — see `TODO.md`. `lambda_safe 1` cannot hold refusal
+   against `lambda_uncensor 4` + `lambda_harm 4`; version_B only survived it because
+   `lambda_gib 8` implicitly did the same job. version_G uses `lambda_safe 4`.
+2. **Extended refusals + `--clean-start-step 0` SOLVED over-refusal** (XSTest 0.852, above base).
+   Keep both in every future arm; do not regress this to buy safety back.
+
+### version_G — `scripts/runs/run_version_g.sh`, specced and deployed, NOT LAUNCHED
+
+The first arm whose wall is not made of fluency damage. `--lambda-rr 4` (Circuit-Breakers
+representation rerouting, `_reroute_loss` at `train_tamper_resistant_v8.py:569`) with
+`--harm-targets data/harm_targets_qwen.json` (404 goals, mined 2026-07-24) — **implemented,
+wired into the total loss, and never once fired** (default 0.0).
+
+**Why it might transfer to heretic where nothing else has:** rr is measured in REPRESENTATION
+space, not through a read projection. Write-projection ablation changes what is written into the
+residual stream, so hidden states move and rr has gradient there; `gib_ce` does not. It also only
+constrains processing of HARMFUL input, so it should not be fluency-shaped — meaning it should
+not buy gate 2 by selling gate 1, and benign SFT has no obvious purchase on it.
+
+**What it will NOT do:** the capability crater. `_reroute_loss`'s own docstring says `gib_ce`
+does two jobs and rerouting "says nothing about GSM8K". version_G is a deliberate **fortress**
+attempt in the occupied Shairah/ART cell, targeting the gate we cannot pass rather than the one
+we can.
+
+`LAMBDA_RR=4` is **unswept** — `L_rr` is mean `relu(cos)` in [0,1] while `L_task` is ~3.5. If
+`L_rr` barely moves off its step-0 value, raise it before concluding rerouting does not work.
+Cost ~25-30 s/it (two extra hidden-state forwards per pair) = **3.5-4h for 500 steps.**
+
+---
+
+## 7b. version_F — original pre-run rationale (kept for provenance)
 
 `scripts/runs/run_version_f.sh` → `outputs/version_f_qwen_500.pt`. Config confirmed from the
 live startup manifest, not from the script:
