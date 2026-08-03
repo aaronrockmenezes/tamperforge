@@ -293,7 +293,7 @@ trainers: vLLM cannot share with one at any util, which is why step 0 waits.
 |---|---|
 | local repo (**master**) | all code, docs, `results/` **summaries only** (`summary.json`, `results_*.json`, `*_trial.json`, `mtbench_single_scores.json`) |
 | `../tamperforge-archive/box_2026_08_03/` | `logs/` (70 MB, full box logs), `generations/` (168 MB, 228 raw `generations.jsonl`), `alpaca_sft_1000.jsonl`, `models/` (`vb_sft1000` + `vb_sft1000_rank1`, 2.4 GB) |
-| private HF `aaronrockmenezes/tamperforge` | existing `version_{a,b,c}_*`, `attacked_snapshots/`, `heretic/`, `adapters/`, `server_backup_2026-07-27/` — **nothing new added today, see below** |
+| private HF `aaronrockmenezes/tamperforge` | **`vb_sft_2026_08_03/`** (repaired model + its rank-1 + demos + alpaca prompts, 16 files) plus existing `version_{a,b,c}_*`, `attacked_snapshots/`, `heretic/`, `adapters/`, `server_backup_2026-07-27/` |
 | box `/workspace/tamperforge/outputs` | 84 GB of checkpoints — **NOT fully backed up**, treat as scratch |
 
 ### HF quota — hit, diagnosed, RESOLVED 2026-08-03
@@ -320,23 +320,27 @@ history and every past revision do not):
 api.super_squash_history(repo_id="aaronrockmenezes/tamperforge", repo_type="model", branch="main")
 ```
 
-**Outcome: history 301 commits → 1, all 301 files intact, repo still private.**
+**Outcome: history 301 commits → 1, all 301 files intact, repo still private. RESOLVED.**
 
-**But storage did NOT drop and large uploads are STILL BLOCKED as of this handoff.**
-`usedStorage` still reads 94.65 GB well after the squash, and the 2.4 GB upload failed with the
-same `Private repository storage limit reached`. HF garbage-collects unreferenced LFS objects
-**asynchronously**, and quota enforcement follows the recalculated number, not the squash.
+**Storage: 94.65 → 60.85 GB, 33.8 GB reclaimed** — almost exactly the predicted gap, confirming
+the diagnosis. The upload then succeeded; `usedStorage` is 63.25 GB with the new 2.4 GB in.
 
-**A 76 KB probe upload DID succeed in between — that was misleading and I acted on it.** A small
-file fits in whatever slack exists; it says nothing about a multi-GB commit. **Do not treat a
-small probe as evidence the quota cleared. The only real check is `usedStorage` dropping.**
+**TIMING MATTERS AND COST A FAILED RETRY.** HF garbage-collects unreferenced LFS objects
+**asynchronously**, and quota enforcement follows the recalculated number, not the squash. For
+~20–30 min after squashing, `usedStorage` still read 94.65 GB and a 2.4 GB upload failed with the
+same limit error. **Squash, then wait for `usedStorage` to actually drop before re-uploading.**
 
-**Current state / what to do:** squash is done, nothing further to run. Poll `usedStorage` until
-it falls to ~61 GB, then re-run the uploader. If it has not moved after several hours, the GC may
-need HF support, or prune `adapters/` (38.24 GB, 63% of HEAD — verify before deleting).
-Meanwhile the weights are safe: archived locally and **md5-verified against the box**
+**A 76 KB probe upload succeeded during that window and I wrongly read it as the quota clearing.**
+A small file fits in whatever slack exists and says nothing about a multi-GB commit. **The only
+valid check is `usedStorage` falling.**
+
+Verified after upload: 16 files under `vb_sft_2026_08_03/`, both `model.safetensors` at 1192 MB,
+`private=True`. Weights are also archived locally and **md5-verified against the box**
 (`vb_sft1000` `38eee307f504d35dcae110b72af4dde7`,
 `vb_sft1000_rank1` `c9930402ad3c34048b6994a2056cdbe9`).
+
+If the quota is ever hit again: `adapters/` is 38.24 GB, 63% of HEAD, the obvious prune candidate
+— **verify before deleting**.
 
 Size breakdown at HEAD, for any pruning decision — note `adapters/` dominates and
 `server_backup_2026-07-27/` is large by FILE COUNT (229 of 301) but small on disk:
