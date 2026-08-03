@@ -40,24 +40,24 @@ skip_arch () { [ -n "$ONLY_ARCH" ] && [ "$1" != "$ONLY_ARCH" ]; }
 say "=== chain_art START ==="
 
 # Do not share the GPU with the trainer. Wait for it, whatever else happens.
-if tmux has-session -t shairah 2>/dev/null; then
+if tmux ls -F "#{session_name}" 2>/dev/null | grep -qx shairah; then
   say "[wait] shairah training running..."
-  while tmux has-session -t shairah 2>/dev/null; do sleep 60; done
+  while tmux ls -F "#{session_name}" 2>/dev/null | grep -qx shairah; do sleep 60; done
   say "[wait] training finished, settling 30s"; sleep 30
 fi
-if tmux has-session -t shseeds 2>/dev/null; then
+if tmux ls -F "#{session_name}" 2>/dev/null | grep -qx shseeds; then
   say "[wait] shairah seed evals running..."
-  while tmux has-session -t shseeds 2>/dev/null; do sleep 60; done
+  while tmux ls -F "#{session_name}" 2>/dev/null | grep -qx shseeds; do sleep 60; done
   say "[wait] shseeds done, settling 30s"; sleep 30
 fi
-if tmux has-session -t art 2>/dev/null; then
+if tmux ls -F "#{session_name}" 2>/dev/null | grep -qx art; then
   say "[wait] ART training running (vLLM cannot share the GPU with a trainer)..."
-  while tmux has-session -t art 2>/dev/null; do sleep 60; done
+  while tmux ls -F "#{session_name}" 2>/dev/null | grep -qx art; do sleep 60; done
   say "[wait] ART done, settling 30s"; sleep 30
 fi
-if tmux has-session -t xsvavc 2>/dev/null; then
+if tmux ls -F "#{session_name}" 2>/dev/null | grep -qx xsvavc; then
   say "[wait] xsvavc matrix running..."
-  while tmux has-session -t xsvavc 2>/dev/null; do sleep 60; done
+  while tmux ls -F "#{session_name}" 2>/dev/null | grep -qx xsvavc; do sleep 60; done
   say "[wait] xsvavc finished, settling 30s"; sleep 30
 fi
 
@@ -195,7 +195,7 @@ do
 
   # studies run 3-up: ~3.7GB each, measured safe. No vLLM concurrently.
   pids=()
-  for S in 0 1 2; do
+  for S in 0; do
     HLOG="logs/heretic/heretic_${P}_s${S}.log"
     mkdir -p logs/heretic
     if grep -aq "Running trial 200 of" "$HLOG" 2>/dev/null; then say "  [skip] study ${P} s${S}"; continue; fi
@@ -208,7 +208,7 @@ do
   for p in "${pids[@]:-}"; do [ -n "$p" ] && wait "$p" 2>/dev/null || true; done
   say "  studies done for $P"
 
-  for S in 0 1 2; do
+  for S in 0; do
     HLOG="logs/heretic/heretic_${P}_s${S}.log"
     TAG="${P}_her_s${S}"
     [ -f "$HLOG" ] || continue
@@ -236,8 +236,7 @@ PY
       --model-id "$MID" --checkpoint "$CK" --trial "$T" \
       --params-json "results/${TAG}_trial.json" \
       --direction-recipe heretic --application heretic_full --out "$D" >>"$LOG" 2>&1
-    eval_all "$TAG" "$D" "$TH"
-    drop_weights "$D" "$TAG"
+    say "  materialised $D -- eval handled by serve_eval.sh (persistent vLLM)"
   done
 done
 

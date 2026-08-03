@@ -52,6 +52,7 @@ import hashlib
 import json
 import os
 import random
+import re
 import sys
 import time
 from pathlib import Path
@@ -331,6 +332,56 @@ def _load_task_qa(n: int, seed: int = 0) -> list[tuple[str, str]]:
         _GSM8K_TRAIN_CACHE = [(r["question"], r["answer"]) for r in ds]
     rng = random.Random(seed)
     return rng.sample(_GSM8K_TRAIN_CACHE, min(n, len(_GSM8K_TRAIN_CACHE)))
+
+
+def _gsm8k_answer(text: str) -> str | None:
+    """Last number in a completion. GSM8K's own '#### N' marker only appears with few-shot
+    priming, which an in-loop probe cannot afford, so score the final number instead. This
+    is flexible-extract, NOT the strict-match lm_eval reports -- read it as a trend, and
+    never quote it as a GSM8K score."""
+    m = re.findall(r"-?\d[\d,]*\.?\d*", text.replace(",", ""))
+    return m[-1].rstrip(".") if m else None
+
+
+def _clean_gsm8k_probe(model, tok, device, n: int = 8, max_new: int = 256,
+                       seed: int = 0) -> float | None:
+    """Tiny GSM8K probe on the CLEAN model (eval-in-loop), companion to the ifeval probe.
+
+    Why: TODO.md flags --ifeval-in-loop as a weak clean-capability signal, and 2026-08-02's
+    5-prompt smoke test found version_B looping on '2+2=?' while its lm_eval MMLU looked only
+    mildly down -- generative degradation that constraint-checking probes miss. Free-generation
+    arithmetic catches it live instead of 500 steps later.
+
+    Uses the GSM8K TRAIN split (lm_eval scores test), so this does not contaminate the
+    reported number.
+    """
+    if n <= 0:
+        return None
+    qa = _load_task_qa(n, seed=seed)
+    prev_cache = model.config.use_cache
+    model.config.use_cache = True
+    hits = 0
+    thinking_on = os.environ.get("TF_QWEN_THINKING", "off") == "on"
+    try:
+        for question, answer in tqdm(qa, desc=f"gsm8k-probe(n={n})", leave=False,
+                                     dynamic_ncols=True):
+            gold = _gsm8k_answer(answer.split("####")[-1])
+            enc = apply_chat_template_no_think(
+                tok, [{"role": "user", "content": question}],
+                return_tensors="pt", return_dict=True, add_generation_prompt=True,
+            ).to(device)
+            plen = enc["input_ids"].shape[1]
+            gen_kwargs = {"max_new_tokens": max_new, "do_sample": thinking_on,
+                          "use_cache": True, "pad_token_id": tok.eos_token_id}
+            if thinking_on:
+                gen_kwargs.update({"temperature": 0.6, "top_p": 0.95, "top_k": 20})
+            with torch.no_grad():
+                out = model.generate(**enc, **gen_kwargs)
+            got = _gsm8k_answer(tok.decode(out[0, plen:], skip_special_tokens=True))
+            hits += int(gold is not None and got is not None and gold == got)
+    finally:
+        model.config.use_cache = prev_cache
+    return hits / max(len(qa), 1)
 
 
 def _task_degradation_loss(model, tok, qa, device, overrides, max_len: int = 320) -> torch.Tensor:
@@ -856,6 +907,19 @@ def main() -> None:
     ap.add_argument("--gap-target", type=float, default=4.0,
                     help="require gib CE >= this margin (nats/token). Rewards SELECTIVITY, "
                          "not absolute badness — absolute-badness collapses to killing the model.")
+    ap.add_argument("--benign-extra-file", default=None,
+                    help="JSONL of extra BENIGN prompts (needs a 'prompt' field) appended to the "
+                         "benign pool. Both the clean anchor (L_clean_gen) and the gibberish "
+                         "objective (gib_ce) sample from that pool, so this is how you teach the "
+                         "wall a SEMANTIC boundary instead of a lexical one. version_E: the "
+                         "benign pool is alpaca-style, so safe-but-scary prompts ('how do I kill "
+                         "a Python process?') are out of distribution for the clean anchor while "
+                         "being lexically adjacent to AdvBench -- which is why version_B garbles "
+                         "them (XSTest gibberish-on-benign 0.280 vs base 0.056). Use OR-Bench "
+                         "here; keep XSTest as held-out eval.")
+    ap.add_argument("--benign-extra-n", type=int, default=-1,
+                    help="Cap on --benign-extra-file prompts (-1 = all). They should not swamp "
+                         "the ordinary benign instructions.")
     ap.add_argument("--refusal-file", default=None,
                     help="JSON {prompt: refusal_text} replacing the canned one-line "
                          "REFUSAL_RESPONSES. Used for the Shairah extended-refusal baseline "
@@ -967,6 +1031,15 @@ def main() -> None:
     ap.add_argument("--clean-gen-prompts", type=int, default=2,
                     help="v8: benign prompts per step for the generative clean anchor")
     ap.add_argument("--clean-gen-tokens", type=int, default=32, help="v8: continuation length for clean anchor")
+    ap.add_argument("--gsm8k-probe-n", type=int, default=0,
+                    help="In-loop GSM8K probe on the CLEAN model, n questions from the TRAIN "
+                         "split (lm_eval scores test, so no contamination). 4-8 is enough. "
+                         "Catches generative degradation the ifeval probe misses -- version_B "
+                         "looped on '2+2=?' while its lm_eval MMLU looked only mildly down. "
+                         "0 = off. Flexible-extract (last number), so a TREND not a score.")
+    ap.add_argument("--gsm8k-probe-max-new", type=int, default=256,
+                    help="Token budget for the GSM8K probe. Needs room for chain-of-thought; "
+                         "48 (the ifeval budget) truncates mid-reasoning and reads as 0.")
     ap.add_argument("--ifeval-in-loop", action="store_true",
                     help="v8: score the tiny instruction probe on the clean model each eval step")
     ap.add_argument("--ifeval-probe-n", type=int, default=0,
@@ -1131,6 +1204,23 @@ def main() -> None:
             )
         ]
         benign = load_benign_instructions(args.n_benign, seed=args.seed)
+        if args.benign_extra_file:
+            _p = ROOT / args.benign_extra_file
+            _extra = []
+            for _line in _p.read_text().splitlines():
+                _line = _line.strip()
+                if not _line:
+                    continue
+                _pr = json.loads(_line).get("prompt")
+                if _pr:
+                    _extra.append(_pr)
+            if not _extra:
+                raise SystemExit(f"--benign-extra-file {args.benign_extra_file} yielded 0 prompts")
+            if 0 < args.benign_extra_n < len(_extra):
+                _extra = random.Random(args.seed).sample(_extra, args.benign_extra_n)
+            benign = benign + _extra
+            print(f"[p1b-A] benign pool: {len(benign)} "
+                  f"({len(benign) - len(_extra)} instructions + {len(_extra)} safe-but-scary)")
     if args.refusal_file:
         # Shairah extended-refusal baseline: overview + explicit refusal + rationale,
         # keyed by the exact training prompt. Missing keys are fatal on purpose.
@@ -1584,9 +1674,17 @@ def main() -> None:
                 clean_mmlu = _clean_mc_probe(model, tok, device, _mmlu_rows(args.mmlu_probe_n))
             else:
                 clean_mmlu = None
+            if args.gsm8k_probe_n > 0:
+                tqdm.write(f"[step {step}] running clean GSM8K probe (n={args.gsm8k_probe_n})...")
+                clean_gsm = _clean_gsm8k_probe(model, tok, device, n=args.gsm8k_probe_n,
+                                               max_new=args.gsm8k_probe_max_new,
+                                               seed=args.seed + step)
+            else:
+                clean_gsm = None
             logger.event("eval", {"step": step, "L_task_eval": Lte, "L_abl_eval": Lae,
                                    "gap_eval": Lae - Lte, "clean_ifeval_acc": clean_if,
                                    "clean_arc_acc": clean_arc, "clean_mmlu_acc": clean_mmlu,
+                                   "clean_gsm8k_acc": clean_gsm,
                                    "shutdown_ce_rank1": shutdown_ce_rank1,
                                    "L_clean_gen": m["L_clean_gen"], **attack_meta})
             tqdm.write(f"step {step} [stage {stage}]: L_task={m['L_task']:.3f} gib_ce={m['gib_ce']:.3f} "

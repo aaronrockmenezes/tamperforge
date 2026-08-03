@@ -422,3 +422,55 @@ kill to the evaluator it started:
 
 Also note `pkill -f <pat>` matches the killing shell's own command line if that string
 appears in it -- that killed an ssh session earlier in the campaign.
+
+## Three silent-success failures in two days -- check CONTENTS, not existence (2026-08-03)
+
+Each of these reported success (or a plausible number) for work that never happened. The
+common defence is asserting on what the artifact CONTAINS.
+
+1. **Empty generations judged as real.** An orphaned vllm server held the port; the next arm's
+   health check hit it, all 520 requests 400'd, `gen_via_api` wrote 520 EMPTY responses, and
+   `judge_generations` scored them into `refused 479 / harmful 23 / benign 17`. Completely
+   plausible, completely fabricated. Fix: `gen_via_api` now exits 2 AND deletes its
+   `generations.jsonl` on any request errors. Audit script: `/tmp/audit_empty.py` pattern --
+   count empty responses per run before trusting any judged summary.
+
+2. **Pairwise judge printed 0.0% win-rate** for 80 unparsed items when the OpenRouter key hit
+   its limit (HTTP 403). Fix: `mtbench_pairwise.py` exits non-zero when 0 parse, warns under 80%.
+
+3. **`[MISSING] <dir>` for a directory that existed.** `[ -f x ] && cmd || say "[MISSING]"` --
+   the `||` fires on *cmd's* non-zero exit, not the file test. Reads as a missing file and
+   sends you to the wrong place. Use if/then/else, not `&&`/`||`, when the message names a cause.
+
+Related and same shape: guarding on a directory instead of an artifact (2026-08-01, destroyed
+four eval arms), and `tmux has-session -t art` prefix-matching `artchain` so a chain waited on
+itself for 30min while its log looked like a normal wait.
+
+## Never edit a shell script while it is executing (2026-08-03)
+
+Bash reads scripts lazily by byte offset. Rewriting a running script shifts those offsets and
+throws a syntax error pointing at a line that is not wrong -- `serve_eval.sh: line 56: syntax
+error near unexpected token '&'` where line 56 was `for i in $(seq 1 90); do`. `bash -n` on the
+file passes, which is the tell. It also killed the run before its EXIT trap fired, orphaning the
+vllm server that caused failure #1 above. Write a new file and swap it in, or wait.
+
+## vLLM server harness gotchas (2026-08-03)
+
+- **Port 8000 is permanently held by caddy** on vast.ai instances. `vllm serve` dies with
+  `OSError: [Errno 98] Address already in use`; use 8765. A smoke gate reported this as a
+  loglikelihood incompatibility, which sent me looking at the wrong layer entirely.
+- **`lm_eval --model local-completions` needs `tenacity`** (`pip install lm-eval[api]`),
+  otherwise every API task dies with `ModuleNotFoundError`.
+- **`--max-model-len 4096` 400s on MBPP.** The completions endpoint validates
+  `prompt_tokens + max_tokens <= max_model_len`; in-process lm_eval handles the overflow itself.
+  8192 fixes it and changes no score (same prompts, same few-shot).
+- **`/health` is not proof the server is yours.** It answers from whatever is listening. Check
+  `/v1/models` for your own `--served-model-name`.
+- **`vllm serve --help` lists only config GROUPS.** Flags need `--help=all`, so a grep for
+  `--gpu-memory-utilization` in the plain help returns nothing and looks like the flag is gone.
+
+## heretic: no unattended resume (2026-08-03)
+
+`heretic --study-checkpoint-dir <existing>` prompts INTERACTIVELY, so `< /dev/null` dies with
+`EOFError` from prompt_toolkit. Every run script does `rm -rf` first for this reason. Trying to
+resume to save 73 trials lost them anyway.
