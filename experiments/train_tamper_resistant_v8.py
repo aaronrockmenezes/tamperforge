@@ -990,6 +990,14 @@ def main() -> None:
     ap.add_argument("--version-a-p-surgical", type=float, default=0.40,
                     help="version_a: fraction of the remaining steps that ablate "
                          "normalise(d - P_cap d) instead of d.")
+    ap.add_argument("--version-b-p-heretic", type=float, default=0.0,
+                    help="version_b ONLY: absolute fraction of steps drawn as Heretic-SHAPED "
+                         "attacks -- write-only (o_proj, down_proj), independent per-projection "
+                         "tents, the geometry heretic_spec replays. The subset draw reaches this "
+                         "shape 5.9%% of the time and its near-full-stack form 0.04%%, while "
+                         "Heretic is write-only on every trial. Default 0.0 keeps version_B / "
+                         "version_E / ART bit-identical. version_C already ran ~60%% write-only "
+                         "and regressed, so treat high values as re-running a known failure.")
     ap.add_argument("--version-a-cap-ranks", default="2,4,8,16",
                     help="version_a: capability ranks the attacker may pick from. k=4 is "
                          "where the escape hatch opens, k=16 is the demonstrated break.")
@@ -1418,6 +1426,7 @@ def main() -> None:
                     cap_ranks=va_cap_ranks,
                     p_canonical=args.version_a_p_canonical,
                     p_surgical=args.version_a_p_surgical,
+                    p_heretic=args.version_b_p_heretic,
                 )
                 rp_a, wp_a = va_spec.read_proj, va_spec.write_proj
                 layers_a, alphas_a, pl_a, _atag = (

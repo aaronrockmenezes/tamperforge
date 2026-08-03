@@ -224,6 +224,7 @@ def sample_attack_b(
     p_surgical: float = 0.40,
     p_per_layer: float = 0.50,
     p_partial: float = 0.50,
+    p_heretic: float = 0.0,
     alpha_max: float = 1.5,
     dir_lo_frac: float = 0.25,
     dir_hi_frac: float = 0.95,
@@ -248,6 +249,19 @@ def sample_attack_b(
     half the stack. Heretic's min_weight_distance goes down to ~1.0, so tight bands are
     in its search space; version_A's clamp was protecting against under-triggering, which
     is the behaviour we now want to train against rather than avoid.
+
+    `p_heretic` (default 0.0, so every pre-2026-08-03 run is bit-identical) carves out an
+    explicit slice of Heretic-SHAPED attacks: write-only, independent per-projection tents,
+    exactly the geometry `heretic_spec` replays. It exists because the subset draw reaches
+    that geometry almost never -- measured over 200k draws at n_layers=28, write-only is
+    5.9% of samples and write-only-with-near-full-stack is 0.04%, i.e. ~0.2 steps in a
+    500-step run, while Heretic is write-only on EVERY trial. The subset draw cannot fix
+    this by reweighting because write-only needs `chosen` to fall inside a 2-element set out
+    of 7 (2/7 at k=1, 1/21 at k=2, impossible at k>=3).
+
+    Direction recipe stays ours ("plain"/"ours"), so this changes the attack GEOMETRY only
+    and stays comparable with version_B. Note version_C already ran write-only at ~60% and
+    regressed; this knob is for controlled placement, not for re-running that.
     """
     dir_layer = rng.uniform(dir_lo_frac * (n_layers - 1), dir_hi_frac * (n_layers - 1))
 
@@ -256,6 +270,25 @@ def sample_attack_b(
         wp = tuple(p for p in ALL_PROJ if p in _WRITE)
         return AttackSpec(rp, wp, list(range(n_layers)), None, False, "plain", 0,
                           dir_layer, "canonical:arditi")
+
+    # Heretic-shaped slice. Conditional on canonical having missed, so the absolute share is
+    # p_heretic. Falls through to the subset draw if every tent lands off the stack.
+    if p_heretic > 0.0 and rng.random() < p_heretic / max(1e-9, 1.0 - p_canonical):
+        profiles = {
+            proj: Tent(max_weight=rng.uniform(0.5, alpha_max),
+                       max_pos=rng.uniform(dir_lo_frac * (n_layers - 1),
+                                           dir_hi_frac * (n_layers - 1)),
+                       min_weight=rng.uniform(0.0, 0.9),
+                       min_dist=rng.uniform(1.0, 0.6 * n_layers))
+            for proj in HERETIC_PROJ
+        }
+        h_layers, h_alphas = tent_alphas(profiles, n_layers)
+        if h_layers:
+            per_layer = rng.random() < p_per_layer
+            return AttackSpec((), HERETIC_PROJ, h_layers, h_alphas, per_layer, "plain", 0,
+                              0.0 if per_layer else dir_layer,
+                              f"heretic:tent:L{dir_layer:.1f}:{h_layers[0]}-{h_layers[-1]}"
+                              + (":perlayer" if per_layer else ""))
 
     k = rng.choices(range(1, len(ALL_PROJ) + 1), weights=_SUBSET_SIZE_W)[0]
     chosen = rng.sample(ALL_PROJ, k)
