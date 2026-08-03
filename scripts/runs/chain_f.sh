@@ -34,6 +34,12 @@ mkdir -p logs/eval/vllm logs/heretic logs/probes logs/drivers results outputs
 TAG="${TAG:-version_f_qwen_500}"
 SHORT="${SHORT:-vf}"          # prefix for every results/ run-id this chain writes
 WAIT_ON="${WAIT_ON:-vf}"      # tmux session to wait on (exact name)
+# BASE_TAG/BASE_HF let a non-Qwen arm (e.g. Llama) gate against ITS OWN base. Hardcoding
+# mtb_xbase_clean here would silently compare a Llama arm's MT-Bench against Qwen base's --
+# different architecture, not a valid gate. Qwen stays the default so every existing call
+# (TAG=version_f_qwen_500 etc.) is unaffected.
+BASE_TAG="${BASE_TAG:-xbase_clean}"
+BASE_HF="${BASE_HF:-outputs/xbase_clean_hf}"
 CK="outputs/${TAG}.pt"
 CLEAN="outputs/${TAG}_clean"
 PORT=8765
@@ -116,21 +122,24 @@ serve_gen () {   # $1=run-id  $2=model-dir  rest=gen args
   kill -TERM "$SP" 2>/dev/null; sleep 8; kill -9 "$SP" 2>/dev/null; sleep 5
 }
 
-say "=== STEP 2: MT-Bench GATE ==="
+say "=== STEP 2: MT-Bench GATE (base = $BASE_TAG) ==="
+# base gets its own MT-Bench generation the same way, so a non-Qwen arm is never gated
+# against Qwen's score by accident.
+serve_gen "mtb_${BASE_TAG}" "$BASE_HF" --prompt-file "$MTB" --max-new-tokens 768
 serve_gen "mtb_${SHORT}" "$CLEAN" --prompt-file "$MTB" --max-new-tokens 768
 [ -f "results/mtb_${SHORT}/generations.jsonl" ] || { say "[FAIL] no MT-Bench generations"; exit 1; }
 
 python -u experiments/mtbench_single.py --repeats 3 --num-workers 32 \
-  --tags mtb_xbase_clean "mtb_${SHORT}" mtb_vb_clean mtb_e2_clean 2>&1 | grep -avE "it/s\]|\r"
-python -u experiments/mtbench_pairwise.py --a "mtb_${SHORT}" --b mtb_xbase_clean \
-  --label-a "$SHORT" --label-b base 2>&1 | grep -aE "^===|win-rate" | head -4
+  --tags "mtb_${BASE_TAG}" "mtb_${SHORT}" 2>&1 | grep -avE "it/s\]|\r"
+python -u experiments/mtbench_pairwise.py --a "mtb_${SHORT}" --b "mtb_${BASE_TAG}" \
+  --label-a "$SHORT" --label-b "$BASE_TAG" 2>&1 | grep -aE "^===|win-rate" | head -4
 
-GATE=$(python3 - "$BAR_DELTA" "$SHORT" <<'PY'
+GATE=$(python3 - "$BAR_DELTA" "$SHORT" "$BASE_TAG" <<'PY'
 import json, sys
 d = json.load(open("results/mtbench_single_scores.json"))
-b, v = d["mtb_xbase_clean"]["mean"], d[f"mtb_{sys.argv[2]}"]["mean"]
+b, v = d[f"mtb_{sys.argv[3]}"]["mean"], d[f"mtb_{sys.argv[2]}"]["mean"]
 bar = b - float(sys.argv[1])
-print(f"base {b:.2f} | {sys.argv[2]} {v:.2f} | bar {bar:.2f} | "
+print(f"base({sys.argv[3]}) {b:.2f} | {sys.argv[2]} {v:.2f} | bar {bar:.2f} | "
       f"{'PASS' if v >= bar else 'FAIL'}", file=sys.stderr)
 print("PASS" if v >= bar else "FAIL")
 PY
