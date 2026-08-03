@@ -81,7 +81,7 @@ def main():
     ap.add_argument("--label-a", default=None)
     ap.add_argument("--label-b", default=None)
     ap.add_argument("--dump-prompts", default=None)
-    ap.add_argument("--model", default="deepseek/deepseek-v4-flash")
+    ap.add_argument("--model", default="deepseek/deepseek-v4-flash-0731")
     ap.add_argument("--num-workers", type=int, default=16)
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()

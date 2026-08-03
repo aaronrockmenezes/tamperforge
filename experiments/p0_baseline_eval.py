@@ -42,7 +42,7 @@ def main() -> None:
     ap.add_argument("--max-length", type=int, default=None,
                     help="Truncate chat-formatted prompt to this many input tokens")
     ap.add_argument("--judge", action="store_true")
-    ap.add_argument("--judge-model", default="deepseek/deepseek-v4-flash")
+    ap.add_argument("--judge-model", default="deepseek/deepseek-v4-flash-0731")
     ap.add_argument("--judge-json-mode", action=argparse.BooleanOptionalAction, default=True,
                     help="Use OpenRouter response_format=json_object when provider supports it")
     ap.add_argument("--model-id", default="google/gemma-3-1b-it")

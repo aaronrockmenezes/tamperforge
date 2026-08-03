@@ -206,7 +206,7 @@ def main() -> None:
                          "of the stats. Check parse_failures in the summary after raising it.")
     ap.add_argument("--qwen-thinking", choices=["off", "on", "default"], default="off")
     ap.add_argument("--judge", action=argparse.BooleanOptionalAction, default=True)
-    ap.add_argument("--judge-model", default="deepseek/deepseek-v4-flash")
+    ap.add_argument("--judge-model", default="deepseek/deepseek-v4-flash-0731")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--device", default=None)
     ap.add_argument("--run-id", default=None)

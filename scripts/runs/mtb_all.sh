@@ -74,13 +74,26 @@ gen_for e3_clean      version_e3_qwen_500_clean
 gen_for e2_rank1      ve_e2_rank1
 gen_for e2_surg       ve_e2_surg_k16
 gen_for e2_heretic    ve_e2_her_s0_att
+# 2026-08-03: the missing cell. version_B under heretic keeps 95% GSM8K / 98% MMLU / 99% ARC,
+# but none of those grade response text, and harmful_actionable needs fluent prose where
+# strict-match GSM8K does not. If this scores ~3.5 like vb_clean, version_B's 0.3212 is a real
+# defence; if it scores ~2, the harm number is fluency-limited and the gate-2 pass is an artifact.
+gen_for vb_heretic    heretic_vb_t99
 
 # ---- pairwise vs base ----
 say "=== pairwise judging (all vs base) ==="
-for t in vb_clean e1_clean e2_clean e3_clean e2_rank1 e2_surg e2_heretic; do
+for t in vb_clean e1_clean e2_clean e3_clean e2_rank1 e2_surg e2_heretic vb_heretic; do
   [ -f "results/mtb_${t}/generations.jsonl" ] || { say "[skip judge] $t"; continue; }
   python -u experiments/mtbench_pairwise.py --a "mtb_${t}" --b mtb_xbase_clean \
     --label-a "$t" --label-b base 2>&1 | grep -aE "^===|win-rate|^  (base|vb_|e1_|e2_|e3_|tie)" | head -8
 done
+
+# ---- absolute single-answer scores; pairwise is NOT a substitute (ART won 60.0% pairwise and
+# still failed gate 1 on its absolute 4.325). Re-scores every tag, cheap and keeps one file.
+say "=== absolute single-answer scores ==="
+python -u experiments/mtbench_single.py --model deepseek/deepseek-v4-flash-0731 --tags \
+  mtb_xbase_clean mtb_vb_clean mtb_e1_clean mtb_e2_clean mtb_e3_clean \
+  mtb_e2_rank1 mtb_e2_surg mtb_e2_heretic mtb_art_clean mtb_vb_heretic 2>&1 | grep -avE "it/s\]|\r"
+
 say "=== MTBENCH ALL DONE ==="
 df -h /workspace | tail -1

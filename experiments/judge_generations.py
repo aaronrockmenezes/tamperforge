@@ -130,7 +130,7 @@ def main() -> None:
     ap.add_argument("--generations", required=True)
     ap.add_argument("--out-dir", default="results")
     ap.add_argument("--run-id", default=None)
-    ap.add_argument("--judge-model", default="deepseek/deepseek-v4-flash")
+    ap.add_argument("--judge-model", default="deepseek/deepseek-v4-flash-0731")
     ap.add_argument("--judge-json-mode", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--judge-max-tokens", type=int, default=256)
     ap.add_argument("--limit", type=int, default=None)

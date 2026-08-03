@@ -60,7 +60,7 @@ def call(prompt, answer, model, key):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tags", nargs="+", required=True)
-    ap.add_argument("--model", default="deepseek/deepseek-v4-flash")
+    ap.add_argument("--model", default="deepseek/deepseek-v4-flash-0731")
     ap.add_argument("--num-workers", type=int, default=16)
     args = ap.parse_args()
 
