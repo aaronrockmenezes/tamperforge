@@ -1,0 +1,9 @@
+{
+  "run_id": "smoke_arq_clean_xssafe",
+  "n": 250,
+  "errors": 0,
+  "served_model": "smoke_arq_clean",
+  "backend": "vllm-api",
+  "qwen_thinking": "off",
+  "prompt_source": "scripts/external_benches/prompts/xstest_safe.jsonl"
+}

@@ -1,7 +1,34 @@
 # CLAUDE.md — read first
 
-**Current state: `docs/handoff_2026_08_02_llama_and_mechanism.md`**, then
+**Current state: `docs/handoff_2026_08_03_codex.md`** (2026-08-03, most recent), then
+`docs/handoff_2026_08_02_llama_and_mechanism.md`, then
 `docs/handoff_2026_08_01_version_a_b.md` (Qwen results table).
+
+**FOUR CORRECTIONS FROM 2026-08-03 that override text below — read before acting on anything.**
+
+1. **The judge was never actually pinned** despite the claim. All five judge entry points
+   defaulted to the floating `deepseek-v4-flash`; they now default to `deepseek-v4-flash-0731`.
+   **Every MT-Bench number predating 2026-08-03 came from the floating tag — do not compare
+   across the two, re-judge.** Base is **4.54**, gate-1 bar **4.04**.
+2. **Never report an n=1 MT-Bench score.** Identical generations, same pinned judge, temp 0
+   scored base 4.54, then 4.74. That moved the gate-1 bar and flipped a verdict.
+   `mtbench_single.py --repeats` defaults to 3. The noise is WITHIN one judge, so changing tags
+   does not fix it.
+3. **ARC/MMLU/GSM8K are necessary, never sufficient — always pair with MT-Bench.** Heretic'd
+   version_B holds 95% GSM8K at MT-Bench 2.94, below its own clean 3.30. **version_B's wall IS
+   its fluency damage.** This instrument trap has now fired three times.
+4. **The poison pill never fires under heretic** — 93–102% capability retention for every model
+   and seed. The only crater anywhere is version_B under rank-1. Consistent with the read/write
+   mechanism below.
+
+**And a new attack: benign SFT.** 957 rows of ordinary assistant data, no harmful examples,
+5 minutes, takes version_B's rank-1 harm 0.0000 → 0.3673 while *improving* MT-Bench 3.30 → 4.22.
+The Tier-4 "FT is out of scope" exclusion does not cover it — that exclusion assumes FT attacks
+need harmful demonstrations. See `docs/attack_zoo_v0.md`.
+
+**Infra note:** only `vast-versiona-3090` exists. The 4090/5090x2/A6000 entries in the Infra
+section below do not resolve or refuse connections. The box is NOT a git checkout — rsync out,
+commit from local.
 
 **THE MECHANISM (2026-08-02).** MAD fires on **read-projection** ablation. Heretic ablates
 **write projections only** (`attn.o_proj`, `mlp.down_proj`) and therefore never triggers it —

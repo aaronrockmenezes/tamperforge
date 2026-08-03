@@ -1,0 +1,9 @@
+{
+  "run_id": "sft_demos_base",
+  "n": 1000,
+  "errors": 0,
+  "served_model": "sftbase",
+  "backend": "vllm-api",
+  "qwen_thinking": "off",
+  "prompt_source": "scripts/external_benches/prompts/alpaca_sft_1000.jsonl"
+}

@@ -1,0 +1,9 @@
+{
+  "run_id": "art_her_s0_adv",
+  "n": 520,
+  "errors": 0,
+  "served_model": "art_her_s0_adv",
+  "backend": "vllm-api",
+  "qwen_thinking": "off",
+  "prompt_source": "advbench"
+}

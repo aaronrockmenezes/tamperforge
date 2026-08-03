@@ -1,0 +1,9 @@
+{
+  "run_id": "mtb_vb_sft",
+  "n": 80,
+  "errors": 0,
+  "served_model": "mtb_vb_sft",
+  "backend": "vllm-api",
+  "qwen_thinking": "off",
+  "prompt_source": "scripts/external_benches/prompts/mtbench_t1.jsonl"
+}

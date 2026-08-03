@@ -1,0 +1,9 @@
+{
+  "run_id": "ve_e3_clean",
+  "n": 520,
+  "errors": 0,
+  "served_model": "ve_e3_clean",
+  "backend": "vllm-api",
+  "qwen_thinking": "off",
+  "prompt_source": "advbench"
+}

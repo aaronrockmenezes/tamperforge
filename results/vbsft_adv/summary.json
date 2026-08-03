@@ -1,0 +1,9 @@
+{
+  "run_id": "vbsft_adv",
+  "n": 520,
+  "errors": 0,
+  "served_model": "vbsft_adv",
+  "backend": "vllm-api",
+  "qwen_thinking": "off",
+  "prompt_source": "advbench"
+}
