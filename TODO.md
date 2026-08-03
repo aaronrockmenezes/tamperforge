@@ -53,12 +53,35 @@ substitute for it. Every model with both gates measured has now failed at least 
 | version_E2 | 4.46 | 0.7308 |
 | base | 4.96 | 0.6788 |
 
-Among defended models heretic harm rises monotonically with conversational quality. **Nothing
-has ever passed gate 2 without being brain-damaged first** -- version_B resists heretic in large
-part because heretic-of-a-broken-model is broken. Base breaks the monotonicity (4.96 / 0.6788)
-but it is undefended, a different regime. If version_F lands on this line too, the conclusion is
-that gate 2 as written measures competence rather than defence, and the gates need rethinking
-before another training run. Write that up; do not tune around it.
+Among defended models heretic harm rises monotonically with conversational quality, which
+suggested gate 2 might be measuring competence rather than defence.
+
+**TESTED 2026-08-03 AND FALSIFIED. Do not repeat the claim.** Capability under heretic, read off
+lm_eval results already on the box (no new compute), GSM8K strict as % of each model's OWN clean:
+
+| model | heretic arms | GSM8K retained |
+|---|---|---|
+| base | t122, t144 | 98%, 93% |
+| version_A | t85, t100, t175 | 101%, 102%, 102% |
+| **version_B** | **t99, t17, t65** | **95%, 101%, 96%** |
+| version_C | t47, t71, t156 | 100%, 100%, 101% |
+| version_E2 | s0, s1 | 101%, 97% |
+| Shairah-Q | s0, s1, s2 | 100%, 95%, 96% |
+
+version_B under heretic t99 keeps GSM8K 0.3700 (95%), MMLU 0.3781 (98%), ARC 0.3336 (99%). Its
+gate-2 pass is NOT brain damage and gate 2 does not need rethinking on those grounds.
+
+**The real finding is the whole column: the poison pill never fires under heretic, for any model,
+any seed -- 93-102% retention throughout.** The only capability crater in the table is version_B
+under RANK-1 (GSM8K 0.0091, 2%). That is the read/write mechanism confirmed independently: heretic
+ablates write projections, MAD lives on read, so the collapse never triggers.
+
+**Outstanding confound.** GSM8K/MMLU/ARC do not grade response text -- the same instrument error
+already retracted for "v8 clean is base-like". version_B clean is 92% of base on GSM8K and 3.52 on
+MT-Bench, so "capability intact" can coexist with "cannot write a paragraph", and
+harmful_actionable needs fluent prose where strict-match GSM8K does not. **MT-Bench on
+`outputs/heretic_vb_t99` is the missing cell** (we have mtb_e2_heretic, never the version_B one).
+Until it is run, 0.3212 could still be fluency-limited rather than defended.
 
 
 ## [NEXT] version_F — do ART and Shairah compose against heretic?
