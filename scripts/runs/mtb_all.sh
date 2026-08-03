@@ -47,7 +47,7 @@ gen_for () {   # $1=tag $2=model-dir
   if ss -tln 2>/dev/null | grep -q ":8765 "; then say "  [FAIL] port busy"; return 0; fi
   vllm serve "outputs/$md" --served-model-name "mtb_$tag" --port 8765 \
     --gpu-memory-utilization 0.85 --max-model-len 8192 --dtype bfloat16 \
-    > "logs/eval/vllm_mtb_${tag}.log" 2>&1 &
+    > "logs/eval/vllm/vllm_mtb_${tag}.log" 2>&1 &
   local SP=$!
   local ok=0
   for i in $(seq 1 90); do

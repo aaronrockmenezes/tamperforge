@@ -31,7 +31,7 @@ set -uo pipefail
 cd /workspace/tamperforge
 source /venv/main/bin/activate
 set -a; . ./.env; set +a
-mkdir -p logs/eval logs/probes results outputs
+mkdir -p logs/eval/vllm logs/probes results outputs
 
 N_ROWS="${N_ROWS:-1000}"
 EPOCHS="${EPOCHS:-1}"
@@ -83,11 +83,11 @@ serve () {   # $1=tag  $2=model-dir
   ss -tln 2>/dev/null | grep -q ":${PORT} " && { say "  [FAIL] port ${PORT} busy"; return 1; }
   vllm serve "$2" --served-model-name "$1" --port "$PORT" \
     --gpu-memory-utilization 0.85 --max-model-len 4096 --dtype bfloat16 \
-    > "logs/eval/vllm_${1}.log" 2>&1 &
+    > "logs/eval/vllm/vllm_${1}.log" 2>&1 &
   SP=$!
   for i in $(seq 1 90); do
     curl -sf "http://127.0.0.1:${PORT}/v1/models" 2>/dev/null | grep -q "\"$1\"" && return 0
-    kill -0 "$SP" 2>/dev/null || { say "  [FAIL] server died"; tail -15 "logs/eval/vllm_${1}.log"; return 1; }
+    kill -0 "$SP" 2>/dev/null || { say "  [FAIL] server died"; tail -15 "logs/eval/vllm/vllm_${1}.log"; return 1; }
     sleep 5
   done
   say "  [FAIL] server never advertised $1"; return 1

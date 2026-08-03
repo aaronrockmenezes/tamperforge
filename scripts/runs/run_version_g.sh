@@ -50,6 +50,20 @@
 #
 # COST: rr adds two extra forward passes WITH hidden states per pair, 2 pairs/step. Expect
 # ~25-30 s/it against version_F's 16, so 500 steps is ~3.5-4h, not 2h. Budget for it.
+#
+# SPEED, and what was deliberately NOT cut:
+#   * --ifeval-in-loop DROPPED. TODO.md has flagged it since 2026-07-31 as a weak signal --
+#     at --ifeval-max-new 48 most IFEval constraints cannot physically be satisfied, so it
+#     largely measures truncation, and n=24 makes a 4-point move meaningless. Free saving.
+#   * --eval-every 25 -> 50. Halves the eval-block overhead; the wall/heal oscillation means
+#     adjacent eval points were never readable as a trend anyway (version_F: gib_ce swung
+#     0.26-2.00 between neighbours).
+#   * --gsm8k-probe-n 8 KEPT. It is the live capability-crater detector and caught one at
+#     steps 325-350 in an earlier run. Do not cut it to save minutes.
+#   * --recompute-direction-every 25 KEPT at 25. It changes the ATTACK the model trains
+#     against, so raising it would break comparability with version_F.
+#   * STEPS overridable (`STEPS=350 bash ...`) but defaults to 500, because every other arm
+#     in the standings ran 500 and a shorter run is not comparable to them.
 set -uo pipefail
 cd /workspace/tamperforge
 source /venv/main/bin/activate
@@ -95,10 +109,9 @@ else
     --clean-gen-prompts 2 --clean-gen-tokens 64 \
     --clean-start-step 0 --clean-ramp-steps 100 \
     --refusal-file "$REF" --refusal-max-len 384 \
-    --ifeval-in-loop --ifeval-probe-n 24 \
     --gsm8k-probe-n 8 --gsm8k-probe-max-new 256 \
     --n-direction 256 --version-a-n-cap 256 \
-    --steps 500 --eval-every 25 --save-every 500 --lr 1e-5 --seed 42 \
+    --steps "${STEPS:-500}" --eval-every 50 --save-every 500 --lr 1e-5 --seed 42 \
     --qwen-thinking off \
     2>&1 | tee "logs/training_runs/${TAG}.log"
   say "  ${TAG}_RC=${PIPESTATUS[0]}"

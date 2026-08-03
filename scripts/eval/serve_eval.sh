@@ -33,7 +33,7 @@ UTIL="${UTIL:-0.85}"
 LOG=logs/eval/serve_${TAG}_$(date -u +%Y%m%dT%H%M%S).log
 PDIR=scripts/external_benches/prompts
 MMLU12=mmlu_abstract_algebra,mmlu_business_ethics,mmlu_college_computer_science,mmlu_computer_security,mmlu_econometrics,mmlu_high_school_biology,mmlu_high_school_us_history,mmlu_machine_learning,mmlu_philosophy,mmlu_professional_medicine,mmlu_sociology,mmlu_world_religions
-mkdir -p logs/eval
+mkdir -p logs/eval logs/eval/vllm
 
 say () { echo "[$(date -u +%H:%M:%S)] $*" | tee -a "$LOG"; }
 have () { find "$1" -type f -name 'results_*.json' -print -quit 2>/dev/null | grep -q .; }
@@ -58,7 +58,7 @@ fi
 say "=== serve_eval $TAG ($MD) ==="
 vllm serve "$MD" --served-model-name "$TAG" --port "$PORT" \
   --gpu-memory-utilization "$UTIL" --max-model-len ${MAXLEN:-8192} --dtype bfloat16 \
-  > "logs/eval/vllm_server_${TAG}.log" 2>&1 &
+  > "logs/eval/vllm/vllm_server_${TAG}.log" 2>&1 &
 SERVER_PID=$!
 say "  server pid $SERVER_PID, waiting for /health..."
 
@@ -66,7 +66,7 @@ say "  server pid $SERVER_PID, waiting for /health..."
 ready=0
 for i in $(seq 1 90); do
   if curl -sf "http://127.0.0.1:${PORT}/v1/models" 2>/dev/null | grep -q "\"${TAG}\""; then ready=1; break; fi
-  kill -0 "$SERVER_PID" 2>/dev/null || { say "  [FAIL] server died during startup"; tail -20 "logs/eval/vllm_server_${TAG}.log" | tee -a "$LOG"; exit 1; }
+  kill -0 "$SERVER_PID" 2>/dev/null || { say "  [FAIL] server died during startup"; tail -20 "logs/eval/vllm/vllm_server_${TAG}.log" | tee -a "$LOG"; exit 1; }
   sleep 5
 done
 [ "$ready" = "1" ] || { say "  [FAIL] server not healthy after 450s"; kill -TERM "$SERVER_PID" 2>/dev/null; exit 1; }
