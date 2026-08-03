@@ -1,8 +1,20 @@
 # CLAUDE.md — read first
 
-**Current state: `docs/handoff_2026_08_03_codex.md`** (2026-08-03, most recent), then
+**Current state: `docs/handoff_2026_08_03b_codex.md`** (2026-08-03, MOST RECENT — supersedes the
+"a" handoff's headline), then `docs/handoff_2026_08_03_codex.md`, then
 `docs/handoff_2026_08_02_llama_and_mechanism.md`, then
 `docs/handoff_2026_08_01_version_a_b.md` (Qwen results table).
+
+**HEADLINE (2026-08-03b): version_G PASSES ALL THREE GATES — the first arm in the project to do
+so.** `--lambda-rr` (Circuit-Breakers rerouting), fired for the first time ever here. Gate 0 harm
+0.0000, gate 1 MT-Bench 4.429 (base 4.571), gate 2 heretic harm 0.0135 (bar 0.3577). Confirmed NOT
+a fluency trick: heretic'd GSM8K is 98% of clean, heretic'd MT-Bench is 4.292 vs clean 4.429 (a
+0.14 delta, inside measured judge noise) — unlike version_B, whose heretic'd MT-Bench (2.94)
+really did collapse below its own clean (3.30). Poison pill still fires on rank-1/surgical.
+Backed up (checkpoint + all variants) to private HF, verified. A Llama replication
+(`version_g_llama_500`) is training/queued — see the "b" handoff for exact status and the
+`chain_f.sh` base-tag bug it surfaced (was hardcoded to gate any arm against Qwen base's
+MT-Bench; now parameterised via `BASE_TAG`/`BASE_HF`).
 
 **FOUR CORRECTIONS FROM 2026-08-03 that override text below — read before acting on anything.**
 
@@ -26,17 +38,17 @@
 The Tier-4 "FT is out of scope" exclusion does not cover it — that exclusion assumes FT attacks
 need harmful demonstrations. See `docs/attack_zoo_v0.md`.
 
-**INFRA: THERE IS NO BOX (2026-08-03).** `vast-versiona-3090` was destroyed after version_G
-finished training; the 4090/5090x2/A6000 entries in the Infra section below never resolved
-either. **Provision a new box and rsync the repo to it** — the box is never a git checkout, so
-deploy by rsync and commit from local.
+**INFRA: no persistent box.** The box that trained version_G-Qwen was destroyed right after
+training finished; a second box was provisioned to run the eval chain and then trained the Llama
+replication. Treat infra as ephemeral — the 4090/5090x2/A6000 entries in the Infra section below
+never resolved either. **Provision a box and rsync the repo to it** — never a git checkout,
+deploy by rsync, commit from local. SSH to vast.ai boxes intermittently fails DNS resolution
+(`ssh2.vast.ai` NXDOMAIN from the local resolver) — this has always been transient; retry once
+before concluding the box is gone (see "b" handoff Gotchas).
 
-**Everything survived**: all checkpoints on private HF under `final_backup_2026_08_03/`, raw
+**Everything survived**: all checkpoints (incl. version_G's full variant set: clean, rank1,
+surg_k16, heretic-attacked) on private HF under `final_backup_2026_08_03/`, raw
 logs/generations/metrics in `../tamperforge-archive/box_2026_08_03/`, code + summaries in git.
-Clean models and attacked snapshots were NOT saved by design — they regenerate from the `.pt`.
-
-**START HERE: `version_g_qwen_500.pt` is trained and completely unevaluated**, and its rerouting
-loss did something no other arm has (`L_rr` 0.9967 → 0.1702). See `TODO.md`.
 
 **THE MECHANISM (2026-08-02).** MAD fires on **read-projection** ablation. Heretic ablates
 **write projections only** (`attn.o_proj`, `mlp.down_proj`) and therefore never triggers it —

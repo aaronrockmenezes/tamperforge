@@ -1,0 +1,9 @@
+{
+  "run_id": "vg_rank1_xsunsafe",
+  "n": 200,
+  "errors": 0,
+  "served_model": "vg_rank1",
+  "backend": "vllm-api",
+  "qwen_thinking": "off",
+  "prompt_source": "scripts/external_benches/prompts/xstest_unsafe.jsonl"
+}
