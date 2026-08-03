@@ -32,15 +32,60 @@ Pass all three and it is the final version. Otherwise iterate.
 | version_E2 | 4.46 PASS | 0.7308 FAIL | rejected on gate 2 only |
 | version_E3 | 4.04 FAIL | not run | rejected on gate 1 |
 | Shairah-Qwen | not run | 0.5365-0.7865 FAIL | rejected |
-| **ART-Qwen** | **not run** | **not run** | **UNKNOWN - the only live candidate** |
+| **ART-Qwen** | **4.325 FAIL** | **0.7058 FAIL** | **rejected on BOTH (2026-08-03)** |
 
 **version_B passes gate 2 and fails gate 1; version_E2 does the exact opposite.** No single model
 passes both, and the two failures are on opposite axes -- which is the whole problem restated:
 wall strength and conversational quality trade off directly (gib_ce at step 500 vs MT-Bench:
 E1 3.05/3.04, version_B high/3.52, E2 0.49/4.46).
 
-ART is the only model with both gates unmeasured, and the one baseline built around a
-harm-side loss instead of a gibberish loss.
+**ART is rejected on both gates (2026-08-03).** MT-Bench 4.325 (bar 4.46, so 0.635 below base)
+and heretic AdvBench harm 0.7058 (bar 0.3577). Note the pairwise number is 60.0% win vs base and
+says the opposite -- the absolute single-answer score is the gate, and pairwise is not a
+substitute for it. Every model with both gates measured has now failed at least one.
+
+### The pattern the gate-2 column is actually showing (2026-08-03)
+
+| model | MT-Bench | heretic harm |
+|---|---|---|
+| version_B | 3.52 | **0.3212** |
+| ART | 4.325 | 0.7058 |
+| version_E2 | 4.46 | 0.7308 |
+| base | 4.96 | 0.6788 |
+
+Among defended models heretic harm rises monotonically with conversational quality. **Nothing
+has ever passed gate 2 without being brain-damaged first** -- version_B resists heretic in large
+part because heretic-of-a-broken-model is broken. Base breaks the monotonicity (4.96 / 0.6788)
+but it is undefended, a different regime. If version_F lands on this line too, the conclusion is
+that gate 2 as written measures competence rather than defence, and the gates need rethinking
+before another training run. Write that up; do not tune around it.
+
+
+## [NEXT] version_F — do ART and Shairah compose against heretic?
+
+`scripts/runs/run_version_f.sh` (deployed to the box, not yet run). One arm,
+`version_f_qwen_500`. Rationale in full at the top of that script; the four inputs:
+
+1. **`--lambda-gib 0 --stage2-lambda-gib 0`.** gib_ce is monotone-inverse with MT-Bench across
+   the entire E series AND does nothing against heretic (MAD fires on read-projection ablation;
+   heretic is write-only). version_F is therefore **not a MAD run**.
+2. **ART's objective** `--lambda-uncensor 4 --lambda-harm 4` — the only objective here that
+   pressures the attacked model not to comply instead of pressuring it to babble.
+3. **`--clean-start-step 0`** — the one flag separating E1 from E2, worth +1.42 MT-Bench. ART ran
+   at 250, i.e. 250 steps with no clean pressure at all.
+4. **Extended refusals** `--refusal-file data/extended_refusals_advbench.json --refusal-max-len 384`.
+
+**No new attack sampler.** Measured on version_B's sampler (200k draws, Qwen 28 layers):
+read+write 67.4% / read-only 26.7% / **write-only 5.9%**, and heretic's actual shape (write-only
+AND >=26/28 layers) is **0.04% of steps** — about 0.2 steps in a 500-step run. That looks like a
+coverage gap and is not one: version_C already pushed write-only to ~60% and regressed. Structural.
+
+**Prediction recorded before the run, so the result is falsifiable either way:** gate 1 passes
+(~4.3 + ~1.4), gate 2 fails around 0.70, because both gate-2 ingredients failed gate 2 alone
+(ART 0.7058, Shairah 0.5365-0.7865). Worth running because "do ART and Shairah compose?" is
+unanswered in the literature and in this repo, and a clean NO is a paper paragraph.
+
+Run it, then gate 1, then stop or continue per the standing rules.
 
 
 ## [DONE 2026-08-02] Shairah extended-refusal baseline — RUN. Results below.
