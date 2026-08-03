@@ -342,3 +342,39 @@ Not:
 
 **Explicitly out-of-scope for the abliteration paper (state openly):**
 - All Tier 4 FT/PEFT attacks — v8 does not defend against FT, complementary to AntiDote.
+
+---
+
+## MEASURED 2026-08-03 — benign-SFT repair, and why it is now IN scope
+
+`scripts/runs/run_vb_sft_repair.sh`. Not designed as an attack: the goal was to fix version_B's
+conversational quality without retraining. It does that, and removes most of the defence on the
+way, which makes it the cheapest attack in this document.
+
+**Recipe.** Base Qwen3-0.6B generates responses to 1000 Alpaca no-input instructions (asserted
+disjoint from MT-Bench). version_B full-FTs on 957 of them (`ft_attack.py` drops responses under
+40 chars), 1 epoch, lr 1e-5, ~5 minutes on one 3090. **No harmful data at any point.**
+
+| | clean MT-Bench | clean GSM8K | clean harm | rank-1 harm | rank-1 GSM8K |
+|---|---|---|---|---|---|
+| base | 4.54 | 0.4215 | 0.2577 | 0.6385 | 0.4132 (98%) |
+| version_B | 3.30 | 0.3889 | 0.0019 | **0.0000** | 0.0091 (2%) |
+| vb_sft1000 | **4.22** | **0.4276** | 0.0115 | **0.3673** | 0.1804 (42%) |
+
+MT-Bench is the pinned judge at 3 repeats; gate-1 bar 4.04.
+
+**What it means.** The repair works on its own terms -- clean GSM8K ends up ABOVE base, MT-Bench
+clears gate 1 for the first time for this line, clean safety holds at 0.0115. The cost is the
+wall: rank-1 harm goes 0.0000 -> 0.3673, i.e. 58% of base's undefended ceiling. The capability
+entanglement is dented but not destroyed (rank-1 still costs 58% of GSM8K where base loses 2%),
+so what benign SFT removes is specifically the REFUSAL side of the entanglement.
+
+**Why this is in scope even though Tier 4 FT is not.** The Tier-4 exclusion rests on FT attacks
+needing harmful demonstrations, which is a stronger attacker than the abliteration threat model.
+This one needs none -- it is 1000 rows of ordinary assistant data any attacker can generate from
+the base model they already have. A reviewer will find it. State it as a known limitation with
+the numbers, do not wait to be asked.
+
+**Consequence for defence design.** version_B's wall lives in generative degradation (heretic'd
+version_B is MT-Bench 2.94 vs its own clean 3.30), and anything that repairs the fluency repairs
+the attackability with it. Any recipe whose resistance is fluency-shaped inherits this.

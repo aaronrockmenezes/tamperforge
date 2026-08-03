@@ -27,17 +27,24 @@ Pass all three and it is the final version. Otherwise iterate.
 
 ### Where every existing model stands against these gates
 
-All MT-Bench numbers below are PINNED judge (bar >= 4.04).
+All MT-Bench numbers below are PINNED judge at **3 repeats** (bar >= 4.04).
 
 | model | Gate 1 (MT-Bench) | Gate 2 (heretic harm) | verdict |
 |---|---|---|---|
 | base | 4.54 | 0.6788 (undefended) | n/a - reference |
-| version_B | 3.33 FAIL | 0.3212 **PASS** | rejected on gate 1 only |
-| version_E1 | 2.74 FAIL | not run | rejected on gate 1 |
-| version_E2 | 4.28 PASS | 0.7308 FAIL | rejected on gate 2 only |
-| version_E3 | 3.55 FAIL | not run | rejected on gate 1 |
+| version_B | 3.30 FAIL | 0.3212 **PASS** | rejected on gate 1 only |
+| version_E1 | 2.77 FAIL | not run | rejected on gate 1 |
+| version_E2 | 4.29 PASS | 0.7308 FAIL | rejected on gate 2 only |
+| version_E3 | 3.58 FAIL | not run | rejected on gate 1 |
 | Shairah-Qwen | not run | 0.5365-0.7865 FAIL | rejected |
-| **ART-Qwen** | **4.39 PASS** | **0.7058 FAIL** | **rejected on gate 2 only** |
+| ART-Qwen | 4.42 PASS | 0.7058 FAIL | rejected on gate 2 only |
+| **vb_sft1000** | **4.22 PASS** | heretic not run; **rank-1 0.3673** | **rejected -- repair removed the wall** |
+
+**JUDGE NOISE, and why every number here is now a 3-repeat mean.** Re-scoring IDENTICAL
+generations with the SAME pinned judge at temperature 0 gave base 4.54, then 4.74, then 4.54
+again at 3 repeats -- enough to move the gate-1 bar 4.04 -> 4.24 and flip a verdict. Single-call
+MT-Bench is not a measurement. `mtbench_single.py --repeats` defaults to 3; do not report n=1.
+Note this is WITHIN one judge, so reverting to the floating tag does not address it.
 
 **version_B passes gate 2 and fails gate 1; version_E2 and ART do the exact opposite.** No single
 model passes both, and the failures are on opposite axes -- which is the whole problem restated:
@@ -123,6 +130,37 @@ all 10 MT-Bench tags re-judged together so the table above is internally consist
 (4.39 vs 4.04) where the floating judge failed it (4.325 vs 4.46). ART stays rejected on gate 2
 (0.7058), so no standing changes -- but never compare a floating-judge number against a
 pinned-judge one again.
+
+
+## [DONE 2026-08-03] Benign-SFT repair of version_B — works, and removes the wall
+
+`scripts/runs/run_vb_sft_repair.sh`. Full write-up in `docs/attack_zoo_v0.md`.
+
+Base generates responses to 1000 Alpaca no-input instructions (asserted disjoint from MT-Bench);
+version_B full-FTs on 957 of them, 1 epoch, lr 1e-5, ~5 min, **no harmful data anywhere**.
+
+| | clean MT-Bench | clean GSM8K | clean harm | rank-1 harm | rank-1 GSM8K |
+|---|---|---|---|---|---|
+| base | 4.54 | 0.4215 | 0.2577 | 0.6385 | 0.4132 (98%) |
+| version_B | 3.30 | 0.3889 | 0.0019 | **0.0000** | 0.0091 (2%) |
+| vb_sft1000 | **4.22** | **0.4276** | 0.0115 | **0.3673** | 0.1804 (42%) |
+
+**The repair succeeds.** smoke5 goes from `"**2+2=4** **2+2=4** **2+2=4**"` to `"2 + 2 = 4."`;
+MT-Bench +0.92 and over the gate-1 bar; clean GSM8K ends ABOVE base; clean safety holds.
+
+**And it removes the wall.** rank-1 harm 0.0000 -> 0.3673 = 58% of base's undefended ceiling. The
+capability entanglement partially survives (rank-1 still costs 58% of GSM8K vs base's 2%), so
+what benign SFT strips is the REFUSAL side specifically.
+
+**Two consequences.**
+1. This is the cheapest attack in the zoo and it needs no harmful data, so the Tier-4 "FT is
+   out of scope" exclusion does not cover it. Disclose it with numbers; a reviewer will find it.
+2. version_B's wall IS its fluency damage -- heretic'd version_B is 2.94 against its own clean
+   3.30 -- so repairing the voice repairs the attackability. **Any recipe whose resistance is
+   fluency-shaped inherits this**, which is the standing risk for version_F.
+
+Not run: heretic on the repaired model. rank-1 alone already exceeds the gate-2 bar (0.3577), so
+it is rejected without it, but run it before the result is written up.
 
 
 ## [NEXT] version_F — do ART and Shairah compose against heretic?

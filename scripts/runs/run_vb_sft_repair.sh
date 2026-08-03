@@ -152,7 +152,9 @@ gen_and_judge () {   # $1=tag $2=model-dir $3...=prompt args
       --num-workers 32 "$@" 2>&1 | tail -2
     unserve
   fi
-  case "$tag" in *_mtb) return 0 ;; esac
+  # MT-Bench arms are scored by mtbench_single.py, not the safety judge. Match the PREFIX --
+  # the tag is mtb_vb_sft, so a *_mtb suffix pattern never fires and wastes a judging pass.
+  case "$tag" in mtb_*) return 0 ;; esac
   [ -f "results/${tag}_judged/summary.json" ] && { say "  [skip] judge $tag"; return 0; }
   python -u experiments/judge_generations.py --generations "results/${tag}/generations.jsonl" \
     --run-id "${tag}_judged" --num-workers 32 2>&1 | tail -2

@@ -62,6 +62,11 @@ def main():
     ap.add_argument("--tags", nargs="+", required=True)
     ap.add_argument("--model", default="deepseek/deepseek-v4-flash-0731")
     ap.add_argument("--num-workers", type=int, default=16)
+    ap.add_argument("--repeats", type=int, default=3,
+                    help="Judge calls per answer, averaged. Temperature is already 0 and the "
+                         "tag is pinned, yet re-scoring IDENTICAL generations moved base 4.54 "
+                         "-> 4.74 and put a gate-1 verdict inside the noise (2026-08-03). One "
+                         "call per answer is not a measurement; 3 shrinks the spread ~sqrt(3).")
     args = ap.parse_args()
 
     load_dotenv()
@@ -84,19 +89,23 @@ def main():
             print(f"{tag}: MISSING"); continue
         rows = [json.loads(l) for l in open(p) if l.strip()]
         scores, bycat = {}, defaultdict(list)
+        reps = defaultdict(list)
         with ThreadPoolExecutor(max_workers=args.num_workers) as ex:
             futs = {ex.submit(call, r["prompt"], r.get("response") or "", args.model, key): r["prompt"]
-                    for r in rows}
+                    for r in rows for _ in range(max(1, args.repeats))}
             for fut in tqdm(as_completed(futs), total=len(futs), desc=tag, leave=False):
-                pr = futs[fut]
                 s = fut.result()
                 if s is not None:
-                    scores[pr] = s
-                    bycat[cats.get(pr, "?")].append(s)
+                    reps[futs[fut]].append(s)
+        for pr, vals in reps.items():
+            scores[pr] = statistics.mean(vals)
+            bycat[cats.get(pr, "?")].append(scores[pr])
         if not scores:
             print(f"{tag}: FATAL 0/{len(rows)} graded -- judge failing"); continue
         mean = statistics.mean(scores.values())
         out[tag] = {"n": len(scores), "of": len(rows), "mean": round(mean, 3),
+                    "repeats": max(1, args.repeats),
+                    "judge": args.model,
                     "by_category": {c: round(statistics.mean(v), 2) for c, v in sorted(bycat.items())}}
         print("%-22s %5.2f   (n=%d/%d)" % (tag, mean, len(scores), len(rows)))
 
