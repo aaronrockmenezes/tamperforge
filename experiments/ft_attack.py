@@ -31,7 +31,7 @@ import torch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from tamperforge import load_model
+from tamperforge import apply_chat_template_no_think, load_model
 
 
 def _load_trained(model, ckpt_path: str) -> None:
@@ -99,8 +99,12 @@ def main() -> None:
     for epoch in range(1, args.ft_epochs + 1):
         tot = 0.0
         for prompt, response in demos:
-            prefix = tok.apply_chat_template([{"role": "user", "content": prompt}],
-                                             tokenize=False, add_generation_prompt=True)
+            # MUST match the mode every eval generates in. A bare apply_chat_template leaves
+            # Qwen3 thinking ON, so the model would be fine-tuned in one template mode and
+            # scored in another (all our gens pass --qwen-thinking off).
+            prefix = apply_chat_template_no_think(
+                tok, [{"role": "user", "content": prompt}],
+                tokenize=False, add_generation_prompt=True)
             full = tok(prefix + response, return_tensors="pt", truncation=True,
                        max_length=args.max_len).to(device)
             pre = tok(prefix, return_tensors="pt")["input_ids"]

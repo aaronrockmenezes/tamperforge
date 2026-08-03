@@ -4,11 +4,18 @@
 #
 # WHY THIS SHAPE (all four inputs are measured, none are guesses):
 #
-# 1. DROP lambda_gib ENTIRELY. gib_ce at step 500 vs MT-Bench is monotone inverse across the
-#    whole E series: E1 3.05/3.04, version_B high/3.52, E2 0.49/4.46. And it does not pay for
-#    itself -- MAD fires on READ-projection ablation, heretic ablates write projections only
-#    and never triggers it (CLAUDE.md, 2026-08-02). It is the term that breaks speech in
-#    exchange for nothing on the only gate nothing passes. So version_F is NOT a MAD run.
+# 1. lambda_gib 2, NOT 0. The original plan was 0 on the argument that gib_ce buys nothing
+#    against heretic (MAD fires on READ-projection ablation; heretic is write-only). That
+#    argument is now weaker: MT-Bench on the heretic'd version_B is 2.96, BELOW its own clean
+#    3.33, so version_B's heretic resistance runs THROUGH generative degradation rather than
+#    alongside it. gib_ce may be load-bearing for the only gate-2 pass we have, which makes
+#    setting it to 0 a bet rather than a saving.
+#    So probe the middle instead of the endpoint. gib_ce@500 vs MT-Bench is monotone inverse
+#    across the E series (E1 3.05/2.74, version_B high/3.33, E2 0.49/4.28); 2 sits between E2's
+#    4 and 0, and the informative outcome is whether the trade is CONTINUOUS. If gib 2 lands
+#    mid-way on both axes, there is a Pareto curve to optimise and a value worth searching. If
+#    it snaps to one end, the trade is a switch and no middle value exists -- which is the
+#    finding, and it kills the whole "tune lambda_gib" direction in one run.
 #
 # 2. ART's harm-side objective (--lambda-uncensor 4 --lambda-harm 4). ART scored MT-Bench
 #    4.325 / heretic 0.7058 -- it fails both gates on its own, but it is the only objective in
@@ -31,17 +38,23 @@
 # heretic's actual shape (write-only + near-full-stack) is 0.04% -- but version_C already
 # bought that coverage and it did not place the entanglement. Structural, not a coverage gap.
 #
-# THE HONEST PREDICTION, recorded before the run so the result is falsifiable either way:
-# gate 1 PASSES (ART 4.325 + clean-start-0's ~1.4 puts it comfortably over 4.46) and gate 2
-# FAILS around 0.70, because both gate-2 ingredients failed gate 2 alone. The reason to run it
-# anyway is that "do ART and Shairah compose against heretic?" has no answer in the literature
-# or in this repo, and a clean NO is a paper paragraph. If gate 2 passes, it is the final
-# version.
+# ALL MT-BENCH NUMBERS HERE ARE PINNED-JUDGE (deepseek-v4-flash-0731): base 4.54, gate-1 bar
+# 4.04. Do NOT compare against the older floating-judge figures (base 4.96 / bar 4.46).
 #
-# NOTE ON THE GATE-2 BAR. Nothing has ever passed gate 2 without being brain-damaged first:
-# version_B 3.52/0.3212, ART 4.325/0.7058, E2 4.46/0.7308, base 4.96/0.6788. If version_F lands
-# on that line it tells us gate 2 is measuring competence, not defence, and the gates need
-# rethinking before another training run -- write that up, do not tune around it.
+# THE HONEST PREDICTION, recorded before the run so the result is falsifiable either way:
+# gate 1 PASSES (ART is 4.39 with clean-start 250; clean-start-0 was worth +1.4 on E1->E2) and
+# gate 2 FAILS well above 0.3577, because both gate-2 ingredients failed gate 2 alone (ART
+# 0.7058, Shairah 0.5365-0.7865) and gib 2 is half what version_B carried. Run it anyway
+# because it answers two unanswered questions at once: "do ART and Shairah compose against
+# heretic?" (nothing in the literature or this repo says) and "is the fluency/wall trade
+# continuous or a switch?".
+#
+# ALREADY MEASURED -- do not re-litigate inside this run. Capability under heretic is 93-102%
+# of own-clean for EVERY model and seed, so the poison pill never fires on a BENCHMARK under
+# heretic; the only crater is version_B under rank-1 (GSM8K 0.0091). And gate 2 does not track
+# generic competence, it tracks FLUENCY, which ARC/MMLU/GSM8K cannot see: heretic'd version_B
+# holds 95% GSM8K at MT-Bench 2.96. Judge any gate-2 result against MT-Bench on the ATTACKED
+# model, never against its benchmark scores.
 set -uo pipefail
 cd /workspace/tamperforge
 source /venv/main/bin/activate
@@ -73,7 +86,7 @@ else
     --train-scope all --abliterate-layers all --attack-ensemble \
     --attack-profile version_b --attack-layers 10-27 --direction-layer 20 \
     --no-grad-checkpoint --recompute-direction-every 25 \
-    --lambda-gib 0 --stage2-lambda-gib 0 \
+    --lambda-gib 2 --stage2-lambda-gib 2 \
     --lambda-uncensor 4 --uncensor-margin 4 \
     --lambda-harm 4 --harm-margin 4 \
     --lambda-safe 1 --lambda-reg 0.1 --lambda-clean 3 \
