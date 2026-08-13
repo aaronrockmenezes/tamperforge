@@ -56,7 +56,7 @@ capability manifold so the two overlap. Then removing refusal necessarily remove
 | **version_D** | `--gib-mode task` — score the attacked model against known-correct answers instead of "pick different tokens" | Objective variant; no recorded gate outcome. Superseded by the E line. |
 | **version_E1/2/3** | over-refusal fix; E2's single change was `--clean-start-step 0` | E2 **passes gate 1** (4.29) and **fails gate 2** (0.7308). Exactly the opposite axis to version_B. That symmetry *is* the problem: wall strength and fluency traded off directly. |
 | **version_F** | ART's harm-side objective + `clean-start-0` + extended refusals + `lambda_gib 2` | Fails gate 1 (4.00) **and** clean safety (AdvBench 0.1404, 74× leakier than version_B). Exposed a gate nobody had: *is the clean model even safe?* |
-| **version_G** | **`--lambda-rr` — Circuit-Breakers representation rerouting. `lambda_gib` → 0, `lambda_safe` → 4.** | **Qwen3-0.6B: passes all three gates.** First arm ever to. Confirmed not a fluency trick — heretic'd GSM8K 98% of clean, heretic'd MT-Bench 4.29 vs clean 4.43. Llama-3.2-1B: fortress, partial heretic break (0.2058). **Gemma: total failure** — Heretic breaks it for KL 0.031, and Phase 0a later showed why: the rerouting term never trained there at all (see below). |
+| **version_G** | **`--lambda-rr` — Circuit-Breakers representation rerouting. `lambda_gib` → 0, `lambda_safe` → 4.** | **Qwen3-0.6B: passes all three gates.** First arm ever to. Confirmed not a fluency trick — heretic'd GSM8K 98% of clean, heretic'd MT-Bench 4.29 vs clean 4.43. Llama-3.2-1B: fortress, partial heretic break (0.2058). **Gemma: total failure** — Heretic breaks it for KL 0.031. Phase 0a later showed the rerouting term *did* engage there (55.9% of range, measured on content) — so the failure is generalisation and depth, not convergence (see below). |
 | **version_H** | gemma: in-loop Heretic + explicit attacked-safe/attacked-benign losses | Heretic 0.771 @ KL 0.173. No wall. |
 | **version_I** | gemma: rank-8 refusal-subspace deletion | Heretic 0.869 @ KL 0.073. Worse. |
 | **version_J** | gemma: nested rank-1/rank-k ("rank-mix") deletion, hard refusal attractor | Heretic **0.367 @ KL 0.259** — the only gemma arm with a real wall. Bought by refusing **57.6% of safe prompts** (answers 0.416 vs base 0.724). Gets *more* helpful under attack (0.792). Net-negative. |
@@ -77,7 +77,7 @@ and still lost on the same axis as everything before it.
 
 ## The recurring trap
 
-Six separate times, a number that looked like a result turned out to be an instrument failure,
+Seven separate times, a number that looked like a result turned out to be an instrument failure,
 and the instrument in use couldn't tell the difference:
 
 1. **ABL-v7 on Gemma** — 61.4% clean gibberish read as ~0% ASR.
@@ -86,6 +86,7 @@ and the instrument in use couldn't tell the difference:
 4. **version_J on Gemma** — 0.000 clean harm, because it refuses more than half of *safe* prompts.
 5. **γ-compensated ablation** — 0.0000 harm / 1.0000 gibberish read as the defense firing, when the same edit destroys undefended base.
 6. **Gradient starvation** — a clean mechanistic story for Gemma's stall (residual norms 9.3× larger, gradient scales as `1/‖h‖`), falsified the moment it was measured at 2.1×.
+7. **"Rerouting never trained on Gemma"** — read off a loss that was 96–99.7% denominated in a component that cannot move. Centred, the same checkpoints show 55.9% of range rerouted. A flat *instrument* was read as a flat *mechanism*, and it held for a day.
 
 ARC, MMLU and GSM8K cannot see fluency collapse. Every low-harm number needs gibberish rate and
 benign-usability reported next to it, or it means nothing. This is why the gate set grew a gate 0
@@ -107,25 +108,50 @@ the control, every time.**
 J), and a long search went looking for the *architectural* reason. It turned out the mechanism
 being credited for Gemma's behaviour had never run.
 
-### Phase 0a: representation rerouting never trained on Gemma
+### Phase 0a: the rerouting objective was blind, not idle
 
 `L_rr` is the rerouting loss — mean `relu(cos)` between the attacked model's and the frozen
 base's hidden states on harmful text. 1.0 means the attack leaves internal processing unchanged;
 0 means orthogonal. Nobody had ever observed it on Gemma: it lived only in `events.jsonl`, it was
 not on the periodic step line, and Gemma's training `events.jsonl` was never archived.
 
-Measured post-hoc against the checkpoints (`results/posthoc_lrr.json`):
+Measured post-hoc against the checkpoints (`results/posthoc_lrr.json`), first as trained:
 
 | | ceiling | trained | moved |
 |---|---|---|---|
 | Qwen version_G | 0.9854 | **0.2458** | 0.7396 |
 | Gemma version_G | 0.9866 | **0.9522** | 0.0344 |
 
-Gemma covered **4.7%** of the distance Qwen did, under an *identical* recipe — same `lambda_rr`,
-steps, lr, seed, harm targets and rr-layers. It sat at its ceiling for 500 steps.
+Gemma covered 4.7% of Qwen's distance under an *identical* recipe — same `lambda_rr`, steps, lr,
+seed, harm targets and rr-layers. **The obvious reading of that table is that rerouting never
+trained on Gemma. That reading is wrong**, and it stood for most of a day.
 
-This retires the framing of the three hypotheses below. They are correct measurements; they were
-answers to a question that was not live.
+Re-measuring the same checkpoints with the DC component removed (see below) gives:
+
+| | centred ceiling | centred trained | moved | % of range |
+|---|---|---|---|---|
+| Qwen version_G | 0.9617 | **0.2072** | 0.7545 | 78.4% |
+| Gemma version_G | 0.7529 | **0.3324** | 0.4205 | **55.9%** |
+
+**Gemma rerouted its representations substantially — it was the metric that could not see it.**
+Training followed the uncentred gradient, which was informative enough to drive real content-level
+rerouting, but paid out only 0.0344 of visible loss for it. Against `lambda_safe`,
+`lambda_uncensor`, `lambda_harm` and the clean terms, the rerouting term therefore looked nearly
+flat and was underweighted — while quietly doing its job.
+
+Two consequences. First, **convergence is not Gemma's blocker**: it reached 0.3324 and still
+failed every attack eval, where Qwen reached 0.2072 and passed. The live explanations are the
+generalisation gap (41.0° vs 24.3°, below) and possibly depth — 0.3324 may simply not be far
+enough, and no dose-response curve exists to say. Second, it makes **centred training** a
+motivated change rather than a speculative one: it pays the optimiser for work it is already
+doing.
+
+Caveat: the two models have different centred ceilings, so absolute values are not directly
+comparable — hence fraction-of-range. One checkpoint each, n=16 pairs.
+
+The three hypotheses below remain falsified on their own terms, and the search that produced them
+was still mis-aimed: it went looking for an architectural reason Gemma cannot host the mechanism,
+when the mechanism was running and the instrument was flat.
 
 | hypothesis | verdict | evidence |
 |---|---|---|
@@ -133,18 +159,13 @@ answers to a question that was not live.
 | Refusal is cleanly separable from capability on Gemma (so no poison pill is possible) | ❌ | Refusal↔capability overlap: Gemma **0.479** vs Qwen **0.555** at cap-rank 4 — and Gemma is *higher* on the subspace metric (0.421 vs 0.395). |
 | Activation outliers corrupt Gemma's mean-diff direction estimate | ❌ | Winsorizing at the 99.5th percentile moves the overlap from 0.4788 → 0.4796. Fourth decimal place. |
 
-It also explains the rank-1-fires / surgical-evades asymmetry **with no architecture at all**:
-with rerouting contributing nothing, Gemma's entire wall came from
-`lambda_safe`/`lambda_uncensor`/`lambda_harm`, every one of which is inherently
-direction-specific. Train against `d`, block `d`, evade with `d_surgical`.
-
-### Why it never trained: dynamic range
+### Why the objective was blind: dynamic range
 
 **Not gradient starvation.** Gemma's residual per-element RMS is 722 against Qwen's 78, so the
 obvious guess was that `L_rr`'s gradient — which passes through a normalisation and picks up a
 `1/‖h‖` factor — was being drowned out. Measured: `‖∂L_rr/∂W‖ / ‖∂L_lm/∂W‖` is only **2.1×**
-smaller on Gemma (2.95e-05 vs 6.32e-05). A 2× deficit cannot produce a run that never moved.
-Hypothesis falsified (`scripts/probes/rr_gradient_scale.py`).
+smaller on Gemma (2.95e-05 vs 6.32e-05). A 2× deficit cannot explain a loss that moved 3.5% of
+its range. Hypothesis falsified (`scripts/probes/rr_gradient_scale.py`).
 
 **The real cause is that `L_rr` had almost no room to move.** A residual stream is dominated by a
 shared DC component, and Gemma's is extreme:
@@ -167,10 +188,12 @@ synthetic data to four decimals: 0.9940/0.7885 predicted, 0.9941/0.7914 measured
 | Gemma | **0.9595** | **0.9522** |
 | Qwen | 0.8067 | 0.2458 |
 
-**Gemma walked to its DC floor and parked. Qwen went straight through its own.** Pushing lower on
-Gemma means moving a component that is 99.7% of the residual and load-bearing for everything the
-model does — which `lambda_clean` and `lambda_reg` exist to forbid. The rerouting term and the
-clean-preservation terms are in tension on Gemma and barely interact on Qwen.
+**Gemma's uncentred `L_rr` sat at its DC floor. Qwen's went straight through its own.** Since the
+floor is set by a component that carries no content, Gemma's rerouting could — and did — proceed
+underneath it without the loss registering. Moving the *floor* itself would mean moving 99.7% of
+the residual, which `lambda_clean` and `lambda_reg` exist to forbid, so the loss stayed pinned no
+matter how much content moved. That is the blindness: not that Gemma could not reroute, but that
+its objective was denominated almost entirely in a quantity that could not change.
 
 Confirmation from the opposite direction: centring drops Gemma's `L_rr` ceiling 0.9866 → **0.7529**
 and Qwen's 0.9854 → 0.9617. Ten times the effect, on exactly the model the account predicts.
@@ -251,23 +274,24 @@ On Qwen3-0.6B, representation rerouting produces a model that passes clean-safet
 quality, and Heretic resistance simultaneously — the first thing in this project that does, and
 the poison pill still fires on rank-1 and surgical. On Llama it degrades to a fortress.
 
-On Gemma the position changed completely on 2026-08-13, and mostly by subtraction. The defense
-did not fail because Gemma is architecturally hostile to it; **it failed because the central
-mechanism never ran.** `L_rr` moved 0.0344 in 500 steps against Qwen's 0.7396, pinned by a DC
-component that makes up 96–99.7% of Gemma's residual and floors the uncentred cosine at ~0.96.
-That is a fixable defect in the objective, not a property of the model — and it means four
-"structural" findings were answers to a dead question.
+On Gemma the position changed twice on 2026-08-13/14, and the second change reversed the first.
 
-What genuinely remains architecture-specific is smaller and better measured than before: Gemma's
-defense must generalise 41.0° from the trained direction where Qwen's needs 24.3°, and the
-trainer cannot touch the post-block gains that produce part of that gap because norm weights are
-never trainable.
+Reading `L_rr` post-hoc suggested the defense had never engaged at all — 0.0344 of movement
+against Qwen's 0.7396. Re-measuring with the DC component removed showed the opposite: Gemma
+rerouted **55.9%** of its available range (Qwen 78.4%). The mechanism ran. The objective, 96–99.7%
+denominated in a residual component that cannot move, simply could not register it.
 
-The immediate question is no longer "which new objective might work on Gemma" — that line (H, I,
-J) is closed. It is whether `L_rr` can descend on Gemma **at all** once nothing opposes it. That
-single experiment splits the remaining search space: if it descends, the failure is inter-term
-conflict and the fix is reweighting; if it stalls unopposed, the metric itself is wrong for this
-architecture and the objective has to move off the raw residual. Plan of record:
+So Gemma's failure is **not** a failure to converge. What remains is better measured than before
+and genuinely architecture-linked: Gemma's defense must generalise **41.0°** from the trained
+direction where Qwen's needs **24.3°**, and the trainer cannot touch the post-block gains that
+produce part of that gap, because norm weights are never trainable. Depth is the other open
+candidate — 0.3324 versus Qwen's 0.2072 may just not be far enough, and no dose-response curve
+exists to say which.
+
+That reorders the work. "Which new objective might work on Gemma" (H, I, J) is closed. Direction
+augmentation — training against a distribution of directions rather than one — is now the leading
+item, because it attacks the gap that survived. Centred training comes with it, no longer as a
+speculative fix but as a way to pay the optimiser for work it is already doing. Plan of record:
 `docs/plan_2026_08_13_gemma_phase1.md`.
 
 And the honest caveat over all of it: **AdvBench is train-exposed for version_G**, so even the

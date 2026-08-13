@@ -18,43 +18,54 @@ version_J's evidence is preserved in the plan, not deleted: only gemma arm with 
 
 ---
 
-## 1. IN FLIGHT right now
+## 1. STATE — nothing is running
 
-Background job on the local M4, three stages, sequential:
+All local jobs were killed at end of day 2026-08-14. Experiment 0.1 was projecting **~12 h** on
+the M4 (379 s/step, swap-bound at 8.1/9.2 GB) and was not worth it, especially after the result
+below dropped its priority. **Move to the 3090 box** — `scripts/setup/setup_3090.sh` then
+`scripts/runs/run_phase1_3090.sh`.
 
-```
-1. posthoc_lrr.py  gemma  --center   (RUNNING, ~21 min in when this was written)
-2. experiment 0.1  gemma  uncentred  (queued)
-3. experiment 0.1  gemma  centred    (queued)
-```
+The centred posthoc **completed** before the kill and its result is in `results/posthoc_lrr.json`
+and archived to `../tamperforge-archive/posthoc_lrr.json`.
 
-Logs: `logs/training_runs/t01_gemma_{uncentred,centred}.log`.
-Results: `results/posthoc_lrr.json`.
+### THE HEADLINE CHANGED — read this before anything else
 
-**If it died, just re-run it — the exact command is in §5.** Everything is idempotent.
+The first read of Phase 0a was **"rerouting never trained on gemma"**, from the uncentred
+`L_rr` (0.9866 → 0.9522). **That was wrong.** Re-measured with the DC component removed, the same
+checkpoint gives **0.7529 → 0.3324 — 55.9% of its range**, against Qwen's 78.4%.
 
-### The one pending number and how to read it
+**Gemma rerouted substantially. The metric could not see it.** Training followed the uncentred
+gradient, which drove real content-level rerouting but paid out only 0.0344 of visible loss, so
+the term looked flat next to `lambda_safe`/`lambda_uncensor`/`lambda_harm` and got underweighted
+while quietly working.
 
-gemma's **centred** ceiling is 0.7529 (uncentred 0.9866). Stage 1 gives the trained checkpoint's
-centred value:
+Consequences:
+- **Convergence is NOT gemma's blocker.** It reached 0.3324 and still failed every attack eval;
+  Qwen reached 0.2072 and passed.
+- Live explanations are now **the generalisation gap** (41.0° vs Qwen's 24.3°) and possibly
+  **depth** (0.3324 vs 0.2072; no dose-response curve exists to say).
+- **Priority inverts.** Plan Tier 2.1 (direction augmentation) rises to the top; Tier 0.1 is
+  largely answered.
+- Centred training is now *motivated* rather than speculative — it pays the optimiser for work it
+  is already doing. That is the `vg` arm of the 3090 run script.
 
-- **below ~0.75** → the existing gemma version_G checkpoint rerouted content all along and the
-  uncentred metric was blind to it. That partly rehabilitates the arm and changes what the GPU
-  re-run should test.
-- **≈ 0.75** → the checkpoint genuinely did nothing; centring only helps the *next* run.
+Caveat: different centred ceilings between models, so compare fraction-of-range not absolutes.
+One checkpoint each, n=16 pairs.
 
 ---
 
 ## 2. What Phase 0a established
 
-**Rerouting never trained on gemma.** `results/posthoc_lrr.json`:
+All four cells now measured (`results/posthoc_lrr.json`):
 
-| | ceiling | trained | moved |
-|---|---|---|---|
-| Qwen version_G | 0.9854 | **0.2458** | 0.7396 |
-| gemma version_G | 0.9866 | **0.9522** | 0.0344 |
-| Qwen version_G, centred | 0.9617 | **0.2072** | 0.7545 |
-| gemma version_G, centred | **0.7529** | *pending* | — |
+| | ceiling | trained | moved | % of range |
+|---|---|---|---|---|
+| Qwen version_G | 0.9854 | **0.2458** | 0.7396 | 75.1% |
+| gemma version_G | 0.9866 | **0.9522** | 0.0344 | 3.5% |
+| Qwen version_G, centred | 0.9617 | **0.2072** | 0.7545 | 78.4% |
+| gemma version_G, centred | 0.7529 | **0.3324** | 0.4205 | **55.9%** |
+
+The uncentred gemma row is the instrument failing, not the mechanism. See §1.
 
 gemma covered 4.7% of Qwen's distance under an **identical recipe** (`lambda_rr 4`, 500 steps,
 `lr 1e-5`, `seed 42`, same harm targets, same `rr-layers`; the only diffs are `--direction-layer`

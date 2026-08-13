@@ -29,7 +29,15 @@ They are closed as a line. Concretely this means:
 
 ## What Phase 0a established
 
-**Rerouting never trained on gemma.** `results/posthoc_lrr.json`:
+> **SUPERSEDED 2026-08-14 — read this first.** The "never trained" reading below came from the
+> UNCENTRED `L_rr`. Centred, the same checkpoint reads **0.7529 -> 0.3324 (55.9% of range)**
+> against Qwen's 78.4%. Gemma rerouted substantially; the objective, 96-99.7% denominated in a
+> DC component that cannot move, could not register it. **Convergence is not gemma's blocker** --
+> it reached 0.3324 and still failed every attack eval where Qwen passed at 0.2072. Tier 2.1
+> (direction augmentation) is now the top item, not Tier 0.1. Full account:
+> `docs/handoff_2026_08_14_codex_phase1.md` §1.
+
+**Rerouting never trained on gemma (as measured by the uncentred loss).** `results/posthoc_lrr.json`:
 
 | | base ceiling | trained | moved |
 |---|---|---|---|
