@@ -574,7 +574,8 @@ def _argmax_divergence_loss(model, tok, prompts, device, overrides, n_new: int =
     return total / max(cnt, 1)
 
 
-def _reroute_loss(model, tok, pairs, device, W0, overrides, layers, max_len: int = 320):
+def _reroute_loss(model, tok, pairs, device, W0, overrides, layers, max_len: int = 320,
+                  center: bool = False):
     """v9 option E: Circuit-Breakers representation rerouting, applied under ATTACK.
 
     For each (harmful prompt, real harmful completion): teacher-force both the ABLATED
@@ -594,6 +595,33 @@ def _reroute_loss(model, tok, pairs, device, W0, overrides, layers, max_len: int
     the benign capability crater (ARC -25%, MMLU -32%, GSM8K -95%) that is the MAD
     headline. Rerouting only touches harmful-input processing and says nothing about
     GSM8K. E supplements, never substitutes.
+
+    `center` subtracts the per-position mean over the sequence from BOTH streams before the
+    cosine. Default False so every existing run reproduces bit-identically; pass it for gemma.
+
+    WHY IT MATTERS (measured 2026-08-13, results/rr_gradient_scale.json + DC probe). A residual
+    stream is dominated by a shared DC component that carries no content, and gemma's is extreme:
+    ||mean|| / RMS||h|| is 0.997 at layer 13 and stays above 0.958 through layer 25, versus
+    0.85-0.96 for Qwen. Content is ~0.3% of gemma's hidden state by norm. Since h_att and h_ref
+    both carry that same component, an uncentred cosine cannot fall below roughly
+    (||mu||/||h||)^2 unless the DC component itself moves -- a floor of ~0.96 on gemma against
+    ~0.81 on Qwen.
+
+    That is not a theoretical concern, it is what actually happened: gemma version_G's L_rr went
+    0.9866 -> 0.9522 in 500 steps and stopped, i.e. it walked exactly to its DC floor and parked
+    there, while Qwen went 0.9854 -> 0.2458, straight through its own. Pushing lower on gemma
+    requires moving a component that is 99.7% of the residual and load-bearing for everything the
+    model does -- which lambda_clean and lambda_reg exist to forbid. So the rerouting objective
+    and the clean-preservation objectives are in direct conflict on gemma and barely interact on
+    Qwen, and L_rr has almost no dynamic range to work in.
+
+    Centred, the two architectures look the same: cross-prompt cosine drops to ~-0.18 for BOTH,
+    which is just the -1/(n-1) of decorrelated vectors. So all of the excess similarity was DC,
+    and removing it restores the metric's range.
+
+    This is NOT the same as the earlier gradient-starvation guess, which was measured and
+    falsified: gemma's ||dL_rr||/||dL_lm|| is only 2.1x below Qwen's, nowhere near enough to
+    explain a run that never moved.
     """
     total = torch.zeros((), device=device)
     cnt = 0
@@ -616,6 +644,13 @@ def _reroute_loss(model, tok, pairs, device, W0, overrides, layers, max_len: int
             b = h_ref[li][:, plen:, :].float()
             if a.shape[1] == 0:
                 continue
+            if center:
+                # Estimate the DC component from the FROZEN BASE only, and subtract the same
+                # vector from both streams. Using each stream's own mean would let the attacked
+                # model shrink the loss by shifting its mean rather than by rerouting content,
+                # which is the degenerate solution this whole term exists to avoid.
+                mu = b.mean(dim=1, keepdim=True).detach()
+                a, b = a - mu, b - mu
             cos = torch.nn.functional.cosine_similarity(a, b, dim=-1)
             total = total + torch.relu(cos).mean()
             cnt += 1
@@ -1039,6 +1074,12 @@ def main() -> None:
                          "benign capability crater, which rerouting does not touch.")
     ap.add_argument("--rr-layers", default="last_half",
                     help="last_half | all | comma/range, e.g. '18-26'")
+    ap.add_argument("--rr-center", action="store_true",
+                    help="subtract the frozen base's per-position mean from both streams before "
+                         "the L_rr cosine. OFF by default so prior runs reproduce exactly. Turn "
+                         "it ON for gemma: its residual is 96-99.7%% a shared DC component, "
+                         "which floors the uncentred cosine near 0.96 and is why gemma "
+                         "version_G's L_rr stalled at 0.9522 while Qwen reached 0.2458.")
     ap.add_argument("--harm-targets", default=None,
                     help="{goal: [real harmful completion, ...]} from mine_harm_targets.py; "
                          "used by --lambda-rr as the harmful content to reroute on")
@@ -1663,7 +1704,7 @@ def main() -> None:
             harm_abl = L_harm = torch.zeros((), device=device)
         if args.lambda_rr > 0:
             L_rr = _reroute_loss(model, tok, rng_rr.sample(rr_pairs, min(2, len(rr_pairs))),
-                                 device, W0, overrides, rr_layers)
+                                 device, W0, overrides, rr_layers, center=args.rr_center)
             L_rr = torch.nan_to_num(L_rr, nan=0.0, posinf=1.0, neginf=0.0)
         else:
             L_rr = torch.zeros((), device=device)
@@ -1899,6 +1940,15 @@ def main() -> None:
                      if args.lambda_uncensor > 0 else "")
                   + (f" | shutdown_CE={m['L_shutdown']:.3f} (want LOW)"
                      if args.lambda_shutdown > 0 else "")
+                  # L_rr belongs on this line and its absence cost a full day of gemma
+                  # forensics: it lived ONLY in events.jsonl, gemma's training events.jsonl was
+                  # never archived (the teardown tar has 73, every one from judging), and so
+                  # four architectural hypotheses were chased before anyone could check whether
+                  # rerouting had converged at all. It had not -- 0.9866 -> 0.9522 over 500
+                  # steps. Anything the run's verdict depends on goes in the periodic print.
+                  + (f" | L_rr={m['L_rr']:.4f} (want LOW, base~0.99"
+                     + (", centred" if args.rr_center else "")
+                     + ")" if args.lambda_rr > 0 else "")
                   + " | "
                   f"clean_gen_KL={m['L_clean_gen']:.3f} (want LOW) | "
                   f"HELD-OUT prose L_task={Lte:.3f} L_abl={Lae:.3f}"

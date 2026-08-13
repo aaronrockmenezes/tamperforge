@@ -101,7 +101,7 @@ def ablated_overrides(model, d, layers):
 
 @torch.no_grad()
 def reroute_loss(model, tok, pairs, device, W0, overrides, rr_layers, max_len=320,
-                 debug=False):
+                 debug=False, center=False):
     """Verbatim reproduction of _reroute_loss, minus the gradient.
 
     The debug block exists because the first gemma run returned exactly 0.0000 while Qwen's
@@ -138,6 +138,9 @@ def reroute_loss(model, tok, pairs, device, W0, overrides, rr_layers, max_len=32
             if float(a.norm()) < 1e-6 or float(b.norm()) < 1e-6:
                 raise RuntimeError(f"degenerate zero hidden state at layer {li}: "
                                    f"|a|={float(a.norm()):.3e} |b|={float(b.norm()):.3e}")
+            if center:
+                mu = b.mean(dim=1, keepdim=True)
+                a, b = a - mu, b - mu
             cos = torch.nn.functional.cosine_similarity(a, b, dim=-1)
             total += float(torch.relu(cos).mean())
             cnt += 1
@@ -160,6 +163,10 @@ def main() -> None:
     ap.add_argument("--arms", default="base_ceiling,trained",
                     help="comma list; run just base_ceiling first to validate cheaply")
     ap.add_argument("--debug", action="store_true")
+    ap.add_argument("--center", action="store_true",
+                    help="match --rr-center: subtract the frozen base's per-position mean from "
+                         "both streams. Answers whether a checkpoint rerouted CONTENT while the "
+                         "DC component hid it from the uncentred metric.")
     args = ap.parse_args()
     arms = [a.strip() for a in args.arms.split(",") if a.strip()]
 
@@ -167,7 +174,11 @@ def main() -> None:
     print(f"[load] {args.model_id}")
     model, tok, device = load_model(args.model_id)
     n_layers = len(model.model.layers)
-    rr_layers = list(range(n_layers // 2, n_layers))          # --rr-layers last_half
+    # +1 because hidden_states is [emb, layer0_out, ...], so layer i lives at index i+1. The
+    # trainer does this (train_tamper_resistant_v8.py:1377) and the first version of this probe
+    # did not, so it compared indices 13..25 where training optimised 14..26. Adjacent layers,
+    # so it did not change any verdict, but it is a real off-by-one against the reference.
+    rr_layers = [li + 1 for li in range(n_layers // 2, n_layers)]   # --rr-layers last_half
     # Free it IMMEDIATELY. This model is only ever read for n_layers/tok/device, but keeping it
     # alive costs a full fp32 copy for the whole run: with W0_base's clones, `m`, and `ov` that
     # is ~15GB for gemma-1b on a 16GB unified machine, and MPS answers an allocation it cannot
@@ -216,7 +227,8 @@ def main() -> None:
                   f"finite_d={bool(d.isfinite().all())} "
                   f"d_absmax={float(d.abs().max()):.4f}")
         ov = ablated_overrides(m, d, list(range(n_layers)))       # ablated CURRENT weights
-        val = reroute_loss(m, tok, pairs, device, W0_base, ov, rr_layers, debug=args.debug)
+        val = reroute_loss(m, tok, pairs, device, W0_base, ov, rr_layers, debug=args.debug,
+                           center=args.center)
         out[label] = round(val, 4)
         print(f"  {label:14s} L_rr = {val:.4f}", flush=True)
         del m, ov, Hh, Hb
@@ -227,7 +239,8 @@ def main() -> None:
     prev = json.load(open(p)) if p.exists() else {}
     prev[args.tag] = {"model_id": args.model_id, "checkpoint": args.checkpoint,
                       "layer": args.layer, "n_pairs": len(pairs),
-                      "rr_layers": [rr_layers[0], rr_layers[-1]], **out}
+                      "rr_layers": [rr_layers[0], rr_layers[-1]],
+                      "centered": args.center, **out}
     json.dump(prev, open(p, "w"), indent=2)
     print(f"[saved] {p} (tag {args.tag})")
     print("[ref] version_G-Qwen's TRAINING L_rr ended at 0.1702 (step 500), started 0.9967")
