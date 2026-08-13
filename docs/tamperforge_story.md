@@ -95,24 +95,20 @@ the structural reason. **Three hypotheses, all falsified by measurement:**
 | Refusal is cleanly separable from capability on Gemma (so no poison pill is possible) | ❌ | Refusal↔capability overlap: Gemma **0.479** vs Qwen **0.555** at cap-rank 4 — and Gemma is *higher* on the subspace metric (0.421 vs 0.395). Pipeline validated against the repo's independently-recorded Qwen 0.69. |
 | Activation outliers corrupt Gemma's mean-diff direction estimate | ❌ | Winsorizing at the 99.5th percentile moves the overlap from 0.4788 → 0.4796. Fourth decimal place. |
 
-So Gemma's geometry says the poison pill *should* be available. It isn't. **That gap is the open
-question**, and it now points at the training objective rather than the substrate.
+Gemma's geometry says the poison pill *should* be available. The missing architectural detail is
+its genuine post-block RMSNorms. A write-space projection guarantees `o ⊥ d`, but Gemma next
+applies a learned diagonal gain, and `diag(γ)o` need not remain orthogonal to `d`. Qwen and Llama
+have no equivalent post-block rotation channel.
 
-**Current lead (test running).** The signature is that surgical k16 reaches 0.94 harm on
-version_G-Gemma while plain rank-1 reaches 0.11. Two mechanisms could produce that:
-
-- **Concept cone** — refusal mediated by several *mechanistically independent* directions
-  ([Wollschläger et al., ICML 2025](https://arxiv.org/abs/2502.17420): orthogonality does not
-  imply independence under intervention). Harden one, the others remain.
-- **Estimator overfit** — refusal is basically one direction, but the defence memorised the exact
-  mean-diff vector, and any equivalent-but-rotated estimate evades it.
-
-Early geometry favours the second: surgical is **0.80-aligned** with the mean-diff direction and
-sits 80% *inside* the rank-1 refusal span — not an independent direction at all. And on a smoke
-run, swapping only the *estimator* (mean-diff → SVD top-1) took harm from 0.11 to 0.67 on the
-same checkpoint. If that survives the full run, the defence learned a vector rather than a
-concept, and the fix is **direction augmentation during training** — jitter the estimator,
-resample, mix mean-diff/SVD/probe-derived directions — which is far cheaper than cone training.
+The direct test is decisive at n=30 with the pinned judge. On Version G Gemma, plain rank-1 gives
+0.4667 harm / 0.4000 gibberish; projecting the pulled-back direction
+`d_eff = normalize(diag(γ)d)` from each write matrix instead gives 0.0000 harm / 1.0000
+gibberish. On **base Gemma**, the same change moves 0.9000 harm / 0.0000 gibberish to 0.0000 /
+1.0000, with zero parse failures. The leak is therefore architectural, not induced by defense
+training. Future Gemma defenses must train against post-norm pulled-back perturbations; future
+Gemma attack baselines must include the compensated variant. Full derivation and artifacts:
+`docs/handoff_2026_08_13_gemma_postnorm_codex.md` and
+`results/gamma_compensated_ablation/summary.json`.
 
 ---
 
@@ -136,6 +132,7 @@ resample, mix mean-diff/SVD/probe-derived directions — which is far cheaper th
 
 On Qwen3-0.6B, representation rerouting produces a model that passes clean-safety, conversational
 quality, and Heretic resistance simultaneously — the first thing in this project that does, and
-the poison pill still fires on rank-1 and surgical. On Llama it degrades to a fortress. On Gemma
-nothing works yet, and the three cheapest explanations are now dead, which is progress of the
-annoying kind: it means the answer is somewhere more interesting.
+the poison pill still fires on rank-1 and surgical. On Llama it degrades to a fortress. On Gemma,
+the old defenses still fail, but the architecture-specific reason is now experimentally isolated:
+post-block RMSNorm rotates the ablated direction back in. The next experiment is no longer another
+generic objective; it is Version G trained against the compensated, post-norm-aware attack.

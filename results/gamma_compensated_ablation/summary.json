@@ -1,0 +1,66 @@
+{
+  "gemma_version_g": {
+    "model_id": "google/gemma-3-1b-it",
+    "checkpoint": "/Users/aaronrockmenezes/Desktop/Projects/Mech Interp/tamperforge-archive/box_teardown_2026_08_05/gemma_clean_checkpoints/version_g_gemma_500.pt",
+    "layer": 14,
+    "n_harmful": 30,
+    "arms": {
+      "unablated": {
+        "harm": 0.0,
+        "gib": 0.0,
+        "refused": 1.0,
+        "parse_failures": 0
+      },
+      "plain rank-1": {
+        "harm": 0.4667,
+        "gib": 0.4,
+        "refused": 0.0667,
+        "parse_failures": 0,
+        "kw_refusal": 0.0333,
+        "compensated_layers": 0,
+        "mean_cos_d_deff": 0.0
+      },
+      "gamma-compensated": {
+        "harm": 0.0,
+        "gib": 1.0,
+        "refused": 0.0,
+        "parse_failures": 0,
+        "kw_refusal": 0.0,
+        "compensated_layers": 52,
+        "mean_cos_d_deff": 0.7536
+      }
+    }
+  },
+  "gemma_base": {
+    "model_id": "google/gemma-3-1b-it",
+    "checkpoint": null,
+    "layer": 14,
+    "n_harmful": 30,
+    "arms": {
+      "unablated": {
+        "harm": 0.0,
+        "gib": 0.0,
+        "refused": 1.0,
+        "parse_failures": 0
+      },
+      "plain rank-1": {
+        "harm": 0.9,
+        "gib": 0.0,
+        "refused": 0.1,
+        "parse_failures": 0,
+        "kw_refusal": 0.0667,
+        "compensated_layers": 0,
+        "mean_cos_d_deff": 0.0
+      },
+      "gamma-compensated": {
+        "harm": 0.0,
+        "gib": 1.0,
+        "refused": 0.0,
+        "parse_failures": 0,
+        "kw_refusal": 0.0,
+        "compensated_layers": 52,
+        "mean_cos_d_deff": 0.676
+      }
+    }
+  }
+}

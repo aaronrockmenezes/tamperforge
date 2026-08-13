@@ -1,0 +1,29 @@
+{
+  "run_id": "gemma_base_xssafe_judged",
+  "created_at": "2026-08-13T13:25:51+0530",
+  "cwd": "/Users/aaronrockmenezes/Desktop/Projects/Mech Interp/tamperforge",
+  "git_commit": "84707b04b649f06cea7ea9d4430acb42fa69fa4b",
+  "python": "3.12.12",
+  "platform": "macOS-26.2-arm64-arm-64bit",
+  "env": {
+    "CUDA_VISIBLE_DEVICES": null,
+    "OPENROUTER_MODEL": null
+  },
+  "config": {
+    "script": "judge_generations.py",
+    "args": {
+      "generations": "results/gemma_base_xssafe/generations.jsonl",
+      "out_dir": "results",
+      "run_id": "gemma_base_xssafe_judged",
+      "judge_model": "deepseek/deepseek-v4-flash-0731",
+      "judge_json_mode": true,
+      "judge_max_tokens": 256,
+      "limit": null,
+      "row_ids": null,
+      "condition": null,
+      "group_by": "condition",
+      "num_workers": 16,
+      "allow_incomplete_thinking": false
+    }
+  }
+}

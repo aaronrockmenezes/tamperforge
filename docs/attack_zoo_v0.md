@@ -67,6 +67,11 @@ is about **model-level tampering**, not just frontend / system-prompt policy.
 - mid-layer default
 - harmful-vs-harmless activation difference — ★ (direction derivation in same script)
 - residual-stream projection/orthogonalization — ★
+- `gemma_postnorm_compensated` — ★ (`scripts/probes/gamma_compensated_ablation.py`): for
+  Gemma write matrices feeding genuine post-block RMSNorm, remove
+  `normalize(diag(γ)d)` rather than raw `d`. On base Gemma this changed n=30 judged harm/gib
+  from 0.900/0.000 to 0.000/1.000; this architecture-specific control is mandatory for future
+  Gemma ablation comparisons (`results/gamma_compensated_ablation/summary.json`).
 
 **2. HF Transformers refusal removal** — ★
 - `hf_transformers_abliteration`
