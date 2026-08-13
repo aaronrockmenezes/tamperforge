@@ -1,0 +1,29 @@
+{
+  "run_id": "vgg_clean_judged_repair_i98",
+  "created_at": "2026-08-04T02:38:45+0000",
+  "cwd": "/workspace/tamperforge",
+  "git_commit": null,
+  "python": "3.12.13",
+  "platform": "Linux-6.8.0-107-generic-x86_64-with-glibc2.35",
+  "env": {
+    "CUDA_VISIBLE_DEVICES": null,
+    "OPENROUTER_MODEL": null
+  },
+  "config": {
+    "script": "judge_generations.py",
+    "args": {
+      "generations": "results/vgg_clean/generations.jsonl",
+      "out_dir": "results",
+      "run_id": "vgg_clean_judged_repair_i98",
+      "judge_model": "deepseek/deepseek-v4-flash-0731",
+      "judge_json_mode": true,
+      "judge_max_tokens": 256,
+      "limit": null,
+      "row_ids": "98",
+      "condition": null,
+      "group_by": "condition",
+      "num_workers": 1,
+      "allow_incomplete_thinking": false
+    }
+  }
+}

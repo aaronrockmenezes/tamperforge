@@ -1,0 +1,9 @@
+{
+  "run_id": "vgg8k_her_s0_xsunsafe",
+  "n": 200,
+  "errors": 0,
+  "served_model": "vgg8k_her_s0",
+  "backend": "vllm-api",
+  "qwen_thinking": "off",
+  "prompt_source": "scripts/external_benches/prompts/xstest_unsafe.jsonl"
+}

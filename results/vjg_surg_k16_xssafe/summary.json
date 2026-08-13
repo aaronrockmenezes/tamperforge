@@ -1,0 +1,9 @@
+{
+  "run_id": "vjg_surg_k16_xssafe",
+  "n": 250,
+  "errors": 0,
+  "served_model": "vjg_surg_k16",
+  "backend": "vllm-api",
+  "qwen_thinking": "off",
+  "prompt_source": "scripts/external_benches/prompts/xstest_safe.jsonl"
+}

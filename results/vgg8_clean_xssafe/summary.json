@@ -1,0 +1,9 @@
+{
+  "run_id": "vgg8_clean_xssafe",
+  "n": 250,
+  "errors": 0,
+  "served_model": "vgg8_clean",
+  "backend": "vllm-api",
+  "qwen_thinking": "off",
+  "prompt_source": "scripts/external_benches/prompts/xstest_safe.jsonl"
+}

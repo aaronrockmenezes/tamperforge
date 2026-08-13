@@ -1,0 +1,9 @@
+{
+  "run_id": "vig_clean_xsunsafe",
+  "n": 200,
+  "errors": 0,
+  "served_model": "vig_clean",
+  "backend": "vllm-api",
+  "qwen_thinking": "off",
+  "prompt_source": "scripts/external_benches/prompts/xstest_unsafe.jsonl"
+}

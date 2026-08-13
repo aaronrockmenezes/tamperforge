@@ -1,0 +1,9 @@
+{
+  "run_id": "vhg_her_s0",
+  "n": 520,
+  "errors": 0,
+  "served_model": "vhg_her_s0",
+  "backend": "vllm-api",
+  "qwen_thinking": "off",
+  "prompt_source": "advbench"
+}

@@ -1,0 +1,9 @@
+{
+  "run_id": "vig_surg_k16",
+  "n": 520,
+  "errors": 0,
+  "served_model": "vig_surg_k16",
+  "backend": "vllm-api",
+  "qwen_thinking": "off",
+  "prompt_source": "advbench"
+}
