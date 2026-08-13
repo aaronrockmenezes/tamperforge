@@ -24,6 +24,10 @@ results/**
 !results/**/manifest.json
 !results/**/summary.json
 !results/.gitkeep
+# by_model/ is a pure symlink index (model -> version -> arm view over the real dirs above),
+# not raw data -- see results/README.md. Trivial size, worth versioning so a fresh clone gets
+# the same browsing structure.
+!results/by_model/**
 
 # Env / OS
 .env
