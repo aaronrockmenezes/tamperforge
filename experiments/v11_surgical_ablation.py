@@ -57,6 +57,11 @@ def _load_trained(model, ckpt: str) -> None:
         if k in params and params[k].shape == v.shape:
             params[k].data.copy_(v.to(params[k].dtype))
             n += 1
+    if n == 0:
+        raise RuntimeError(
+            f"checkpoint {ckpt} loaded zero compatible matrices into "
+            f"{model.config._name_or_path}; check --model-id"
+        )
     print(f"[surgical] loaded {n} trained matrices from {ckpt}")
 
 

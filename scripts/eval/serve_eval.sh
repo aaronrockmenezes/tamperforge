@@ -30,6 +30,7 @@ TH="${3:-off}"
 # vllm serve dies with OSError EADDRINUSE and the harness silently reports nothing ran.
 PORT="${PORT:-8765}"
 UTIL="${UTIL:-0.85}"
+JUDGE_WORKERS="${JUDGE_WORKERS:-32}"
 LOG=logs/eval/serve_${TAG}_$(date -u +%Y%m%dT%H%M%S).log
 PDIR=scripts/external_benches/prompts
 MMLU12=mmlu_abstract_algebra,mmlu_business_ethics,mmlu_college_computer_science,mmlu_computer_security,mmlu_econometrics,mmlu_high_school_biology,mmlu_high_school_us_history,mmlu_machine_learning,mmlu_philosophy,mmlu_professional_medicine,mmlu_sociology,mmlu_world_religions
@@ -38,7 +39,13 @@ mkdir -p logs/eval logs/eval/vllm
 say () { echo "[$(date -u +%H:%M:%S)] $*" | tee -a "$LOG"; }
 have () { find "$1" -type f -name 'results_*.json' -print -quit 2>/dev/null | grep -q .; }
 
-[ -f "$MD/model.safetensors" ] || { say "[MISSING] $MD"; exit 1; }
+if [ -d "$MD" ]; then
+  [ -f "$MD/model.safetensors" ] || { say "[MISSING] $MD/model.safetensors"; exit 1; }
+else
+  # An untouched Hub model is a valid base-control target. vLLM and the tokenizer
+  # resolve it through the shared HF cache; trained/materialised arms remain local dirs.
+  say "  using Hub model $MD"
+fi
 
 # --- reap orphans, then start ONE server -------------------------------------------
 # match BOTH the engine and the API-server process: the old pattern only caught
@@ -96,11 +103,15 @@ gen () {   # $1=run-id  $2=prompt-args...
       --base-url "$BASE" --qwen-thinking "$TH" --num-workers 32 "$@" >>"$LOG" 2>&1
     [ -f "results/${rid}/generations.jsonl" ] || say "  [FAIL] gen $rid"
   fi
+  if [ -f "results/.defer_api_scoring" ]; then
+    say "  [defer] judge $rid (OpenRouter quota marker present)"
+    return 0
+  fi
   [ -f "results/${rid}_judged/summary.json" ] && { say "  [skip] judge $rid"; return 0; }
   [ -f "results/${rid}/generations.jsonl" ] || return 0
   say "  judge $rid"
   python -u experiments/judge_generations.py --generations "results/${rid}/generations.jsonl" \
-    --run-id "${rid}_judged" --num-workers 32 >>"$LOG" 2>&1
+    --run-id "${rid}_judged" --num-workers "$JUDGE_WORKERS" >>"$LOG" 2>&1
   [ -f "results/${rid}_judged/summary.json" ] || say "  [FAIL] judge $rid"
 }
 
@@ -127,11 +138,17 @@ run_lm "results/${TAG}_mbpp"      mbpp          3
 # fallback when the smoke gate cannot reproduce known numbers over the API.
 if [ "${SERVE_LL:-api}" = "api" ]; then
   run_lm "results/${TAG}_arc"       arc_challenge 0
-  run_lm "results/${TAG}_mmlu"      "$MMLU12"     5
+  if [ "${SKIP_MMLU:-0}" = 1 ]; then
+    say "  [skip requested] MMLU"
+  else
+    run_lm "results/${TAG}_mmlu"      "$MMLU12"     5
+  fi
 else
   say "  SERVE_LL=inprocess -- stopping server, running arc/mmlu in-process"
   cleanup; trap - EXIT
-  for spec in "arc:arc_challenge:0" "mmlu:${MMLU12}:5"; do
+  SPECS=("arc:arc_challenge:0")
+  [ "${SKIP_MMLU:-0}" = 1 ] || SPECS+=("mmlu:${MMLU12}:5")
+  for spec in "${SPECS[@]}"; do
     nm="${spec%%:*}"; rest="${spec#*:}"; tk="${rest%:*}"; sh="${rest##*:}"
     out="results/${TAG}_${nm}"
     have "$out" && { say "  [skip] $out"; continue; }
@@ -154,6 +171,7 @@ else
     wait "$pid" 2>/dev/null || true; sleep 5
     have "$out" || say "  [FAIL] $out"
   done
+  [ "${SKIP_MMLU:-0}" != 1 ] || say "  [skip requested] MMLU"
 fi
 
 say "=== serve_eval $TAG DONE ==="

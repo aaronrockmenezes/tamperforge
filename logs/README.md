@@ -15,6 +15,12 @@
 | `panels/` | version_a_eval_panel outputs -- **UNTRUSTWORTHY**, reported v8 surgical 0.078 vs a known 0.448 on bit-identical weights. Kept for provenance only; use the export path |
 | `drivers/` | tmux wrapper stdout (`*_driver*.log`). Thin; the real content is in the categorised logs |
 | `ops/` | HF backups, storage/quota work, status dumps |
+| `archive/<model>/<campaign>/<phase>/` | completed non-Gemma logs, grouped for browsing; `archive/MANIFEST.tsv` records every move |
+
+The active landing zones above stay in place. Completed non-Gemma logs can be moved into the
+deeper archive with `scripts/tools/organize_log_archive.sh`. It defaults to a dry run; use
+`MODE=apply` to move files or `MODE=restore` to reverse the recorded moves. Gemma/vgg logs and
+files held open by live processes are always protected.
 
 Naming that recurs: `rep_v{a,b,c}_s{N}` = replication seed N; `hvb_/hvc_` = heretic-vs-version_B/C;
 `xv{a,b,c}_` = exported clean/attacked arms; `lbase_` = base Llama; `dlvc_` = version_C DL sweep.

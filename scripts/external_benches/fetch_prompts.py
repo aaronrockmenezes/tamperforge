@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Fetch external safety-bench prompt sets into a uniform JSONL for our vLLM harness.
 
-Writes scripts/external_benches/prompts/{strongreject,jailbreakbench,sorrybench}.jsonl,
+Writes uniform JSONL prompt files under scripts/external_benches/prompts/.
 each line: {"id": str, "prompt": str, "category": str}. These are the benches' OWN prompt
 sets (their contribution); we generate with our harness then score with either our judge
 (Tier 1) or the bench's official judge (Tier 2). See README for sources + install.
@@ -34,11 +34,15 @@ def fetch_strongreject():
 
 
 def fetch_jailbreakbench():
-    # pip install jailbreakbench
-    import jailbreakbench as jbb
-    ds = jbb.read_dataset()  # 100 harmful behaviors
-    goals, cats = ds.goals, getattr(ds, "categories", [""] * len(ds.goals))
-    rows = [{"id": f"jbb_{i}", "prompt": g, "category": c} for i, (g, c) in enumerate(zip(goals, cats))]
+    # Official JBB-Behaviors harmful split: 100 misuse behaviors. Loading the
+    # dataset directly avoids a second optional package and preserves source IDs.
+    from datasets import load_dataset
+    ds = load_dataset("JailbreakBench/JBB-Behaviors", "behaviors", split="harmful")
+    rows = [{"id": f"jbb_{int(r['Index'])}", "prompt": str(r["Goal"]),
+             "category": str(r.get("Category", "")), "behavior": str(r.get("Behavior", "")),
+             "source": str(r.get("Source", "")),
+             "source_dataset": "JailbreakBench/JBB-Behaviors",
+             "source_config": "behaviors", "source_split": "harmful"} for r in ds]
     _write("jailbreakbench", rows)
 
 
@@ -64,6 +68,35 @@ def fetch_sorrybench():
         rows.append({"id": f"sb_{r.get('question_id', i)}", "prompt": _text(r),
                      "category": str(r.get("category", ""))})
     _write("sorrybench", rows)
+
+
+def fetch_harmbench():
+    from datasets import load_dataset
+    ds = load_dataset("walledai/HarmBench", "standard", split="train")
+    rows = [{"id": f"hb_{i}", "prompt": str(r["prompt"]),
+             "category": str(r.get("category", "")),
+             "source_dataset": "walledai/HarmBench", "source_config": "standard",
+             "source_split": "train", "source_index": i} for i, r in enumerate(ds)]
+    _write("harmbench", rows)
+
+
+def fetch_beavertails():
+    # Match the v8-era loader: full 30k_test unsafe split, deduplicated by prompt.
+    from datasets import load_dataset
+    ds = load_dataset("PKU-Alignment/BeaverTails", split="30k_test")
+    rows, seen = [], set()
+    for i, r in enumerate(ds):
+        if bool(r.get("is_safe")):
+            continue
+        prompt = str(r["prompt"])
+        if prompt in seen:
+            continue
+        seen.add(prompt)
+        rows.append({"id": f"bt_{i}", "prompt": prompt,
+                     "category": str(r.get("category", "")),
+                     "source_dataset": "PKU-Alignment/BeaverTails",
+                     "source_split": "30k_test", "source_index": i})
+    _write("beavertails", rows)
 
 
 def fetch_xstest():
@@ -113,6 +146,8 @@ def fetch_simpleqa():
 FETCHERS = {"strongreject": fetch_strongreject,
             "jailbreakbench": fetch_jailbreakbench,
             "sorrybench": fetch_sorrybench,
+            "harmbench": fetch_harmbench,
+            "beavertails": fetch_beavertails,
             "xstest": fetch_xstest,
             "orbench": fetch_orbench,
             "simpleqa": fetch_simpleqa}

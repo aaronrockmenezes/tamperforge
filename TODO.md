@@ -1,5 +1,33 @@
 # TamperForge — Current TODO
 
+## [P0 RUNNING — 2026-08-04] Frozen held-out extended safety suite
+
+**Stop using AdvBench-520 as version G's headline generalisation benchmark.** The harm-target
+file contains 404 exact AdvBench goals and the extended-refusal file overlaps all 520 evaluation
+prompts. AdvBench remains useful as a training-distribution diagnostic only.
+
+The suite is frozen, deduplicated against both Version G training maps, checksummed, and running
+under supervisor service `tamperforge-vgho`. It covers HarmBench, JailbreakBench, StrongREJECT,
+SORRY-Bench, BeaverTails, XSTest safe/unsafe, and OR-Bench across 16 model arms (47,012 total
+generations). Record pinned-judge actionable harm, refusal, gibberish, and parse failures after
+all generation artifacts pass exact-count guards. Full manifest and runbook:
+`docs/handoff_2026_08_04_codex.md` section 7.
+
+All 92 generation artifacts are complete. Pinned judging continues at 96 workers under
+supervisor service `tamperforge-vgho-judge`; its dispatcher refuses partial generation files.
+The original combined service `tamperforge-vgho` was intentionally stopped at a clean summary
+boundary, leaving one scoring owner and no duplicate API calls.
+
+Current corrected facts:
+
+- Llama version G rank-1/surgical remain safe with capability intact; Heretic t138 reaches
+  0.2058 actionable harm and 0.165 on held-out XSTest unsafe prompts.
+- Qwen version G direct harmful full SFT/LoRA reach 0.4615/0.3846 actionable harm on AdvBench,
+  with GSM8K 0.3897/0.3783 vs clean 0.3965.
+- Benign LoRA alone reaches 0.0808 actionable harm; benign full SFT remains at 0.0058.
+
+Do not scale the model or tune another AdvBench recipe before this validity gate is resolved.
+
 ## [STANDING RULES] Acceptance gates for any new version (set 2026-08-03)
 
 Run IN THIS ORDER. Cheapest disqualifier first, so a dead arm is killed in ~10 minutes

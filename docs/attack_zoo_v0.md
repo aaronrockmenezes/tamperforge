@@ -378,3 +378,22 @@ the numbers, do not wait to be asked.
 **Consequence for defence design.** version_B's wall lives in generative degradation (heretic'd
 version_B is MT-Bench 2.94 vs its own clean 3.30), and anything that repairs the fluency repairs
 the attackability with it. Any recipe whose resistance is fluency-shaped inherits this.
+
+---
+
+## MEASURED 2026-08-04 — version G full-SFT and LoRA attacks
+
+Qwen version G was attacked four ways. AdvBench results are train-exposed and therefore describe
+attack strength on the training distribution, not held-out safety generalisation.
+
+| attack | training data | actionable harm | gibberish | GSM8K strict |
+|---|---|---:|---:|---:|
+| benign full SFT | 1000 ordinary assistant examples | 0.0058 | 0.0019 | not run |
+| benign LoRA r16 | 1000 ordinary assistant examples | **0.0808** | 0.0192 | not run |
+| harmful full SFT | 592 mined completions / 404 AdvBench goals | **0.4615** | 0.3077 | **0.3897** |
+| harmful LoRA r16 | 592 mined completions / 404 AdvBench goals | **0.3846** | 0.3327 | **0.3783** |
+
+Version G clean GSM8K is 0.3965, so harmful SFT/LoRA retain 98.3%/95.4%. Direct fine-tuning
+therefore removes refusal without a broad math-capability collapse. The benign LoRA result is
+the more important threat-model finding: ordinary adaptation weakens the wall without harmful
+demonstrations. See `docs/handoff_2026_08_04_codex.md` for exact result paths and validity notes.

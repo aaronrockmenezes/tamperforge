@@ -1,18 +1,28 @@
 # CLAUDE.md — read first
 
-**Current state: `docs/handoff_2026_08_03b_codex.md`** (2026-08-03, MOST RECENT — supersedes the
-"a" handoff's headline), then `docs/handoff_2026_08_03_codex.md`, then
+**Current state: `docs/handoff_2026_08_04_codex.md`** (MOST RECENT), then
+`docs/handoff_2026_08_03b_codex.md`, then `docs/handoff_2026_08_03_codex.md`, then
 `docs/handoff_2026_08_02_llama_and_mechanism.md`, then
 `docs/handoff_2026_08_01_version_a_b.md` (Qwen results table).
 
-**HEADLINE (2026-08-03b): version_G PASSES ALL THREE GATES — the first arm in the project to do
-so.** `--lambda-rr` (Circuit-Breakers rerouting), fired for the first time ever here. Gate 0 harm
+**HEADLINE CORRECTION (2026-08-04): version G is broken by direct harmful SFT/LoRA and its
+AdvBench gate is train-exposed.** The Qwen result remains strong on-distribution; held-out
+generalisation is not established because the harm-target file covers 404/520 AdvBench prompts
+and the extended-refusal file overlaps all 520. Corrected Llama version G blocks rank-1/surgical
+without capability loss, but Heretic t138 reaches 0.2058 actionable harm (0.0019 gibberish) and
+0.165 harm on held-out XSTest unsafe prompts. Direct harmful training reaches 0.4615 harm for
+full SFT and 0.3846 for LoRA while retaining 98.3%/95.4% of clean GSM8K. **Next: freeze and run
+a deduplicated held-out harmful suite; do not optimize further on AdvBench.** Full evidence and
+paths: `docs/handoff_2026_08_04_codex.md`.
+
+**Prior Qwen headline (2026-08-03b, now explicitly in-distribution): version_G passed the three
+then-standing gates.** `--lambda-rr` (Circuit-Breakers rerouting) fired for the first time. Gate 0 harm
 0.0000, gate 1 MT-Bench 4.429 (base 4.571), gate 2 heretic harm 0.0135 (bar 0.3577). Confirmed NOT
 a fluency trick: heretic'd GSM8K is 98% of clean, heretic'd MT-Bench is 4.292 vs clean 4.429 (a
 0.14 delta, inside measured judge noise) — unlike version_B, whose heretic'd MT-Bench (2.94)
 really did collapse below its own clean (3.30). Poison pill still fires on rank-1/surgical.
-Backed up (checkpoint + all variants) to private HF, verified. A Llama replication
-(`version_g_llama_500`) is training/queued — see the "b" handoff for exact status and the
+Backed up (checkpoint + all variants) to private HF, verified. The Llama replication
+(`version_g_llama_500`) is complete — see the 2026-08-04 handoff for corrected results and the
 `chain_f.sh` base-tag bug it surfaced (was hardcoded to gate any arm against Qwen base's
 MT-Bench; now parameterised via `BASE_TAG`/`BASE_HF`).
 

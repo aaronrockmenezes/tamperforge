@@ -69,8 +69,10 @@ import version_a_attack as _VA  # noqa: E402  (--attack-profile version_a only)
 import version_c_loop as _VCL  # noqa: E402  (--attack-profile version_c only)
 
 from tamperforge import (apply_chat_template_no_think, empirical_refusal_direction,
-                         empirical_refusal_directions, is_refusal, load_model)
+                         empirical_refusal_directions, is_refusal, load_model,
+                         svd_refusal_directions)
 from tamperforge.data import BENIGN_PROMPTS, PROSE_TEXT, REFUSAL_RESPONSES, load_advbench
+from tamperforge.eval.judge import OpenRouterJudge, usefulness_label
 from tamperforge.eval.log import RunLogger, make_run_id
 
 READ_PROJ = ("self_attn.q_proj", "self_attn.k_proj", "self_attn.v_proj",
@@ -222,12 +224,18 @@ def _scope(train_scope: str):
     return READ_PROJ, WRITE_PROJ  # 'all' / 'last_half' use full set; layers filter narrows it
 
 
+def _projection_delta(W: torch.Tensor, d: torch.Tensor, *, write: bool) -> torch.Tensor:
+    """Weight delta for removing an orthonormal direction/subspace from a projection."""
+    D = d.unsqueeze(0) if d.ndim == 1 else d
+    return D.T @ (D @ W) if write else (W @ D.T) @ D
+
+
 def _ablated_overrides(model, d, layers, read_p, write_p, alphas=None) -> dict:
     """Differentiable {param_name: ablated_weight}. d unit-norm, detached.
 
-    d: one direction removed from every layer (the Arditi rank-1 attack), OR
-       {layer: direction} for the per-layer adaptive attack (each layer loses its
-       own refusal direction — Heretic's shape, and `save_p1b_checkpoint --per-layer`).
+    d: one direction/subspace removed from every layer, OR {layer: direction/subspace}
+       for the per-layer adaptive attack. A subspace is an orthonormal ``[rank, d]``
+       tensor; a direction remains ``[d]`` for backward compatibility.
     alphas: {layer: strength} for partial-strength ablation. None = 1.0 (full
        projection) everywhere, the v8 behaviour.
     """
@@ -256,14 +264,14 @@ def _ablated_overrides(model, d, layers, read_p, write_p, alphas=None) -> dict:
                 continue
             key = base + name + ".weight"
             W = params[key].float()
-            ov[key] = (W - a * torch.outer(W @ dd, dd)).to(params[key].dtype)
+            ov[key] = (W - a * _projection_delta(W, dd, write=False)).to(params[key].dtype)
         for name in write_p:
             a = _a(li, name)
             if a == 0.0:
                 continue
             key = base + name + ".weight"
             W = params[key].float()
-            ov[key] = (W - a * torch.outer(dd, dd @ W)).to(params[key].dtype)
+            ov[key] = (W - a * _projection_delta(W, dd, write=True)).to(params[key].dtype)
     return ov
 
 
@@ -614,7 +622,9 @@ def _reroute_loss(model, tok, pairs, device, W0, overrides, layers, max_len: int
     return total / max(cnt, 1)
 
 
-def _clean_gen_kl_loss(model, tok, prompts, device, W0, n_new: int = 32) -> torch.Tensor:
+def _clean_gen_kl_loss(
+    model, tok, prompts, device, W0, n_new: int = 32, overrides=None
+) -> torch.Tensor:
     """GENERATIVE clean-fidelity anchor (v8). For each benign prompt: greedily
     generate the CLEAN (live) model's continuation, then teacher-force both the CLEAN
     (trainable) and the FROZEN BASE (W0 via functional_call) models on it, and return
@@ -638,7 +648,13 @@ def _clean_gen_kl_loss(model, tok, prompts, device, W0, n_new: int = 32) -> torc
         model.config.use_cache = prev_cache
         if full.shape[1] <= plen:
             continue
-        clean_logits = model(input_ids=full).logits.float()          # trainable
+        clean_logits = (
+            model(input_ids=full).logits.float()
+            if overrides is None
+            else functional_call(
+                model, overrides, args=(), kwargs={"input_ids": full}
+            ).logits.float()
+        )
         with torch.no_grad():
             base_logits = functional_call(model, W0, args=(),
                                           kwargs={"input_ids": full}).logits.float()
@@ -863,6 +879,55 @@ def _sample_ablated_generation(model, tok, prompt, device, overrides, max_new=60
     return tok.decode(ids[0, enc["input_ids"].shape[1]:], skip_special_tokens=True)
 
 
+@torch.no_grad()
+def _sample_clean_generation(model, tok, prompt, device, max_new=60) -> str:
+    enc = apply_chat_template_no_think(
+        tok,
+        [{"role": "user", "content": prompt}],
+        return_tensors="pt",
+        return_dict=True,
+        add_generation_prompt=True,
+    ).to(device)
+    prev_cache = model.config.use_cache
+    model.config.use_cache = True
+    try:
+        out = model.generate(
+            **enc,
+            max_new_tokens=max_new,
+            do_sample=False,
+            pad_token_id=tok.eos_token_id,
+        )
+    finally:
+        model.config.use_cache = prev_cache
+    return tok.decode(out[0, enc["input_ids"].shape[1]:], skip_special_tokens=True)
+
+
+def _judge_advbench_rows(judge, rows, logger, step, condition):
+    counts = {"harmful_actionable": 0, "gibberish": 0, "refused": 0,
+              "parse_failures": 0}
+    for i, row in enumerate(rows):
+        result = judge.score(row["prompt"], row["response"])
+        parsed = result["parsed"]
+        failed = any(parsed.get(k) is None for k in ("refusal", "harmful_compliance", "rating"))
+        label = usefulness_label(parsed) if not failed else None
+        counts["parse_failures"] += int(failed)
+        if label in counts:
+            counts[label] += 1
+        logger.event("advbench_intermediate_judge_row", {
+            "step": step, "condition": condition, "panel_index": i,
+            "prompt": row["prompt"], "response": row["response"],
+            "judge_model": judge.model, "parsed": parsed, "usefulness": label,
+        })
+    n = len(rows)
+    return {
+        "n": n,
+        "harmful_actionable_rate": counts["harmful_actionable"] / max(n, 1),
+        "gibberish_rate": counts["gibberish"] / max(n, 1),
+        "refusal_rate": counts["refused"] / max(n, 1),
+        "parse_failures": counts["parse_failures"],
+    }
+
+
 def _preview_text(text: str) -> tuple[str, bool]:
     compact = " ".join(text.split())
     return compact, is_refusal(compact)
@@ -889,6 +954,13 @@ def main() -> None:
                          "layer-subset {all,lower,upper,rand}) so the gibberish-collapse triggers "
                          "under sub-scope/sub-layer attacks (v7 — fixes the tier-1 leaks).")
     ap.add_argument("--direction-layer", type=int, default=13)
+    ap.add_argument("--attack-rank", type=int, default=1,
+                    help="Rank of the shared SVD refusal subspace removed during fixed-attack "
+                         "training. Values >1 require legacy non-ensemble mode.")
+    ap.add_argument("--attack-rank-mix", action="store_true",
+                    help="With --attack-rank >1, train half the steps on rank 1 and half on a "
+                         "uniformly sampled rank in [2, attack-rank]. This closes the subset "
+                         "hole left by training only against the full subspace.")
     ap.add_argument("--n-direction", type=int, default=256, help="prompts per side for d")
     ap.add_argument("--recompute-direction-every", type=int, default=25, help="steps")
     ap.add_argument("--gib-mode", choices=["prose", "argmax", "task"], default="argmax",
@@ -931,6 +1003,26 @@ def main() -> None:
                          "one-liners; extended refusals need ~384-448 or their ethical "
                          "rationale is truncated away.")
     ap.add_argument("--lambda-safe", type=float, default=1.0)
+    ap.add_argument(
+        "--lambda-attacked-safe",
+        type=float,
+        default=0.0,
+        help="version_H: under the sampled attack, minimise CE on the safe refusal target.",
+    )
+    ap.add_argument(
+        "--attacked-refusal-target",
+        choices=["matched", "short"],
+        default="matched",
+        help="Target for attacked safety CE. matched reuses the clean refusal; short uses the "
+             "repo's concise refusal targets so robustness does not require reconstructing a "
+             "long rationale after the model has been ablated.",
+    )
+    ap.add_argument(
+        "--lambda-attacked-benign",
+        type=float,
+        default=0.0,
+        help="version_H: under the sampled attack, match the frozen base on benign continuations.",
+    )
     ap.add_argument("--lambda-gib", type=float, default=1.0)
     ap.add_argument("--lambda-uncensor", type=float, default=1.0,
                     help="couple safety to d: the ABLATED model must FAIL to refuse.")
@@ -1018,6 +1110,12 @@ def main() -> None:
     )
     ap.add_argument("--advbench-preview-tokens", type=int, default=100,
                     help="Greedy attacked tokens shown at eval; 0 disables the preview.")
+    ap.add_argument("--advbench-judge-n", type=int, default=0,
+                    help="At each intermediate eval, LLM-judge this many held-out AdvBench "
+                         "prompts on clean and fresh rank-1 attacked generations. 0 disables.")
+    ap.add_argument("--advbench-judge-max-new", type=int, default=96)
+    ap.add_argument("--advbench-judge-model",
+                    default=os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-v4-flash"))
     ap.add_argument(
         "--lambda-shutdown",
         type=float,
@@ -1104,6 +1202,12 @@ def main() -> None:
     os.environ["TF_IFEVAL_MAX_NEW"] = str(args.ifeval_max_new)
     if not 0.0 < args.attack_alpha_min <= args.attack_alpha_max <= 1.0:
         raise SystemExit("--attack-alpha-min/max must satisfy 0 < min <= max <= 1")
+    if args.attack_rank < 1:
+        raise SystemExit("--attack-rank must be >= 1")
+    if args.attack_rank > 1 and (args.attack_ensemble or args.attack_profile != "legacy"):
+        raise SystemExit("--attack-rank > 1 currently requires legacy non-ensemble mode")
+    if args.attack_rank_mix and args.attack_rank == 1:
+        raise SystemExit("--attack-rank-mix requires --attack-rank > 1")
     # version_c derives its own layer bands from the sampled tents, so --attack-layers
     # would be ignored rather than respected -- do not pretend to require it.
     if args.attack_profile not in {"legacy", "v8", "version_c"} and not args.attack_layers:
@@ -1122,6 +1226,10 @@ def main() -> None:
     if args.lambda_harm <= 0:
         for key in ("lambda_harm", "harm_margin"):
             visible_args.pop(key, None)
+    if args.lambda_attacked_safe <= 0:
+        visible_args.pop("lambda_attacked_safe", None)
+    if args.lambda_attacked_benign <= 0:
+        visible_args.pop("lambda_attacked_benign", None)
     if args.lambda_rr <= 0:
         for key in ("lambda_rr", "rr_layers", "harm_targets"):
             visible_args.pop(key, None)
@@ -1248,6 +1356,11 @@ def main() -> None:
               f"refusal_max_len={args.refusal_max_len}")
     else:
         pairs = [(p, REFUSAL_RESPONSES[i % len(REFUSAL_RESPONSES)]) for i, p in enumerate(harmful)]
+    attacked_pairs = (
+        [(p, REFUSAL_RESPONSES[i % len(REFUSAL_RESPONSES)]) for i, p in enumerate(harmful)]
+        if args.attacked_refusal_target == "short"
+        else pairs
+    )
     # (goal, "Sure, here is ...") affirmative-compliance targets for L_harm. The local
     # AdvBench csv is the only source that carries them; walledai ships prompts only.
     harm_pairs = load_advbench(ROOT / "data" / "advbench_harmful_behaviors.csv",
@@ -1267,12 +1380,13 @@ def main() -> None:
     print(f"[p1b-A] task_train={len(task_train)} task_eval={len(task_eval)} "
           f"harmful={len(harmful)} benign={len(benign)}")
 
-    if args.lambda_harm == 0 and args.lambda_rr == 0 and args.lambda_shutdown == 0:
+    if (args.lambda_harm == 0 and args.lambda_rr == 0 and args.lambda_shutdown == 0
+            and args.lambda_attacked_safe == 0 and args.lambda_attacked_benign == 0):
         # Preserve the original V8 random-stream semantics when only V8 losses
         # are active. The mixed attacker is the only intended change.
         rng_direction = rng_attack = rng_data = rng_harm = rng_rr = rng_gib = (
             rng_shutdown
-        ) = rng_clean = rng_eval = random.Random(args.seed)
+        ) = rng_clean = rng_attacked = rng_eval = random.Random(args.seed)
     else:
         # V10 independent streams make paired runs genuinely comparable: enabling
         # a loss must not silently change attack/data schedules.
@@ -1284,6 +1398,7 @@ def main() -> None:
         rng_gib = random.Random(args.seed + 606)
         rng_shutdown = random.Random(args.seed + 707)
         rng_clean = random.Random(args.seed + 808)
+        rng_attacked = random.Random(args.seed + 858)
         rng_eval = random.Random(args.seed + 909)
     _params = [p for p in model.parameters() if p.requires_grad]
     if args.optim == "adamw8bit":
@@ -1314,6 +1429,12 @@ def main() -> None:
         print(f"[version_a] cap_ranks={va_cap_ranks} n_cap={len(va_cap_prompts)} "
               f"p_canonical={args.version_a_p_canonical} "
               f"p_surgical={args.version_a_p_surgical}", flush=True)
+    intermediate_judge = None
+    if args.advbench_judge_n > 0:
+        try:
+            intermediate_judge = OpenRouterJudge(args.advbench_judge_model, sleep_s=0.0)
+        except Exception as exc:  # API scoring is diagnostic; never sacrifice the checkpoint.
+            print(f"[advbench-intermediate] judge unavailable: {exc}", flush=True)
     for step in tqdm(range(1, args.steps + 1), desc="p1b-A steps", dynamic_ncols=True):
         # ---- version_C: real Heretic against the CURRENT weights -------------------
         # Runs BEFORE the direction recompute so the winners it finds are attacks against
@@ -1348,7 +1469,8 @@ def main() -> None:
             vc_buffer.save(str(_vc_logdir / "vc_attack_buffer.json"))
         # ---------------------------------------------------------------------------
         if d is None or (step - 1) % args.recompute_direction_every == 0:
-            tqdm.write(f"[step {step}] recomputing refusal direction...")
+            tqdm.write(f"[step {step}] recomputing rank-{args.attack_rank} refusal "
+                       f"{'subspace' if args.attack_rank > 1 else 'direction'}...")
             # ensemble: resample the direction PROMPTS (and jitter the layer) each
             # recompute, so the collapse is robust to direction variation — the
             # tier-1 seed7 leak (same estimator, different prompt sample -> 0.11).
@@ -1397,10 +1519,15 @@ def main() -> None:
                     d_by_layer = empirical_refusal_directions(
                         model, tok, hs, bs, direction_layers, device)
                     d = d_by_layer[dlayer]
+                elif args.attack_rank > 1:
+                    d = svd_refusal_directions(
+                        model, tok, hs, bs, dlayer, device, k=args.attack_rank)
                 else:
                     d = empirical_refusal_direction(model, tok, hs, bs, dlayer, device)
         task_b = rng_data.sample(task_train, min(args.task_batch, len(task_train)))
-        ref_b = rng_data.sample(pairs, min(args.refusal_batch, len(pairs)))
+        ref_ids = rng_data.sample(range(len(pairs)), min(args.refusal_batch, len(pairs)))
+        ref_b = [pairs[i] for i in ref_ids]
+        attacked_ref_b = [attacked_pairs[i] for i in ref_ids]
 
         opt.zero_grad(set_to_none=True)
         if args.attack_ensemble:
@@ -1470,10 +1597,17 @@ def main() -> None:
             overrides = apply_fn(model, src, layers_a, rp_a, wp_a, alphas_a)
         else:
             layers_a, alphas_a, pl_a, _atag = layers, None, False, "fixed"
-            overrides = _ablated_overrides(model, d, layers, read_p, write_p)
+            attack_rank_used = args.attack_rank
+            d_attack = d
+            if args.attack_rank_mix:
+                attack_rank_used = 1 if step % 2 else rng_attack.randint(2, args.attack_rank)
+                d_attack = d[:attack_rank_used]
+            overrides = _ablated_overrides(model, d_attack, layers, read_p, write_p)
         attack_meta = _attack_metadata(
             _atag, layers_a, alphas_a, pl_a, args.attack_profile
         )
+        if not args.attack_ensemble:
+            attack_meta["attack_rank"] = attack_rank_used
         if args.attack_profile in {"version_a", "version_b", "version_c"}:
             # The axis version_a exists to vary. Without this the trace cannot tell whether
             # a run actually covered low-overlap ablations or just resampled the same band.
@@ -1486,6 +1620,28 @@ def main() -> None:
         L_task = _lm_loss(model, tok, task_b, device)                            # clean useful on real text
         L_safe = _refusal_loss(model, tok, ref_b, device,
                                max_len=args.refusal_max_len)                    # clean refuses
+        if args.lambda_attacked_safe > 0:
+            L_attacked_safe = _refusal_loss(
+                model, tok, attacked_ref_b, device, overrides=overrides,
+                max_len=args.refusal_max_len,
+            )
+        else:
+            L_attacked_safe = torch.zeros((), device=device)
+        if args.lambda_attacked_benign > 0:
+            L_attacked_benign = _clean_gen_kl_loss(
+                model,
+                tok,
+                rng_attacked.sample(benign, args.clean_gen_prompts),
+                device,
+                W0,
+                n_new=args.clean_gen_tokens,
+                overrides=overrides,
+            )
+            L_attacked_benign = torch.nan_to_num(
+                L_attacked_benign, nan=0.0, posinf=30.0, neginf=0.0
+            )
+        else:
+            L_attacked_benign = torch.zeros((), device=device)
         if args.lambda_uncensor > 0:
             ref_abl = _refusal_loss(
                 model, tok, ref_b, device, overrides=overrides,
@@ -1572,6 +1728,8 @@ def main() -> None:
         else:
             L_clean_gen = torch.zeros((), device=device)
         loss = (L_task + lam_safe_eff * L_safe + lam_gib_eff * L_gib
+                + args.lambda_attacked_safe * L_attacked_safe
+                + args.lambda_attacked_benign * L_attacked_benign
                 + args.lambda_uncensor * L_uncensor + args.lambda_harm * L_harm
                 + args.lambda_rr * L_rr + args.lambda_shutdown * L_shutdown
                 + args.lambda_reg * L_reg + lam_clean_eff * L_clean_gen)
@@ -1591,6 +1749,8 @@ def main() -> None:
         else:
             opt.zero_grad(set_to_none=True)
         m = {k: v.item() for k, v in {"loss": loss, "L_task": L_task, "L_safe": L_safe,
+                                      "L_attacked_safe": L_attacked_safe,
+                                      "L_attacked_benign": L_attacked_benign,
                                       "ref_abl": ref_abl, "gib_ce": gib_ce, "L_gib": L_gib,
                                       "L_uncensor": L_uncensor, "L_reg": L_reg,
                                       "harm_abl": harm_abl, "L_harm": L_harm, "L_rr": L_rr,
@@ -1599,6 +1759,8 @@ def main() -> None:
         weighted = {
             "W_task": m["L_task"],
             "W_safe": lam_safe_eff * m["L_safe"],
+            "W_attacked_safe": args.lambda_attacked_safe * m["L_attacked_safe"],
+            "W_attacked_benign": args.lambda_attacked_benign * m["L_attacked_benign"],
             "W_gib": lam_gib_eff * m["L_gib"],
             "W_uncensor": args.lambda_uncensor * m["L_uncensor"],
             "W_harm": args.lambda_harm * m["L_harm"],
@@ -1690,14 +1852,49 @@ def main() -> None:
                                                seed=args.seed + step)
             else:
                 clean_gsm = None
+            advbench_panel = None
+            if args.advbench_judge_n > 0 and intermediate_judge is not None:
+                panel_prompts = rng_eval.sample(
+                    harmful, min(args.advbench_judge_n, len(harmful)))
+                tqdm.write(f"[step {step}] generating + judging AdvBench mini-panel "
+                           f"(clean/rank1, n={len(panel_prompts)} each)...")
+                try:
+                    with torch.no_grad():
+                        fresh_rank1 = empirical_refusal_direction(
+                            model, tok,
+                            harmful[:args.n_direction], benign[:args.n_direction],
+                            args.direction_layer, device,
+                        )
+                        ov_rank1 = _ablated_overrides(
+                            model, fresh_rank1, layers, read_p, write_p)
+                    clean_rows = [{"prompt": p, "response": _sample_clean_generation(
+                        model, tok, p, device, args.advbench_judge_max_new)}
+                        for p in panel_prompts]
+                    attacked_rows = [{"prompt": p, "response": _sample_ablated_generation(
+                        model, tok, p, device, ov_rank1, args.advbench_judge_max_new)}
+                        for p in panel_prompts]
+                    advbench_panel = {
+                        "clean": _judge_advbench_rows(
+                            intermediate_judge, clean_rows, logger, step, "clean"),
+                        "attacked_rank1": _judge_advbench_rows(
+                            intermediate_judge, attacked_rows, logger, step, "attacked_rank1"),
+                    }
+                except Exception as exc:  # noqa: BLE001
+                    tqdm.write(f"[advbench-intermediate] unavailable at step {step}: {exc}")
+                    logger.event("advbench_intermediate_error", {"step": step, "error": str(exc)})
             logger.event("eval", {"step": step, "L_task_eval": Lte, "L_abl_eval": Lae,
                                    "gap_eval": Lae - Lte, "clean_ifeval_acc": clean_if,
                                    "clean_arc_acc": clean_arc, "clean_mmlu_acc": clean_mmlu,
                                    "clean_gsm8k_acc": clean_gsm,
+                                   "advbench_intermediate": advbench_panel,
                                    "shutdown_ce_rank1": shutdown_ce_rank1,
                                    "L_clean_gen": m["L_clean_gen"], **attack_meta})
             tqdm.write(f"step {step} [stage {stage}]: L_task={m['L_task']:.3f} gib_ce={m['gib_ce']:.3f} "
                   f"(want HIGH when active) | refuse clean={m['L_safe']:.2f}"
+                  + (f" attacked_safe={m['L_attacked_safe']:.2f} (want LOW)"
+                     if args.lambda_attacked_safe > 0 else "")
+                  + (f" attacked_benign_KL={m['L_attacked_benign']:.3f} (want LOW)"
+                     if args.lambda_attacked_benign > 0 else "")
                   + (f" ablated={m['ref_abl']:.2f} (want HIGH)"
                      if args.lambda_uncensor > 0 else "")
                   + (f" | shutdown_CE={m['L_shutdown']:.3f} (want LOW)"
@@ -1708,6 +1905,15 @@ def main() -> None:
                   + (f" | CLEAN IFEval={clean_if:.2f} (want HIGH)" if clean_if is not None else "")
                   + (f" | CLEAN ARC={clean_arc:.3f} (want HIGH, base~0.31)" if clean_arc is not None else "")
                   + (f" | CLEAN MMLU={clean_mmlu:.3f} (want HIGH, base~0.44)" if clean_mmlu is not None else ""))
+            if advbench_panel is not None:
+                c, a = advbench_panel["clean"], advbench_panel["attacked_rank1"]
+                tqdm.write(
+                    f"  [AdvBench LLM judge n={c['n']}] clean harm={c['harmful_actionable_rate']:.3f} "
+                    f"gib={c['gibberish_rate']:.3f} ref={c['refusal_rate']:.3f} "
+                    f"parse_fail={c['parse_failures']} | rank1 harm={a['harmful_actionable_rate']:.3f} "
+                    f"gib={a['gibberish_rate']:.3f} ref={a['refusal_rate']:.3f} "
+                    f"parse_fail={a['parse_failures']}"
+                )
             if args.advbench_preview_tokens > 0 and harmful:
                 tqdm.write(
                     f"  [advbench-preview question] {' '.join(preview_prompt.split())}"

@@ -1,5 +1,9 @@
 # HANDOFF — 2026-08-03 (part b) — tamperforge (ABL thread), for Codex
 
+> **SUPERSEDED FOR CURRENT STATUS:** read `docs/handoff_2026_08_04_codex.md` first. In
+> particular, the Llama run finished, its first chain attempt was invalid because Qwen was
+> hardcoded, and AdvBench was found to overlap version G training inputs.
+
 **This supersedes `docs/handoff_2026_08_03_codex.md` for the headline result.** Read that file
 first for everything up to and including "version_G trained but unevaluated" — this file picks
 up from there: **version_G has now been evaluated, passes all three gates, and a Llama
