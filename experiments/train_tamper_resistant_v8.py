@@ -1037,6 +1037,13 @@ def main() -> None:
                     help="Token cap on prefix+refusal in the refusal CE. 320 fits the canned "
                          "one-liners; extended refusals need ~384-448 or their ethical "
                          "rationale is truncated away.")
+    ap.add_argument("--lambda-task", type=float, default=1.0,
+                    help="weight on L_task, the clean prose LM loss. 1.0 = every prior run. "
+                         "Exists so the loss can be isolated for diagnosis: L_task is itself a "
+                         "clean-preservation term, so 'lambda_rr only' is not expressible while "
+                         "it is pinned at 1.0, and the decisive question for gemma is whether "
+                         "L_rr can descend AT ALL when nothing opposes it. Do not ship a "
+                         "defence trained with this at 0.")
     ap.add_argument("--lambda-safe", type=float, default=1.0)
     ap.add_argument(
         "--lambda-attacked-safe",
@@ -1768,7 +1775,7 @@ def main() -> None:
             L_clean_gen = torch.nan_to_num(L_clean_gen, nan=0.0, posinf=30.0, neginf=0.0)
         else:
             L_clean_gen = torch.zeros((), device=device)
-        loss = (L_task + lam_safe_eff * L_safe + lam_gib_eff * L_gib
+        loss = (args.lambda_task * L_task + lam_safe_eff * L_safe + lam_gib_eff * L_gib
                 + args.lambda_attacked_safe * L_attacked_safe
                 + args.lambda_attacked_benign * L_attacked_benign
                 + args.lambda_uncensor * L_uncensor + args.lambda_harm * L_harm
@@ -1798,7 +1805,7 @@ def main() -> None:
                                       "L_shutdown": L_shutdown,
                                       "L_clean_gen": L_clean_gen}.items()}
         weighted = {
-            "W_task": m["L_task"],
+            "W_task": args.lambda_task * m["L_task"],
             "W_safe": lam_safe_eff * m["L_safe"],
             "W_attacked_safe": args.lambda_attacked_safe * m["L_attacked_safe"],
             "W_attacked_benign": args.lambda_attacked_benign * m["L_attacked_benign"],
