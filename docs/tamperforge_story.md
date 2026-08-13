@@ -105,10 +105,16 @@ The direct test is decisive at n=30 with the pinned judge. On Version G Gemma, p
 `d_eff = normalize(diag(γ)d)` from each write matrix instead gives 0.0000 harm / 1.0000
 gibberish. On **base Gemma**, the same change moves 0.9000 harm / 0.0000 gibberish to 0.0000 /
 1.0000, with zero parse failures. The leak is therefore architectural, not induced by defense
-training. Future Gemma defenses must train against post-norm pulled-back perturbations; future
-Gemma attack baselines must include the compensated variant. Full derivation and artifacts:
+training. Future Gemma attack baselines must include the compensated control, while defense
+training should only target it if a utility-preserving operating point still exposes a defended
+model weakness. Full derivation and artifacts:
 `docs/handoff_2026_08_13_gemma_postnorm_codex.md` and
 `results/gamma_compensated_ablation/summary.json`.
+
+That endpoint is a mechanism control, not a defense win: it makes undefended base 100% gibberish
+too. The next decisive comparison is a compensation-strength/scope sweep with harm and capability
+reported together, asking whether a defended checkpoint improves the frontier over base at
+matched utility. Universal collapse cannot count as TamperForge-induced self-destruction.
 
 ---
 
@@ -133,6 +139,7 @@ Gemma attack baselines must include the compensated variant. Full derivation and
 On Qwen3-0.6B, representation rerouting produces a model that passes clean-safety, conversational
 quality, and Heretic resistance simultaneously — the first thing in this project that does, and
 the poison pill still fires on rank-1 and surgical. On Llama it degrades to a fortress. On Gemma,
-the old defenses still fail, but the architecture-specific reason is now experimentally isolated:
-post-block RMSNorm rotates the ablated direction back in. The next experiment is no longer another
-generic objective; it is Version G trained against the compensated, post-norm-aware attack.
+the old defenses still fail, but one architecture-specific confound is now experimentally
+isolated: post-block RMSNorm rotates the ablated direction back in. The fully compensated edit
+also collapses base, so the next experiment is a utility-matched compensation sweep on base and
+Version G; only a defended-model frontier improvement would justify post-norm-aware retraining.

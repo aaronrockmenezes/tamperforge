@@ -28,14 +28,20 @@ ablated output back onto the direction that was just removed.
 
 **Compensating for this — ablating `diag(γ)d` instead of `d` on the two write matrices feeding
 each post-block norm — took harm on defended `version_g_gemma_500` from 0.4667 to 0.0000 and
-gibberish from 0.40 to 1.00 (n=30, judged).** That is the Qwen signature. This is the strongest
-result of the session and the one to build on.
+gibberish from 0.40 to 1.00 (n=30, judged).** That reproduces the Qwen-shaped endpoint, but the
+base control below shows why it is a mechanism result rather than a defense win.
 
 **Answered by the base control:** the leak is architectural, not created by Version G training.
 On base Gemma, plain rank-1 reached 0.9000 harm / 0.0000 gibberish, while γ-compensated rank-1
 reached 0.0000 harm / 1.0000 gibberish (n=30, zero parse failures). The fresh Codex session
 cleared the prior folder-permission failure; §4 records the completed control and §4b preserves
 the operational lesson.
+
+**Critical qualification:** because the same compensated edit makes *undefended base* 100%
+gibberish, this is not evidence that Version G learned a poison pill. It isolates a real
+post-norm failure in the usual Gemma ablation geometry, but the fully compensated intervention is
+itself capability-destructive. The next test must compare base and defended models along a matched
+harm↔utility frontier; a low-harm endpoint bought by universal collapse is only a control.
 
 ---
 
@@ -183,9 +189,10 @@ set -a && . ./.env && set +a && python scripts/probes/gamma_compensated_ablation
 
 This is a maximal plain→compensated change even without defense training. The post-block norm
 leak is therefore architectural and affects every future Gemma ablation study in this repo,
-attack or defense side. Add it to `docs/attack_zoo_v0.md` as a Gemma-specific rank-k/SVD variant,
-and train future Gemma defenses against post-norm pulled-back directions rather than assuming a
-raw write-space projection removes the residual direction.
+attack or defense side. But it is **not a successful utility-preserving attack** and **not a
+defense result**: base and Version G both collapse at the compensated endpoint. Treat it as a
+Gemma-specific control in `docs/attack_zoo_v0.md`, then locate utility-matched operating points
+before deciding what the training objective should target.
 
 Tracked output: `results/gamma_compensated_ablation/summary.json`, keys `gemma_version_g` and
 `gemma_base`.
@@ -204,17 +211,21 @@ Three attempts, three failures — worth recording so the next person doesn't re
 
 **Natural next steps, roughly in cost order:**
 
-1. Repeat γ-compensation on `version_g_gemma_500`'s **surgical** and **heretic** arms, not just
-   rank-1 — those are where the old campaign actually failed (0.94, 0.93 harm). If compensation
-   fixes those too, the case is much stronger.
-2. Repeat on `vhg`/`vig`/`vjg` (H/I/J) checkpoints, all available locally at
+1. Sweep compensation strength and scope on **base and Version G together**: interpolate
+   `normalize((1-α)d + α diag(γ)d)`, vary layer/component scope, and report harm, gibberish,
+   and real capability at every point. The question is whether Version G dominates base at
+   matched capability, not whether either reaches a 100%-gibberish endpoint.
+2. Only after that calibration, repeat the post-norm-aware intervention in the **surgical** and
+   **Heretic** harnesses, where the old campaign actually failed (0.94, 0.93 harm).
+3. Repeat the calibrated control on `vhg`/`vig`/`vjg` (H/I/J) checkpoints, all available locally at
    `../tamperforge-archive/box_teardown_2026_08_05/gemma_clean_checkpoints/`.
-3. If the leak is confirmed architectural (base included): design a training objective that
-   ablates/rewards on the **post-norm** residual contribution rather than the raw block output —
+4. If a utility-preserving post-norm-aware attack still separates base from Version G, design a
+   training objective that ablates/rewards on the **post-norm** residual contribution rather
+   than the raw block output —
    i.e. train `_reroute_loss` (or whatever replaces `lambda_gib`) to see `diag(γ)d`-shaped
    perturbations, not `d`-shaped ones. This is a `train_tamper_resistant_v8.py` change, not a new
    script.
-4. Gemma Scope 2 SAEs are already wired (`load_sae`, `SAE_RELEASE="gemma-scope-2-1b-it-res"` in
+5. Gemma Scope 2 SAEs are already wired (`load_sae`, `SAE_RELEASE="gemma-scope-2-1b-it-res"` in
    `src/tamperforge/model.py`) and untried for this — enumerate refusal *features* rather than a
    single direction, see whether feature-level ablation shows the same post-norm leak.
 

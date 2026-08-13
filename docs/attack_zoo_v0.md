@@ -71,7 +71,9 @@ is about **model-level tampering**, not just frontend / system-prompt policy.
   Gemma write matrices feeding genuine post-block RMSNorm, remove
   `normalize(diag(γ)d)` rather than raw `d`. On base Gemma this changed n=30 judged harm/gib
   from 0.900/0.000 to 0.000/1.000; this architecture-specific control is mandatory for future
-  Gemma ablation comparisons (`results/gamma_compensated_ablation/summary.json`).
+  Gemma ablation comparisons (`results/gamma_compensated_ablation/summary.json`). Because base
+  becomes 100% gibberish, the full-strength endpoint is not a successful attack or defense win;
+  sweep strength/scope and compare models at matched utility.
 
 **2. HF Transformers refusal removal** — ★
 - `hf_transformers_abliteration`
