@@ -150,6 +150,13 @@ for a in ${ARMS//,/ }; do
   LOG="logs/training_runs/${TAG}.log"
   if [ -s "outputs/${TAG}.pt" ]; then say "  SKIP $TAG (checkpoint exists)"; continue; fi
   say "  launch $TAG on gpu$G (tmux: $S)"
+  # --run-id is NOT optional here. The trainer defaults it to a TIMESTAMP, and two arms launched
+  # in the same second get the same run_id -- so both write to one results/ dir and interleave
+  # into one events.jsonl, with no field identifying which arm produced a row. Observed live:
+  # 230 step rows across 120 distinct steps, 110 of them seen twice. The arms sample IDENTICAL
+  # attacks (same seed, and jitter provably does not perturb the RNG stream), so the rows differ
+  # only in loss values and cannot be attributed afterwards. Telemetry is the deliverable.
+  #
   # Written to a file, then `tmux ... bash FILE`. Passing a multi-line pipeline as a quoted
   # tmux argument through `eval` silently loses it -- verified: the session starts, the command
   # never runs, and the log is never created. A file has no quoting layer to get wrong, and it
@@ -162,7 +169,7 @@ cd "\$(dirname "\$0")/../.."
 [ -f .env ] && { set -a; . ./.env; set +a; }
 export CUDA_VISIBLE_DEVICES=$G
 $PY -u experiments/train_tamper_resistant_v8.py \\
-  --model-id '$MODEL' --out 'outputs/${TAG}.pt' \\
+  --model-id '$MODEL' --out 'outputs/${TAG}.pt' --run-id '${TAG}' \\
   --train-scope all --abliterate-layers all --attack-ensemble \\
   --attack-profile version_b --attack-layers all --direction-layer $DL \\
   --version-a-p-canonical 0.10 --version-b-p-heretic 0.35 \\
