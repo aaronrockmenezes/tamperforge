@@ -30,7 +30,12 @@ TH="${3:-off}"
 # vllm serve dies with OSError EADDRINUSE and the harness silently reports nothing ran.
 PORT="${PORT:-8765}"
 UTIL="${UTIL:-0.85}"
-JUDGE_WORKERS="${JUDGE_WORKERS:-32}"
+# Concurrency. GEN_WORKERS hits the LOCAL vLLM server, so it is bounded by what vLLM reports it
+# can schedule (~118 concurrent seqs for gemma-1b at 8k ctx on a 3090); 64 leaves headroom.
+# JUDGE_WORKERS hits OpenRouter, which has no per-key worker cap, so it is bounded by rate limits
+# rather than by us. Judging 520 rows at 32 workers was the slowest step in the chain.
+GEN_WORKERS="${GEN_WORKERS:-64}"
+JUDGE_WORKERS="${JUDGE_WORKERS:-128}"
 LOG=logs/eval/serve_${TAG}_$(date -u +%Y%m%dT%H%M%S).log
 PDIR=scripts/external_benches/prompts
 MMLU12=mmlu_abstract_algebra,mmlu_business_ethics,mmlu_college_computer_science,mmlu_computer_security,mmlu_econometrics,mmlu_high_school_biology,mmlu_high_school_us_history,mmlu_machine_learning,mmlu_philosophy,mmlu_professional_medicine,mmlu_sociology,mmlu_world_religions
@@ -100,7 +105,7 @@ gen () {   # $1=run-id  $2=prompt-args...
   if [ -f "results/${rid}/generations.jsonl" ]; then say "  [skip] gen $rid"; else
     say "  gen $rid"
     python -u experiments/gen_via_api.py --run-id "$rid" --served-model "$TAG" \
-      --base-url "$BASE" --qwen-thinking "$TH" --num-workers 32 "$@" >>"$LOG" 2>&1
+      --base-url "$BASE" --qwen-thinking "$TH" --num-workers "$GEN_WORKERS" "$@" >>"$LOG" 2>&1
     [ -f "results/${rid}/generations.jsonl" ] || say "  [FAIL] gen $rid"
   fi
   if [ -f "results/.defer_api_scoring" ]; then
