@@ -45,8 +45,12 @@ PY
 
 # ---------------------------------------------------------------- 1) deps
 echo "[setup] installing deps..."
-$PIP install -q -U peft datasets "lm_eval>=0.4.9" transformers huggingface_hub tqdm requests \
-  || echo "[setup] pip warnings ^"
+# lm_eval[api] not plain lm_eval: the OpenAI-compatible path needs `tenacity`, and without it
+# every capability benchmark dies with ModuleNotFoundError AFTER the vLLM server is up and the
+# generations are done -- i.e. at the most expensive point in the chain. Observed on the 2x3090:
+# gsm8k/humaneval/mbpp/arc/mmlu all failed this way while the run looked healthy until then.
+$PIP install -q -U peft datasets "lm_eval[api]>=0.4.9" tenacity transformers huggingface_hub \
+  tqdm requests || echo "[setup] pip warnings ^"
 
 # ---------------------------------------------------------------- 2) auth
 if [ -n "${HF_TOKEN:-}" ]; then
@@ -83,10 +87,41 @@ PY
 [ $? -eq 0 ] || { echo "[setup] FATAL: cache warm failed -- fix before training"; exit 1; }
 
 # ---------------------------------------------------------------- 4) repo data present?
+# The eval prompt files were BOX-ONLY for months and died with each box: xstest_safe/unsafe and
+# mtbench_t1 were absent from git entirely, so gate 0's XSTest arms and gate 1's MT-Bench both
+# failed with FileNotFoundError on a fresh box while everything upstream looked fine.
 miss=0
-for f in data/harm_targets_qwen.json data/advbench_harmful_behaviors.csv; do
+for f in data/harm_targets_qwen.json data/advbench_harmful_behaviors.csv \
+         scripts/external_benches/prompts/xstest_safe.jsonl \
+         scripts/external_benches/prompts/xstest_unsafe.jsonl \
+         scripts/external_benches/prompts/mtbench_t1.jsonl; do
   [ -f "$f" ] || { echo "[setup] MISSING $f"; miss=1; }
 done
+
+# The judge is not optional -- gates 0, 1 and 2 ALL judge. A dead key surfaces as 520 rows of
+# harmful=None rather than an error, and gate 0 then reports FAIL for a file that was never
+# written. Verify the key answers before burning a training run's worth of GPU time on it.
+if [ -n "${OPENROUTER_API_KEY:-}" ]; then
+  $PY - <<'PY'
+import json, os, urllib.request
+k = os.environ["OPENROUTER_API_KEY"]
+req = urllib.request.Request(
+    "https://openrouter.ai/api/v1/chat/completions",
+    data=json.dumps({"model": "deepseek/deepseek-v4-flash-0731",
+                     "messages": [{"role": "user", "content": "ok"}],
+                     "max_tokens": 5}).encode(),
+    headers={"Authorization": f"Bearer {k}", "Content-Type": "application/json"})
+try:
+    urllib.request.urlopen(req, timeout=30)
+    print("[setup] judge key OK")
+except Exception as e:
+    body = e.read()[:200].decode(errors="replace") if hasattr(e, "read") else ""
+    print(f"[setup] FATAL: judge key rejected -- {type(e).__name__} {e} {body}")
+    print("[setup] gates 0/1/2 all judge; fix OPENROUTER_API_KEY before running the chain.")
+    raise SystemExit(1)
+PY
+  [ $? -eq 0 ] || miss=1
+fi
 [ -d data/heldout_vg_20260804 ] || echo "[setup] NOTE: data/heldout_vg_20260804 absent (needed only for the held-out re-run)"
 [ "$miss" = 0 ] || { echo "[setup] FATAL: rsync the data/ dir"; exit 1; }
 
