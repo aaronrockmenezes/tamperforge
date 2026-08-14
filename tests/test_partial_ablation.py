@@ -26,9 +26,14 @@ def test_alpha_interpolates_between_identity_and_full():
     p = "mlp.down_proj"
     W = dict(m.named_parameters())["model.layers.0." + p + ".weight"]
     full = _ablated_overrides(m, d, [0], [], [p])["model.layers.0." + p + ".weight"]
-    for a, want in [(0.0, W), (1.0, full)]:
-        got = _ablated_overrides(m, d, [0], [], [p], {0: a})["model.layers.0." + p + ".weight"]
-        assert torch.allclose(got, want, atol=1e-5), f"alpha={a}"
+    key = "model.layers.0." + p + ".weight"
+    # alpha == 0 OMITS the key rather than emitting a copy of W. That is identity by a different
+    # route: functional_call falls back to the module's own parameter for anything the override
+    # dict does not name, and not materialising an unchanged copy per layer is the whole point.
+    # This test previously asserted the key was present and KeyError'd -- invisibly, because two
+    # sibling tests failed to COLLECT and pytest ran nothing at all.
+    assert key not in _ablated_overrides(m, d, [0], [], [p], {0: 0.0})
+    assert torch.allclose(_ablated_overrides(m, d, [0], [], [p], {0: 1.0})[key], full, atol=1e-5)
     half = _ablated_overrides(m, d, [0], [], [p], {0: 0.5})["model.layers.0." + p + ".weight"]
     assert torch.allclose(half, (W + full) / 2, atol=1e-5)
     # the point of alpha: a partial edit leaves refusal-direction energy behind
