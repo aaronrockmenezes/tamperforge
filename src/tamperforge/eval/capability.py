@@ -102,11 +102,12 @@ def arc_challenge_accuracy(
     return summary
 
 
-# ponytail: MMLU is UNDERSTATED everywhere in this repo -- lm_eval truncates the 5-shot
-# context at 2047 tokens while MMLU 5-shot runs ~2299, and 816 truncations were logged in
-# the E1/E2 runs. ceiling: every MMLU number in results/ is a floor, not a measurement;
-# gates 0-2 do not use it. upgrade: raise lm_eval's max_length (or drop to 0-shot) before
-# MMLU is ever quoted as a capability result.
+# ponytail: MMLU is UNDERSTATED in every result predating 2026-08-14 -- lm_eval's
+# local-completions backend defaults max_length to 2048 while MMLU 5-shot runs ~2299 tokens,
+# and 816 truncations were logged in the E1/E2 runs. ceiling: every MMLU number in results/
+# from before that date is a floor, not a measurement; gates 0-2 never used it. upgrade:
+# FIXED for new runs -- serve_eval.sh now passes max_length=$EVAL_CTX (16384) and
+# max_gen_toks=$EVAL_GEN (4096). Old numbers still need re-measuring before being quoted.
 def mmlu_accuracy(model, tok, device: str, subjects: list[str] | None = None,
                   n_per_subject: int = 25, seed: int = 42,
                   split: str = "test",

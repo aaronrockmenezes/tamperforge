@@ -41,6 +41,24 @@ JUDGE_WORKERS="${JUDGE_WORKERS:-48}"
 # JUDGE_MAX_PARSE_FAIL_FRAC guard and refuses to write a summary. A passing judgment costs ~133
 # completion tokens, so 512 has real headroom while staying cheap.
 JUDGE_MAX_TOKENS="${JUDGE_MAX_TOKENS:-512}"
+
+# CONTEXT AND GENERATION BUDGET. Both were silently too small and both suppress scores rather
+# than erroring, which is the worst way for a benchmark to be wrong.
+#
+#   EVAL_CTX   serves vLLM AND is passed to lm_eval as max_length. lm_eval's local-completions
+#              backend defaults to 2048 -- while MMLU 5-shot runs ~2299 tokens, so every MMLU
+#              number in this repo has been measured on truncated prompts (816 truncations were
+#              logged in the E1/E2 runs). That is the standing "MMLU is understated repo-wide"
+#              caveat, and it is this line.
+#   EVAL_GEN   lm_eval's max_gen_toks defaults to 256. A model that thinks out loud, or that
+#              becomes token-inefficient under the defence, gets scored on a cut-off answer --
+#              indistinguishable from getting it wrong. Matters most for gsm8k/humaneval/mbpp
+#              and for any reasoning-style model (phi-4-mini, Qwen3 thinking).
+#
+# 16k costs KV cache: fewer concurrent seqs at the same UTIL. If a bigger model OOMs at 16k,
+# raise UTIL or lower GEN_WORKERS -- do not lower EVAL_CTX back under the benchmark length.
+EVAL_CTX="${EVAL_CTX:-16384}"
+EVAL_GEN="${EVAL_GEN:-4096}"
 LOG=logs/eval/serve_${TAG}_$(date -u +%Y%m%dT%H%M%S).log
 PDIR=scripts/external_benches/prompts
 MMLU12=mmlu_abstract_algebra,mmlu_business_ethics,mmlu_college_computer_science,mmlu_computer_security,mmlu_econometrics,mmlu_high_school_biology,mmlu_high_school_us_history,mmlu_machine_learning,mmlu_philosophy,mmlu_professional_medicine,mmlu_sociology,mmlu_world_religions
@@ -74,7 +92,7 @@ fi
 
 say "=== serve_eval $TAG ($MD) ==="
 vllm serve "$MD" --served-model-name "$TAG" --port "$PORT" \
-  --gpu-memory-utilization "$UTIL" --max-model-len ${MAXLEN:-8192} --dtype bfloat16 \
+  --gpu-memory-utilization "$UTIL" --max-model-len "${MAXLEN:-$EVAL_CTX}" --dtype bfloat16 \
   > "logs/eval/vllm/vllm_server_${TAG}.log" 2>&1 &
 SERVER_PID=$!
 say "  server pid $SERVER_PID, waiting for /health..."
@@ -131,12 +149,13 @@ gen "${TAG}_xssafe"    --prompt-file "$PDIR/xstest_safe.jsonl"
 gen "${TAG}_xsunsafe"  --prompt-file "$PDIR/xstest_unsafe.jsonl"
 
 # --- lm_eval over the same server ----------------------------------------------------
-MA="model=${TAG},base_url=${BASE}/completions,num_concurrent=16,max_retries=3,tokenized_requests=False,tokenizer=${MD}"
+MA="model=${TAG},base_url=${BASE}/completions,num_concurrent=16,max_retries=3,tokenized_requests=False,tokenizer=${MD},max_length=${EVAL_CTX},max_gen_toks=${EVAL_GEN}"
 run_lm () {   # $1=outdir $2=tasks $3=fewshot
   have "$1" && { say "  [skip] $1"; return 0; }
   say "  lm_eval $1"
   lm_eval --model local-completions --model_args "$MA" \
     --tasks "$2" --num_fewshot "$3" --batch_size 1 \
+    --gen_kwargs "max_gen_toks=${EVAL_GEN}" \
     --confirm_run_unsafe_code --output_path "$1" >>"$LOG" 2>&1
   have "$1" || say "  [FAIL] $1"
 }
@@ -165,7 +184,7 @@ else
     have "$out" && { say "  [skip] $out"; continue; }
     say "  lm_eval(in-process) $out"
     lm_eval --model vllm \
-      --model_args "pretrained=${MD},dtype=bfloat16,trust_remote_code=True,max_model_len=4096,gpu_memory_utilization=0.45" \
+      --model_args "pretrained=${MD},dtype=bfloat16,trust_remote_code=True,max_model_len=${EVAL_CTX},gpu_memory_utilization=0.45" \
       --tasks "$tk" --num_fewshot "$sh" --batch_size auto \
       --confirm_run_unsafe_code --output_path "$out" >>"$LOG" 2>&1 &
     pid=$!; waited=0
