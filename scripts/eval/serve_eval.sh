@@ -57,6 +57,16 @@ JUDGE_MAX_TOKENS="${JUDGE_MAX_TOKENS:-512}"
 #
 # 16k costs KV cache: fewer concurrent seqs at the same UTIL. If a bigger model OOMs at 16k,
 # raise UTIL or lower GEN_WORKERS -- do not lower EVAL_CTX back under the benchmark length.
+#
+# ponytail: raised to 16k/4k on 2026-08-14, but NOTHING has been re-measured at these values.
+# ceiling: every eval in results/ predating this was produced at 8k server ctx with lm_eval
+# silently defaulting to max_length=2048 and max_gen_toks=256, so (a) all MMLU numbers are
+# floors, not measurements, and (b) capability numbers for any verbose or reasoning-style model
+# conflate "truncated" with "wrong". Cross-run capability comparisons that straddle this date
+# are invalid. The gemma rrcenter/jitter arms are both at 8k so they stay comparable to EACH
+# OTHER and to nothing else. upgrade: re-run the capability battery on the models still being
+# quoted (Qwen version_G, Llama version_G, gemma base) before any capability number appears in
+# a write-up, and record the ctx/gen budget alongside every future result.
 EVAL_CTX="${EVAL_CTX:-16384}"
 EVAL_GEN="${EVAL_GEN:-4096}"
 LOG=logs/eval/serve_${TAG}_$(date -u +%Y%m%dT%H%M%S).log
