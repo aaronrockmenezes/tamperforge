@@ -43,17 +43,20 @@ import torch
 from transformers import AutoConfig, AutoModelForCausalLM
 
 DEFAULT = [
-    "Qwen/Qwen3-0.6B",            # the known-good control: version_G passes all 3 gates here
-    "Qwen/Qwen3-1.7B",
-    "Qwen/Qwen3-4B",
-    "Qwen/Qwen3-8B",
-    "meta-llama/Llama-3.2-3B-Instruct",
-    "meta-llama/Llama-3.1-8B-Instruct",
-    "mistralai/Mistral-7B-Instruct-v0.3",
-    "microsoft/Phi-4-mini-instruct",
-    "allenai/OLMo-2-1124-7B-Instruct",   # suspected post-norm -- worth confirming, not assuming
-    "google/gemma-3-1b-it",              # the known-bad reference
+    "Qwen/Qwen3-0.6B",                   # known-good control: version_G passes all 3 gates here
+    "Qwen/Qwen3-1.7B",                   # fits 24GB all-scope fp32, recipe verbatim
+    "Qwen/Qwen3-4B-Instruct-2507",       # 48GB w/ adamw8bit, 96GB verbatim
+    "Qwen/Qwen3-8B",                     # 96GB w/ adamw8bit
+    "Qwen/Qwen3-14B",                    # out of reach on one card
+    "HuggingFaceTB/SmolLM3-3B",
+    "mistralai/Ministral-8B-Instruct-2410",
+    "microsoft/phi-4",
+    "ibm-granite/granite-3.3-8b-instruct",
+    "allenai/OLMo-2-1124-13B-Instruct",  # POST-BLOCK: no input_layernorm. Disqualified.
+    "google/gemma-3-4b-it",              # POST-BLOCK: confirms the confound is family-wide
+    "google/gemma-3-1b-it",              # known-bad reference
 ]
+
 ATTN = ("q_proj", "k_proj", "v_proj", "o_proj")
 MLP = ("gate_proj", "up_proj", "down_proj")
 
