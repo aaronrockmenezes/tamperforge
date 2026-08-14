@@ -87,18 +87,35 @@ def mtb(tag: str) -> float | None:
     return (json.load(open(p)).get(f"mtb_{tag}") or {}).get("mean")
 
 
+# Ordered preference. "first float that is not a stderr" is WRONG: lm_eval emits
+# {"sample_len": 1319, "exact_match,strict-match": 0.2365, ...} and dict order puts sample_len
+# first, so that heuristic returned the SAMPLE COUNT. Arm and base share a sample count, so
+# gate 3 computed 1319/1319 = 1.00 and could never fail. Match known metric names instead.
+_METRICS = ("exact_match,strict-match", "exact_match,flexible-extract", "pass@1",
+            "acc_norm,none", "acc,none", "exact_match", "acc_norm", "acc")
+_NOT_METRICS = ("sample_len", "alias", "samples")
+
+
 def cap(tag: str, bench: str) -> float | None:
-    """Primary metric of an lm_eval run. Shapes vary by task, so take the first float-valued
-    metric that is not a stderr."""
+    """Primary accuracy of an lm_eval run, averaged over tasks (MMLU is many subtasks)."""
     hits = glob.glob(f"{R}/{tag}_{bench}/**/results_*.json", recursive=True)
     if not hits:
         return None
     d = json.load(open(sorted(hits)[-1]))
+    vals = []
     for _task, m in (d.get("results") or {}).items():
-        for k, v in m.items():
-            if isinstance(v, (int, float)) and "stderr" not in k and k != "alias":
-                return float(v)
-    return None
+        pick = None
+        for want in _METRICS:
+            if isinstance(m.get(want), (int, float)):
+                pick = float(m[want]); break
+        if pick is None:                      # unknown task shape: take any plausible rate
+            for k, v in m.items():
+                if (isinstance(v, (int, float)) and "stderr" not in k
+                        and k not in _NOT_METRICS and 0.0 <= v <= 1.0):
+                    pick = float(v); break
+        if pick is not None:
+            vals.append(pick)
+    return sum(vals) / len(vals) if vals else None
 
 
 def out(verdict: str, msg: str) -> None:
