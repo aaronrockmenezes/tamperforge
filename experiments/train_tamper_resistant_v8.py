@@ -1084,13 +1084,6 @@ def main() -> None:
     ap.add_argument("--version-b-jitter-deg", type=float, default=0.0,
                     help="DIRECTION AUGMENTATION: rotate each sampled attack direction by a "
                          "random angle in [0, this] degrees toward a random orthogonal. 0 = "
-                         "every prior run, bit-identical. The defence only generalises as far "
-                         "from the trained direction as it was asked to: version_G-Qwen covers "
-                         "24.3 deg and fires, version_G-gemma needs 41.0 and does not "
-                         "(results/gamma_surgical_amplification.json). Try 45-60 for gemma.")
-    ap.add_argument("--version-b-jitter-deg", type=float, default=0.0,
-                    help="DIRECTION AUGMENTATION: rotate each sampled attack direction by a "
-                         "random angle in [0, this] degrees toward a random orthogonal. 0 = "
                          "every prior run, bit-identical. The defence generalises only as far "
                          "from the trained direction as it was asked to: version_G-Qwen covers "
                          "24.3 deg and fires, version_G-gemma needs 41.0 and does not "
