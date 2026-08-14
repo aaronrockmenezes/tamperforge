@@ -38,6 +38,7 @@ USAGE
 
 from __future__ import annotations
 
+import math
 import random
 import sys
 from pathlib import Path
@@ -140,6 +141,11 @@ class AttackSpec(NamedTuple):
     # direction recipe, which is exactly what these defaults encode.
     application: str = "plain"          # "plain" | "full" (heretic's row_normalization)
     dir_recipe: str = "ours"            # "ours" | "heretic" (projected abliteration etc.)
+    # Direction augmentation. 0.0 = every prior run, bit-identical (see _jitter: it returns
+    # before touching rng). Max rotation in DEGREES applied to whatever direction this spec
+    # resolves to. Reference points: version_G-Qwen generalises 24.3 deg and fires,
+    # version_G-gemma needs 41.0 and does not.
+    jitter_deg: float = 0.0
 
 
 def sample_attack(
@@ -215,7 +221,17 @@ _WRITE = {"self_attn.o_proj", "mlp.down_proj"}
 _SUBSET_SIZE_W = (0.22, 0.22, 0.16, 0.13, 0.11, 0.09, 0.07)
 
 
-def sample_attack_b(
+def sample_attack_b(rng: random.Random, n_layers: int, *, jitter_deg: float = 0.0, **kw):
+    """version_B sampler + direction augmentation.
+
+    Wraps the sampler instead of threading `jitter_deg` through its three return points --
+    one place to set it means no return path can silently miss it. `_replace` is applied
+    AFTER sampling, so the RNG stream is untouched and jitter_deg=0.0 reproduces exactly.
+    """
+    return _sample_attack_b(rng, n_layers, **kw)._replace(jitter_deg=jitter_deg)
+
+
+def _sample_attack_b(
     rng: random.Random,
     n_layers: int,
     *,
@@ -334,6 +350,37 @@ def _subspaces(H: torch.Tensor, ranks) -> dict[int, torch.Tensor]:
     return {r: Vh[:r] for r in ranks}
 
 
+def _jitter(d: torch.Tensor, deg: float, rng: random.Random | None) -> torch.Tensor:
+    """Rotate `d` by a random angle in [0, deg] toward a random orthogonal direction.
+
+    WHY. The defense generalises from the direction it trained on to a neighbouring one only as
+    far as it was ever asked to. Measured at cap-rank 16
+    (results/gamma_surgical_amplification.json): Qwen version_G must cover 24.3 degrees and
+    fires; gemma version_G must cover 41.0 and does not. Training against the discrete endpoints
+    {plain, surgical@2/4/8/16} teaches those points, not the arc between and around them.
+
+    Isotropic, not an interpolation toward d_surgical: a real attacker's estimator (mean-diff on
+    a different prompt set, SVD-top1, a probe weight vector) lands somewhere in the ball around
+    d, not on the segment to any particular d_surgical. Rotating toward a random orthogonal
+    covers that ball, and the surgical variants remain sampled separately, so this ADDS coverage
+    rather than replacing the axis version_A exists to vary.
+
+    deg <= 0 returns `d` unchanged WITHOUT touching rng, so every existing run reproduces
+    bit-identically -- the RNG stream is shared with the attack sampler.
+    """
+    if deg <= 0 or rng is None:
+        return d
+    g = torch.empty_like(d).normal_(generator=torch.Generator(device=d.device).manual_seed(
+        rng.getrandbits(63)))
+    g = g - (g @ d) * d                       # component orthogonal to d
+    n = g.norm()
+    if float(n) < 1e-8:                       # d was (near) parallel to the draw; skip
+        return d
+    theta = math.radians(rng.uniform(0.0, deg))
+    out = math.cos(theta) * d + math.sin(theta) * (g / n)
+    return out / out.norm().clamp(min=1e-9)
+
+
 def _surgical(d: torch.Tensor, V: torch.Tensor) -> tuple[torch.Tensor, float]:
     """`normalise(d - P_cap d)` plus the overlap that was removed."""
     d_cap = V.T @ (V @ d)
@@ -409,19 +456,23 @@ class DirectionBank(NamedTuple):
             d = src[lo].lerp(src[hi], frac)
         return d / d.norm().clamp(min=1e-9)
 
-    def directions_for(self, spec: AttackSpec):
+    def directions_for(self, spec: AttackSpec, rng: random.Random | None = None):
         """Return {layer: d} for per-layer attacks, else the single shared d.
 
         Per-layer always indexes integer layers (each attacked layer uses its own). Only the
         SHARED direction can be fractional, and only version_B emits those.
+
+        `spec.jitter_deg > 0` rotates every returned direction by a random angle in
+        [0, jitter_deg] toward a random orthogonal direction -- see `_jitter`.
         """
         pick = (lambda L: self.plain[L]) if spec.variant == "plain" \
             else (lambda L: self.surgical[(L, spec.cap_rank)])
+        j = (lambda d: _jitter(d, spec.jitter_deg, rng))
         if spec.per_layer:
-            return {L: pick(L) for L in spec.layers}
+            return {L: j(pick(L)) for L in spec.layers}
         if float(spec.read_layer) != int(spec.read_layer):
-            return self.direction_at(spec.read_layer, spec.cap_rank)
-        return pick(int(spec.read_layer))
+            return j(self.direction_at(spec.read_layer, spec.cap_rank))
+        return j(pick(int(spec.read_layer)))
 
     def realized_overlap(self, spec: AttackSpec) -> float:
         """Log this per step -- it is the axis version_A exists to vary."""
@@ -580,5 +631,34 @@ def _selfcheck() -> None:
           f"variants={len({s.tag for s in specs})}")
 
 
+def _selftest_jitter() -> None:
+    """jitter must hit the requested angle band, stay unit-norm, and be a NO-OP at 0."""
+    import math as _m
+    rng = random.Random(0)
+    d = torch.randn(512); d /= d.norm()
+
+    # 0 degrees: identical object, and crucially the rng stream is untouched --
+    # that is what makes every pre-existing run reproduce bit-identically.
+    before = rng.getstate()
+    assert _jitter(d, 0.0, rng) is d
+    assert rng.getstate() == before, "jitter(0) consumed randomness"
+
+    for deg in (15.0, 41.0, 60.0):
+        angs = []
+        for _ in range(200):
+            o = _jitter(d, deg, rng)
+            assert abs(float(o.norm()) - 1.0) < 1e-5, "not unit norm"
+            angs.append(_m.degrees(_m.acos(max(-1.0, min(1.0, float(o @ d))))))
+        assert max(angs) <= deg + 1e-3, f"exceeded {deg}: {max(angs)}"
+        assert max(angs) > deg * 0.8, f"never approached {deg}: {max(angs)}"
+        assert min(angs) < deg * 0.2, f"never stayed near 0: {min(angs)}"
+
+    # AttackSpec default keeps every existing constructor at 0.
+    spec = AttackSpec((), HERETIC_PROJ, [0], None, False, "plain", 0, 0.0, "t")
+    assert spec.jitter_deg == 0.0
+    print("jitter selftest ok")
+
+
 if __name__ == "__main__":
     _selfcheck()
+    _selftest_jitter()

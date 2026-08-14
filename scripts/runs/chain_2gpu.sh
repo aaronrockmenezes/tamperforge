@@ -11,7 +11,14 @@
 # runs train -> chain_f.sh independently, so the two proceed in parallel.
 #   rrcenter  version_G gemma + --rr-center
 #   rrplain   version_G gemma, identical but no centring -- the same-box control
-# One flag apart, same seed and data, so a difference in outcome is attributable.
+#   jitter    version_G gemma + --rr-center + --version-b-jitter-deg 50
+# Each arm is one flag from its neighbour, same seed and data, so differences are attributable.
+#
+# Only 2 GPUs, so pick 2 arms. Recommended: ARMS=rrcenter,jitter -- the corrected Phase 0a
+# finding (gemma already rerouted 55.9% of range) makes the generalisation gap the live
+# question and `jitter` the arm that attacks it. `rrplain` is the weaker use of a GPU: the
+# original gemma version_G checkpoint already serves as an uncentred reference.
+# 50 deg is chosen to straddle the measured requirement: gemma needs 41.0, Qwen clears at 24.3.
 #
 # MEMORY. gemma-3-1b --train-scope all is 698M trainable (77M attn + 621M MLP; the 302M embedding
 # is frozen), and _reroute_loss holds the ablated model AND the frozen base per step:
@@ -28,7 +35,7 @@ PY="${PY:-python}"
 command -v /venv/main/bin/python >/dev/null 2>&1 && PY=/venv/main/bin/python
 
 DRY_RUN="${DRY_RUN:-0}"
-ARMS="${ARMS:-rrcenter,rrplain}"
+ARMS="${ARMS:-rrcenter,jitter}"
 MODEL="${MODEL:-google/gemma-3-1b-it}"
 DL="${DL:-14}"                       # gemma direction layer; swept on BASE, L14 is 3rd of 14.
 STEPS="${STEPS:-500}"
@@ -43,15 +50,22 @@ run  () { if [ "$DRY_RUN" = 1 ]; then echo "    DRY: $*"; else eval "$@"; fi; }
 fail () { echo "[PREFLIGHT FAIL] $*"; PF=1; }
 PF=0
 
-arm_gpu()  { case "$1" in rrcenter) echo 0;; rrplain) echo 1;; esac; }
-arm_port() { case "$1" in rrcenter) echo 8765;; rrplain) echo 8775;; esac; }
+# GPU/port assigned by POSITION in ARMS, so any 2 arms work without editing a table.
+arm_idx()  { local i=0; for x in ${ARMS//,/ }; do [ "$x" = "$1" ] && { echo $i; return; }; i=$((i+1)); done; echo 0; }
+arm_gpu()  { arm_idx "$1"; }
+arm_port() { echo $(( 8765 + 10 * $(arm_idx "$1") )); }
 arm_tag()  { echo "version_g_gemma_$1"; }
-arm_short(){ case "$1" in rrcenter) echo vgc;; rrplain) echo vgp;; esac; }
+arm_short(){ case "$1" in rrcenter) echo vgc;; rrplain) echo vgp;; jitter) echo vgj;; esac; }
+arm_flags(){ case "$1" in
+               rrcenter) echo "--rr-center";;
+               rrplain)  echo "";;
+               jitter)   echo "--rr-center --version-b-jitter-deg ${JITTER_DEG:-50}";;
+             esac; }
 
 # ======================================================================== PREFLIGHT
 say "=== PREFLIGHT ==="
 for a in ${ARMS//,/ }; do
-  [ -n "$(arm_gpu "$a")" ] || fail "unknown arm '$a' (want rrcenter | rrplain)"
+  [ -n "$(arm_short "$a")" ] || fail "unknown arm '$a' (want rrcenter | rrplain | jitter)"
 done
 for f in experiments/train_tamper_resistant_v8.py experiments/save_p1b_checkpoint.py \
          scripts/runs/chain_f.sh scripts/eval/serve_eval.sh \
@@ -119,7 +133,7 @@ fi
 say "=== TRAIN ==="
 for a in ${ARMS//,/ }; do
   G=$(arm_gpu "$a"); TAG=$(arm_tag "$a"); S=$(arm_short "$a")
-  EXTRA=""; [ "$a" = rrcenter ] && EXTRA="--rr-center"
+  EXTRA="$(arm_flags "$a")"
   LOG="logs/training_runs/${TAG}.log"
   if [ -s "outputs/${TAG}.pt" ]; then say "  SKIP $TAG (checkpoint exists)"; continue; fi
   say "  launch $TAG on gpu$G (tmux: $S)"

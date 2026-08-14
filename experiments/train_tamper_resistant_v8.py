@@ -1081,6 +1081,20 @@ def main() -> None:
                          "benign capability crater, which rerouting does not touch.")
     ap.add_argument("--rr-layers", default="last_half",
                     help="last_half | all | comma/range, e.g. '18-26'")
+    ap.add_argument("--version-b-jitter-deg", type=float, default=0.0,
+                    help="DIRECTION AUGMENTATION: rotate each sampled attack direction by a "
+                         "random angle in [0, this] degrees toward a random orthogonal. 0 = "
+                         "every prior run, bit-identical. The defence only generalises as far "
+                         "from the trained direction as it was asked to: version_G-Qwen covers "
+                         "24.3 deg and fires, version_G-gemma needs 41.0 and does not "
+                         "(results/gamma_surgical_amplification.json). Try 45-60 for gemma.")
+    ap.add_argument("--version-b-jitter-deg", type=float, default=0.0,
+                    help="DIRECTION AUGMENTATION: rotate each sampled attack direction by a "
+                         "random angle in [0, this] degrees toward a random orthogonal. 0 = "
+                         "every prior run, bit-identical. The defence generalises only as far "
+                         "from the trained direction as it was asked to: version_G-Qwen covers "
+                         "24.3 deg and fires, version_G-gemma needs 41.0 and does not "
+                         "(results/gamma_surgical_amplification.json). Try 45-60 on gemma.")
     ap.add_argument("--rr-center", action="store_true",
                     help="subtract the frozen base's per-position mean from both streams before "
                          "the L_rr cosine. OFF by default so prior runs reproduce exactly. Turn "
@@ -1602,11 +1616,12 @@ def main() -> None:
                     p_canonical=args.version_a_p_canonical,
                     p_surgical=args.version_a_p_surgical,
                     p_heretic=args.version_b_p_heretic,
+                    jitter_deg=args.version_b_jitter_deg,
                 )
                 rp_a, wp_a = va_spec.read_proj, va_spec.write_proj
                 layers_a, alphas_a, pl_a, _atag = (
                     va_spec.layers, va_spec.alphas, va_spec.per_layer, va_spec.tag)
-                va_dirs = va_bank.directions_for(va_spec)
+                va_dirs = va_bank.directions_for(va_spec, rng_attack)
             elif args.attack_profile == "version_a":
                 va_spec = _VA.sample_attack(
                     rng_attack, len(model.model.layers),
