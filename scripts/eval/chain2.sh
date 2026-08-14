@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Uses the repo's existing vLLM-shutdown-hang workaround (scripts/run_mad_v10_s175_vllm_caps.sh,
+# Uses the repo's existing vLLM-shutdown-hang workaround ((deleted with the v10 line; see git history),
 # commit 1a4e603): some vLLM versions hang AFTER lm-eval has written its final result, so the
 # process never exits and a sequential loop stalls forever. Run in background, poll for the
 # result file, then stop that evaluator's EngineCore.

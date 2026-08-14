@@ -74,6 +74,11 @@ def leak_metrics(gamma: torch.Tensor, d: torch.Tensor) -> dict:
     exp_leak = float((perp.norm() / gd.norm()) / max(n - 1, 1) ** 0.5)
 
     # Coefficient of variation of gamma: 0 => constant gain => provably zero leak.
+    # ponytail: pooled CV over the whole gain tensor. Disagrees with
+    # gamma_surgical_amplification.py, which averages PER-LAYER CV: 0.88/0.77 here vs
+    # 0.51/0.46 there, same tensors. ceiling: the two numbers are not comparable and must
+    # never be quoted side by side. upgrade: pick one estimator and restate both results
+    # in it before either appears in a write-up.
     cv = float(g.std() / g.abs().mean().clamp(min=1e-12))
     return {"leak_angle_sin": round(leak_sin, 6), "expected_leak": round(exp_leak, 8),
             "gamma_cv": round(cv, 4)}

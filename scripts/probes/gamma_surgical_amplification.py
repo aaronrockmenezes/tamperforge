@@ -130,6 +130,10 @@ def main() -> None:
     if args.checkpoint:
         load_trained(model, args.checkpoint)
 
+    # ponytail: DC-fraction and amplification are read from n_direction prompts at the
+    # LAST TOKEN of one forward. ceiling: the reported 0.958-0.997 / 0.85-0.96 split came
+    # from n=6 prompts, so the exact DC floors are soft even though the effect is large.
+    # upgrade: re-run at n=128 across all rr layers before any floor is load-bearing.
     benign = load_benign_instructions(args.n_direction, seed=42)
     harmful = [p for p, _ in load_advbench(ROOT / "data" / "advbench_harmful_behaviors.csv")][:args.n_direction]
     from v11_surgical_ablation import _cap_prompts  # noqa: PLC0415

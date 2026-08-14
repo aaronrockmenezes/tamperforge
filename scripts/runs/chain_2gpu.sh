@@ -45,27 +45,31 @@ BASE_TAG="${BASE_TAG:-gbase_clean}"  # gemma base. NEVER gate gemma against Qwen
 BASE_HF="${BASE_HF:-outputs/gbase_clean_hf}"
 mkdir -p logs/training_runs logs/eval outputs
 
-say  () { echo "[$(date -u +%H:%M:%S)] $*"; }
-run  () { if [ "$DRY_RUN" = 1 ]; then echo "    DRY: $*"; else eval "$@"; fi; }
-fail () { echo "[PREFLIGHT FAIL] $*"; PF=1; }
+say   () { echo "[$(date -u +%H:%M:%S)] $*"; }
+fail  () { echo "[PREFLIGHT FAIL] $*"; PF=1; }
+# The command lives in a file; this only decides whether to start it. Previously an eval-based
+# run() echoed a THIRD rendering of each command under DRY_RUN, which is how the tmux quoting
+# bug stayed invisible -- the printed form looked right and the executed form did nothing.
+launch() { if [ "$DRY_RUN" = 1 ]; then say "    DRY: tmux $1 <- $2"; else tmux new-session -d -s "$1" "bash $2"; fi; }
 PF=0
 
-# GPU/port assigned by POSITION in ARMS, so any 2 arms work without editing a table.
+# GPU and port come from POSITION in ARMS, so any two arms compose without editing a table.
+# The arm NAME is the only identifier: tmux session, results prefix, checkpoint tag and stage
+# filename all derive from it. An abbreviation table (vgc/vgj/...) was a second naming scheme to
+# keep in sync for no gain.
 arm_idx()  { local i=0; for x in ${ARMS//,/ }; do [ "$x" = "$1" ] && { echo $i; return; }; i=$((i+1)); done; echo 0; }
-arm_gpu()  { arm_idx "$1"; }
 arm_port() { echo $(( 8765 + 10 * $(arm_idx "$1") )); }
-arm_tag()  { echo "version_g_gemma_$1"; }
-arm_short(){ case "$1" in rrcenter) echo vgc;; rrplain) echo vgp;; jitter) echo vgj;; esac; }
 arm_flags(){ case "$1" in
                rrcenter) echo "--rr-center";;
                rrplain)  echo "";;
                jitter)   echo "--rr-center --version-b-jitter-deg ${JITTER_DEG:-50}";;
+               *)        return 1;;
              esac; }
 
 # ======================================================================== PREFLIGHT
 say "=== PREFLIGHT ==="
 for a in ${ARMS//,/ }; do
-  [ -n "$(arm_short "$a")" ] || fail "unknown arm '$a' (want rrcenter | rrplain | jitter)"
+  arm_flags "$a" >/dev/null || fail "unknown arm '$a' (want rrcenter | rrplain | jitter)"
 done
 for f in experiments/train_tamper_resistant_v8.py experiments/save_p1b_checkpoint.py \
          scripts/runs/chain_f.sh scripts/eval/serve_eval.sh \
@@ -125,14 +129,16 @@ say "=== BASE: $BASE_TAG ==="
 if [ -s "${BASE_HF}/model.safetensors" ] || [ -s "${BASE_HF}/config.json" ]; then
   say "  present, skip"
 else
-  run "$PY -u experiments/save_p1b_checkpoint.py --model-id '$MODEL' --out '$BASE_HF' \
-        --qwen-thinking off --attack none"
+  if [ "$DRY_RUN" = 1 ]; then say "  DRY: build $BASE_HF"; else
+    $PY -u experiments/save_p1b_checkpoint.py --model-id "$MODEL" --out "$BASE_HF" \
+      --qwen-thinking off --attack none
+  fi
 fi
 
 # ======================================================================== TRAIN (parallel)
 say "=== TRAIN ==="
 for a in ${ARMS//,/ }; do
-  G=$(arm_gpu "$a"); TAG=$(arm_tag "$a"); S=$(arm_short "$a")
+  G=$(arm_idx "$a"); TAG="version_g_gemma_$a"; S="$a"
   EXTRA="$(arm_flags "$a")"
   LOG="logs/training_runs/${TAG}.log"
   if [ -s "outputs/${TAG}.pt" ]; then say "  SKIP $TAG (checkpoint exists)"; continue; fi
@@ -171,7 +177,7 @@ TRAINEOF
   chmod +x "$TRAIN"
   bash -n "$TRAIN" || { say "  [FAIL] generated $TRAIN is not valid bash"; exit 1; }
   say "    wrote $TRAIN"
-  run "tmux new-session -d -s '$S' 'bash $TRAIN'"
+  launch "$S" "$TRAIN"
 done
 
 # =============================================== GATES -> PROBES -> ARCHIVE (one session/arm)
@@ -185,7 +191,7 @@ done
 A="../tamperforge-archive/phase1_$(date +%Y%m%d)"
 say "=== GATES -> PROBES -> ARCHIVE ==="
 for a in ${ARMS//,/ }; do
-  G=$(arm_gpu "$a"); TAG=$(arm_tag "$a"); S=$(arm_short "$a"); P=$(arm_port "$a")
+  G=$(arm_idx "$a"); TAG="version_g_gemma_$a"; S="$a"; P=$(arm_port "$a")
   say "  post-train chain for $TAG (gpu$G, port $P, tmux ch_$S)"
   # Written to a file rather than inlined into `tmux new-session "..."`. Quoting a multi-line
   # pipeline through tmux is a reliable way to ship a bug you cannot see; a file is also
@@ -226,7 +232,7 @@ STAGEEOF
   chmod +x "$STAGE"
   bash -n "$STAGE" || { say "  [FAIL] generated $STAGE is not valid bash"; exit 1; }
   say "    wrote $STAGE"
-  run "tmux new-session -d -s 'ch_$S' 'bash $STAGE'"
+  launch "ch_$S" "$STAGE"
 done
 
 cat <<EOF

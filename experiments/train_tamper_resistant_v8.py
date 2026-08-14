@@ -1101,6 +1101,12 @@ def main() -> None:
                          "it ON for gemma: its residual is 96-99.7%% a shared DC component, "
                          "which floors the uncentred cosine near 0.96 and is why gemma "
                          "version_G's L_rr stalled at 0.9522 while Qwen reached 0.2458.")
+    # ponytail: harm_targets_qwen.json holds 404 of AdvBench's 520 goals, and
+    # extended_refusals_advbench.json overlaps all 520, so AdvBench is TRAIN-EXPOSED for
+    # any arm trained with these. ceiling: AdvBench numbers for version_G are
+    # in-distribution and are not a generalisation claim. upgrade: report against the
+    # frozen suite in data/heldout_vg_20260804/ (~40k generations, needs a box) before
+    # any held-out claim.
     ap.add_argument("--harm-targets", default=None,
                     help="{goal: [real harmful completion, ...]} from mine_harm_targets.py; "
                          "used by --lambda-rr as the harmful content to reroute on")

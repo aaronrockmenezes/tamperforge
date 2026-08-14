@@ -102,6 +102,11 @@ def arc_challenge_accuracy(
     return summary
 
 
+# ponytail: MMLU is UNDERSTATED everywhere in this repo -- lm_eval truncates the 5-shot
+# context at 2047 tokens while MMLU 5-shot runs ~2299, and 816 truncations were logged in
+# the E1/E2 runs. ceiling: every MMLU number in results/ is a floor, not a measurement;
+# gates 0-2 do not use it. upgrade: raise lm_eval's max_length (or drop to 0-shot) before
+# MMLU is ever quoted as a capability result.
 def mmlu_accuracy(model, tok, device: str, subjects: list[str] | None = None,
                   n_per_subject: int = 25, seed: int = 42,
                   split: str = "test",
