@@ -113,9 +113,11 @@ def main() -> None:
         c = vram(r["total"], r["mlp"], True)
         post = r["post_block"]
         if post:
-            why = ("gemma-style extra post_feedforward norm"
-                   if "post_feedforward_layernorm" in r["norm_names"] else
-                   "OLMo-2 style: no input_layernorm, both norms post-block")
+            # Order matters: a model can have post_feedforward AND no input_layernorm, which
+            # is the OLMo-2 shape, not gemma's. Test for the missing pre-norm FIRST.
+            has_pre = any("input" in n or n.startswith("pre_") for n in r["norm_names"])
+            why = ("no input_layernorm -- every norm is post-block (OLMo-2 shape)" if not has_pre
+                   else "gemma-style extra post_feedforward norm")
             verdict = f"POST-BLOCK -- {why}"
         elif a <= args.budget_gb:
             verdict = "fits, all-scope fp32 -- version_G recipe verbatim"

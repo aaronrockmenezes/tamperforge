@@ -37,12 +37,19 @@ command -v /venv/main/bin/python >/dev/null 2>&1 && PY=/venv/main/bin/python
 DRY_RUN="${DRY_RUN:-0}"
 ARMS="${ARMS:-rrcenter,jitter}"
 MODEL="${MODEL:-google/gemma-3-1b-it}"
-DL="${DL:-14}"                       # gemma direction layer; swept on BASE, L14 is 3rd of 14.
+# Short slug for tags/paths. Without it TAG was hardcoded to version_g_gemma_*, so a second
+# model silently overwrote the first model's checkpoints and results.
+MSLUG="${MSLUG:-$(basename "$MODEL" | tr 'A-Z' 'a-z' | tr -cd 'a-z0-9')}"
+# DL MUST be swept per model on its BASE. Never scale a direction layer between architectures:
+# Qwen peaks at L20/28 and Llama at L13/16, and the proportional guess is a local MINIMUM.
+DL="${DL:-14}"
 STEPS="${STEPS:-500}"
 HARM=data/harm_targets_qwen.json
 REF="${REF:-data/extended_refusals_advbench.json}"
-BASE_TAG="${BASE_TAG:-gbase_clean}"  # gemma base. NEVER gate gemma against Qwen's MT-Bench.
-BASE_HF="${BASE_HF:-outputs/gbase_clean_hf}"
+# Gate 1 compares MT-Bench against THIS model's own base. Never gate one architecture against
+# another's; chain_f.sh used to default to Qwen's and silently did exactly that.
+BASE_TAG="${BASE_TAG:-${MSLUG}_base_clean}"
+BASE_HF="${BASE_HF:-outputs/${MSLUG}_base_clean_hf}"
 mkdir -p logs/training_runs logs/eval outputs
 
 say   () { echo "[$(date -u +%H:%M:%S)] $*"; }
@@ -138,7 +145,7 @@ fi
 # ======================================================================== TRAIN (parallel)
 say "=== TRAIN ==="
 for a in ${ARMS//,/ }; do
-  G=$(arm_idx "$a"); TAG="version_g_gemma_$a"; S="$a"
+  G=$(arm_idx "$a"); TAG="version_g_${MSLUG}_$a"; S="${MSLUG}_$a"
   EXTRA="$(arm_flags "$a")"
   LOG="logs/training_runs/${TAG}.log"
   if [ -s "outputs/${TAG}.pt" ]; then say "  SKIP $TAG (checkpoint exists)"; continue; fi
@@ -191,7 +198,7 @@ done
 A="../tamperforge-archive/phase1_$(date +%Y%m%d)"
 say "=== GATES -> PROBES -> ARCHIVE ==="
 for a in ${ARMS//,/ }; do
-  G=$(arm_idx "$a"); TAG="version_g_gemma_$a"; S="$a"; P=$(arm_port "$a")
+  G=$(arm_idx "$a"); TAG="version_g_${MSLUG}_$a"; S="${MSLUG}_$a"; P=$(arm_port "$a")
   say "  post-train chain for $TAG (gpu$G, port $P, tmux ch_$S)"
   # Written to a file rather than inlined into `tmux new-session "..."`. Quoting a multi-line
   # pipeline through tmux is a reliable way to ship a bug you cannot see; a file is also
@@ -246,7 +253,7 @@ gemma's UNCENTRED row is the instrument failing, not the mechanism: centred, the
 shows 55.9% of range rerouted. Read both.
 
 Watch:  tmux ls
-        tail -f logs/training_runs/version_g_gemma_rrcenter.log
+        tail -f logs/training_runs/version_g_\${MSLUG}_rrcenter.log
 L_rr is now on the periodic step line -- read its trajectory, do not wait for the gates.
 
 Report gibberish rate + benign usability beside EVERY harm number.
