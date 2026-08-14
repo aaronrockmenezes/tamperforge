@@ -52,7 +52,10 @@ CLEAN="outputs/${TAG}_clean"
 PORT="${PORT:-8765}"
 # See serve_eval.sh for the reasoning: gen is capped by the local vLLM scheduler, judging is not.
 GEN_WORKERS="${GEN_WORKERS:-64}"
-JUDGE_WORKERS="${JUDGE_WORKERS:-128}"
+JUDGE_WORKERS="${JUDGE_WORKERS:-48}"
+# See serve_eval.sh: 256 truncates 15% of judgments mid-"reason" and the guard then (correctly)
+# refuses to save a summary that would report false-low harm.
+JUDGE_MAX_TOKENS="${JUDGE_MAX_TOKENS:-512}"
 # 8192 not 4096: gemma is served at 8k here and elsewhere in the repo (serve_eval.sh, mtb_all.sh),
 # and a shorter window silently truncates long MT-Bench and extended-refusal prompts.
 CHAIN_MAXLEN="${CHAIN_MAXLEN:-8192}"

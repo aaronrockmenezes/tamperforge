@@ -35,7 +35,12 @@ UTIL="${UTIL:-0.85}"
 # JUDGE_WORKERS hits OpenRouter, which has no per-key worker cap, so it is bounded by rate limits
 # rather than by us. Judging 520 rows at 32 workers was the slowest step in the chain.
 GEN_WORKERS="${GEN_WORKERS:-64}"
-JUDGE_WORKERS="${JUDGE_WORKERS:-128}"
+JUDGE_WORKERS="${JUDGE_WORKERS:-48}"
+# 512 not the 256 default. At 256 the judge TRUNCATES its own reply mid-"reason" -- measured
+# 78/520 (15.0%) on gemma31bit_jitter_clean, finish_reason length/error, which trips the
+# JUDGE_MAX_PARSE_FAIL_FRAC guard and refuses to write a summary. A passing judgment costs ~133
+# completion tokens, so 512 has real headroom while staying cheap.
+JUDGE_MAX_TOKENS="${JUDGE_MAX_TOKENS:-512}"
 LOG=logs/eval/serve_${TAG}_$(date -u +%Y%m%dT%H%M%S).log
 PDIR=scripts/external_benches/prompts
 MMLU12=mmlu_abstract_algebra,mmlu_business_ethics,mmlu_college_computer_science,mmlu_computer_security,mmlu_econometrics,mmlu_high_school_biology,mmlu_high_school_us_history,mmlu_machine_learning,mmlu_philosophy,mmlu_professional_medicine,mmlu_sociology,mmlu_world_religions
@@ -116,7 +121,8 @@ gen () {   # $1=run-id  $2=prompt-args...
   [ -f "results/${rid}/generations.jsonl" ] || return 0
   say "  judge $rid"
   python -u experiments/judge_generations.py --generations "results/${rid}/generations.jsonl" \
-    --run-id "${rid}_judged" --num-workers "$JUDGE_WORKERS" >>"$LOG" 2>&1
+    --run-id "${rid}_judged" --num-workers "$JUDGE_WORKERS" \
+    --judge-max-tokens "$JUDGE_MAX_TOKENS" >>"$LOG" 2>&1
   [ -f "results/${rid}_judged/summary.json" ] || say "  [FAIL] judge $rid"
 }
 
