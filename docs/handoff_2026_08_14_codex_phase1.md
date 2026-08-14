@@ -22,8 +22,30 @@ version_J's evidence is preserved in the plan, not deleted: only gemma arm with 
 
 All local jobs were killed at end of day 2026-08-14. Experiment 0.1 was projecting **~12 h** on
 the M4 (379 s/step, swap-bound at 8.1/9.2 GB) and was not worth it, especially after the result
-below dropped its priority. **Move to the 3090 box** — `scripts/setup/setup_3090.sh` then
-`scripts/runs/chain_2gpu.sh`.
+below dropped its priority.
+
+**Next: a 2x RTX 3090 box.** Two commands:
+
+```bash
+bash scripts/setup/setup_3090.sh        # deps, auth, cache warm, 1-step smoke
+bash scripts/runs/chain_2gpu.sh         # train -> gates 0-3 -> probes -> archive
+```
+
+`DRY_RUN=1 bash scripts/runs/chain_2gpu.sh` validates the whole thing with no GPU: preflight,
+generated scripts through `bash -n`, and every trainer flag checked against the argparse.
+
+**Arms** (`ARMS=`, default `rrcenter,jitter`; GPU and vLLM port are assigned by position, so any
+two compose):
+
+| arm | flags on top of the version_G recipe | why |
+|---|---|---|
+| `rrcenter` | `--rr-center` | pays the optimiser for rerouting it already does (§1) |
+| `jitter` | `--rr-center --version-b-jitter-deg 50` | **the top item** — attacks the generalisation gap |
+| `rrplain` | *(none)* | uncentred control; weakest use of a GPU, the original gemma version_G checkpoint already serves |
+
+Training is version_G's recipe **verbatim** except those flags — verified by diffing the
+generated arm against `run_version_g_gemma.sh`, every flag and value identical. ~14.4 GB/arm, so
+24 GB fits without adamw8bit or grad checkpointing, which is what keeps the comparison clean.
 
 The centred posthoc **completed** before the kill and its result is in `results/posthoc_lrr.json`
 and archived to `../tamperforge-archive/posthoc_lrr.json`.
@@ -47,7 +69,18 @@ Consequences:
 - **Priority inverts.** Plan Tier 2.1 (direction augmentation) rises to the top; Tier 0.1 is
   largely answered.
 - Centred training is now *motivated* rather than speculative — it pays the optimiser for work it
-  is already doing. That is the `rrcenter` arm of `scripts/runs/chain_2gpu.sh`.
+  is already doing. That is the `rrcenter` arm.
+- **Direction augmentation is the top item** and is now implemented:
+  `--version-b-jitter-deg` rotates each sampled attack direction by a random angle in [0, deg]
+  toward a random orthogonal. Isotropic on purpose — a real attacker's estimator (mean-diff on
+  other prompts, SVD-top1, a probe vector) lands in the ball around `d`, not on the segment to
+  any one `d_surgical`; the surgical variants stay sampled separately, so this ADDS coverage.
+  Applied in `DirectionBank.directions_for`, the single funnel every attack path already routes
+  through. Default 0.0 and **verified** bit-identical: the sampler's RNG stream is the same at
+  jitter 0 and 60, and `directions_for` consumes no randomness at 0. At 50 deg realised angles
+  span 2.8-59.6. `python experiments/version_a_attack.py` runs the check.
+  50 deg straddles the measured requirement (gemma 41.0, Qwen clears at 24.3); `JITTER_DEG=` to
+  change it. No dose-response data exists — that would be a third arm.
 
 Caveat: different centred ceilings between models, so compare fraction-of-range not absolutes.
 One checkpoint each, n=16 pairs.
