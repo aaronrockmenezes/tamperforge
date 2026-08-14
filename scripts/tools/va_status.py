@@ -61,7 +61,12 @@ def load(d):
     cfg = {}
     man = Path(d) / "manifest.json"
     if man.exists():
-        cfg = json.load(open(man)).get("config", {})
+        # write_manifest nests the parsed args one level deeper: config -> {script, run_id, args}.
+        # Reading config directly yields no flags at all, so every arm silently rendered as
+        # "UNCENTRED lambda_rr=?" -- including the --rr-center arm, whose whole point is that it
+        # must be compared against the CENTRED reference column.
+        c = json.load(open(man)).get("config", {})
+        cfg = c.get("args", c) if isinstance(c, dict) else {}
     return {"dir": str(d), "cfg": cfg,
             "steps": [r for r in rows if r.get("event") == "step"],
             "evals": [r for r in rows if r.get("event") == "eval"]}
