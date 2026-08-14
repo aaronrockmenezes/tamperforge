@@ -23,7 +23,7 @@ version_J's evidence is preserved in the plan, not deleted: only gemma arm with 
 All local jobs were killed at end of day 2026-08-14. Experiment 0.1 was projecting **~12 h** on
 the M4 (379 s/step, swap-bound at 8.1/9.2 GB) and was not worth it, especially after the result
 below dropped its priority. **Move to the 3090 box** — `scripts/setup/setup_3090.sh` then
-`scripts/runs/run_phase1_3090.sh`.
+`scripts/runs/chain_2gpu.sh`.
 
 The centred posthoc **completed** before the kill and its result is in `results/posthoc_lrr.json`
 and archived to `../tamperforge-archive/posthoc_lrr.json`.
@@ -47,7 +47,7 @@ Consequences:
 - **Priority inverts.** Plan Tier 2.1 (direction augmentation) rises to the top; Tier 0.1 is
   largely answered.
 - Centred training is now *motivated* rather than speculative — it pays the optimiser for work it
-  is already doing. That is the `vg` arm of the 3090 run script.
+  is already doing. That is the `rrcenter` arm of `scripts/runs/chain_2gpu.sh`.
 
 Caveat: different centred ceilings between models, so compare fraction-of-range not absolutes.
 One checkpoint each, n=16 pairs.
@@ -67,19 +67,15 @@ All four cells now measured (`results/posthoc_lrr.json`):
 
 The uncentred gemma row is the instrument failing, not the mechanism. See §1.
 
-gemma covered 4.7% of Qwen's distance under an **identical recipe** (`lambda_rr 4`, 500 steps,
-`lr 1e-5`, `seed 42`, same harm targets, same `rr-layers`; the only diffs are `--direction-layer`
-20 vs 14 and `--attack-layers` `10-27` vs `all`, and the latter is inert for the `version_b`
-profile — `attack_band` is only threaded through on the version_A path).
+Recipe was **identical** to Qwen's (`lambda_rr 4`, 500 steps, `lr 1e-5`, `seed 42`, same harm
+targets, same `rr-layers`; only diffs are `--direction-layer` 20 vs 14 and `--attack-layers`
+`10-27` vs `all`, and the latter is inert for `version_b` — `attack_band` is only threaded
+through on the version_A path).
 
-**This invalidates the framing of four earlier findings.** Direction layer, refusal↔capability
-entanglement, activation outliers, post-norm γ leak — all were answers to "why is gemma
-architecturally different", asked while the mechanism being credited had never run. Good
-measurements, dead question.
-
-It also explains rank-1-fires / surgical-evades with no architecture: with rerouting contributing
-nothing, gemma's wall came entirely from `lambda_safe`/`lambda_uncensor`/`lambda_harm`, all
-inherently direction-specific.
+The four earlier findings (direction layer, refusal↔capability entanglement, activation outliers,
+post-norm γ leak) were still mis-aimed: they searched for a reason gemma *cannot host* the
+mechanism, while the mechanism was running and the instrument was flat. Correct measurements,
+wrong question.
 
 ### Cause: dynamic range, not gradient starvation
 
@@ -110,7 +106,7 @@ predicted, 0.9941/0.7914 measured).
 further on gemma means moving 99.7% of the residual, which `lambda_clean`/`lambda_reg` forbid.
 
 **Still a hypothesis:** that this is *direct conflict* between the rr term and the clean terms.
-Experiment 0.1 tests exactly that and is stage 2/3 of the running job.
+Experiment 0.1 (`--lambda-task 0` plus every other lambda at 0) tests it. Nothing is running.
 
 ### The other measured gap
 

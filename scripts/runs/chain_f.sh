@@ -47,7 +47,9 @@ MODEL_ID="${MODEL_ID:-Qwen/Qwen3-0.6B}"
 DIRECTION_LAYER="${DIRECTION_LAYER:-20}"
 CK="outputs/${TAG}.pt"
 CLEAN="outputs/${TAG}_clean"
-PORT=8765
+# PORT overridable so two chains can run concurrently on a 2-GPU box; serve_eval.sh already
+# took it from the environment, this was the only hardcoded half. Default unchanged.
+PORT="${PORT:-8765}"
 BAR_DELTA=0.5                 # gate 1: reject if more than this far below base
 CLEAN_HARM_MAX="${CLEAN_HARM_MAX:-0.02}"   # gate 0, see below
 ENFORCE_GATES="${ENFORCE_GATES:-1}"        # 0 records failures but completes research matrix

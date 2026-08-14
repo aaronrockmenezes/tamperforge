@@ -14,7 +14,7 @@
 # Export secrets BEFORE running (never bake them into the image):
 #   export HF_TOKEN=...             # gated gemma + private tamperforge HF repo
 #   export OPENROUTER_API_KEY=...   # judge
-#   bash scripts/setup/setup_3090.sh
+#   bash scripts/setup/setup_3090.sh   # then: bash scripts/runs/chain_2gpu.sh
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 PY="${PY:-python}"
@@ -107,7 +107,7 @@ cat <<'EOF'
 
 [setup] done. If you saw a line containing "L_rr=" above, the loop works.
 
-Next:  bash scripts/runs/run_phase1_3090.sh
+Next:  bash scripts/runs/chain_2gpu.sh
        (set ARMS=... to pick; see the header of that script)
 
 Reminders that have cost real time on this project:
