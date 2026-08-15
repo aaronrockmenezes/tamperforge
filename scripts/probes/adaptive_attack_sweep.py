@@ -315,7 +315,7 @@ def main():
 
     out = ROOT / args.out
     out.parent.mkdir(parents=True, exist_ok=True)
-    checkpoint_sha256 = sha256_file(args.checkpoint)
+    checkpoint_sha256 = sha256_file(args.checkpoint) if args.checkpoint else None
     basis_file = out.parent / "selected_bases.pt"
     selected_bases = {}
     for variant, best in selected.items():

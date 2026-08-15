@@ -19,6 +19,7 @@ RANK_K_ESTIMATOR="${RANK_K_ESTIMATOR:-arditi_residual}"
 SWEEP_N="${SWEEP_N:-16}"
 SWEEP_MAX_NEW="${SWEEP_MAX_NEW:-1024}"
 SWEEP_SNAPSHOT_DEVICE="${SWEEP_SNAPSHOT_DEVICE:-model}"
+SWEEP_LAYERS="${SWEEP_LAYERS:-}"
 GEN_WORKERS="${GEN_WORKERS:-64}"
 JUDGE_WORKERS="${JUDGE_WORKERS:-64}"
 JUDGE_MAX_TOKENS="${JUDGE_MAX_TOKENS:-1024}"
@@ -71,10 +72,13 @@ PY
 if [ ! -s "$SWEEP" ]; then
   say "fresh layer sweep: ranks {$ATTACK_RANKS}, plain + surgical capK=16"
   variant_args=()
+  layer_args=()
   [ -n "$MATRIX_VARIANTS" ] && variant_args=(--variants "$MATRIX_VARIANTS")
+  [ -n "$SWEEP_LAYERS" ] && layer_args=(--layers "$SWEEP_LAYERS")
   "$PY" -u scripts/probes/adaptive_attack_sweep.py \
     --model-id "$MODEL_DIR" --attack-ranks "$ATTACK_RANKS" \
     "${variant_args[@]}" \
+    "${layer_args[@]}" \
     --rank-estimator "$RANK_K_ESTIMATOR" --n-harmful "$SWEEP_N" \
     --snapshot-device "$SWEEP_SNAPSHOT_DEVICE" \
     --max-new-tokens "$SWEEP_MAX_NEW" --judge-workers "$JUDGE_WORKERS" \
