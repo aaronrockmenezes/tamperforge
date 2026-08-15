@@ -14,6 +14,7 @@ GPU="${GPU:-0}"
 UTIL="${UTIL:-0.30}"
 PORTS_CSV="${PORTS:-8765,8766,8767}"
 ATTACK_RANKS="${ATTACK_RANKS:-1,2,4,8,16}"
+MATRIX_VARIANTS="${MATRIX_VARIANTS:-}"
 RANK_K_ESTIMATOR="${RANK_K_ESTIMATOR:-arditi_residual}"
 SWEEP_N="${SWEEP_N:-16}"
 SWEEP_MAX_NEW="${SWEEP_MAX_NEW:-1024}"
@@ -25,11 +26,12 @@ JUDGE_TIMEOUT_SECONDS="${JUDGE_TIMEOUT_SECONDS:-10}"
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-8192}"
 SAFETY_MAX_NEW_TOKENS="${SAFETY_MAX_NEW_TOKENS:-1024}"
 LOG_DIR="logs/eval/${SHORT}/rank_matrix_3way"
-SWEEP_DIR="results/dl_sweeps/${SHORT}_rank_matrix"
+SWEEP_DIR="${SWEEP_DIR:-results/dl_sweeps/${SHORT}_rank_matrix}"
+SWEEP_GEN_DIR="${SWEEP_GEN_DIR:-$SWEEP_DIR/generations}"
 SWEEP="$SWEEP_DIR/summary.json"
 BASES="$SWEEP_DIR/selected_bases.pt"
 TMP_ROOT=""
-mkdir -p "$LOG_DIR/vllm" "$SWEEP_DIR/generations" results
+mkdir -p "$LOG_DIR/vllm" "$SWEEP_GEN_DIR" results
 exec > >(tee -a "$LOG_DIR/driver.log") 2>&1
 
 say() { echo "[$(date -u +%FT%TZ)] $*"; }
@@ -55,23 +57,30 @@ for port in "${PORTS_ARR[@]}"; do
 done
 export CUDA_VISIBLE_DEVICES="$GPU"
 
-expected_json=$($PY - "$ATTACK_RANKS" <<'PY'
+expected_json=$($PY - "$ATTACK_RANKS" "$MATRIX_VARIANTS" <<'PY'
 import json, sys
 ranks = sorted({int(x) for x in sys.argv[1].split(",") if x})
-print(json.dumps([*(f"rank{k}" for k in ranks), *(f"surg_rank{k}_cap16" for k in ranks)]))
+all_variants = [*(f"rank{k}" for k in ranks), *(f"surg_rank{k}_cap16" for k in ranks)]
+requested = [x for x in sys.argv[2].split(",") if x] or all_variants
+unknown = sorted(set(requested) - set(all_variants))
+if unknown: raise SystemExit(f"unsupported MATRIX_VARIANTS: {unknown}")
+print(json.dumps(requested))
 PY
 )
 
 if [ ! -s "$SWEEP" ]; then
   say "fresh layer sweep: ranks {$ATTACK_RANKS}, plain + surgical capK=16"
+  variant_args=()
+  [ -n "$MATRIX_VARIANTS" ] && variant_args=(--variants "$MATRIX_VARIANTS")
   "$PY" -u scripts/probes/adaptive_attack_sweep.py \
     --model-id "$MODEL_DIR" --attack-ranks "$ATTACK_RANKS" \
+    "${variant_args[@]}" \
     --rank-estimator "$RANK_K_ESTIMATOR" --n-harmful "$SWEEP_N" \
     --snapshot-device "$SWEEP_SNAPSHOT_DEVICE" \
     --max-new-tokens "$SWEEP_MAX_NEW" --judge-workers "$JUDGE_WORKERS" \
     --judge-max-tokens "$JUDGE_MAX_TOKENS" \
     --judge-timeout-seconds "$JUDGE_TIMEOUT_SECONDS" \
-    --out "$SWEEP" --gen-dir "$SWEEP_DIR/generations"
+    --out "$SWEEP" --gen-dir "$SWEEP_GEN_DIR"
 fi
 "$PY" - "$SWEEP" "$MODEL_DIR" "$expected_json" <<'PY' || die "invalid or stale sweep"
 import json, pathlib, sys, torch

@@ -126,6 +126,9 @@ def main():
     ap.add_argument("--rank-estimator", choices=RANK_ESTIMATORS, default="arditi_residual")
     ap.add_argument("--attack-ranks", default="1,4,16",
                     help="comma-separated refusal-subspace ranks; each also gets capK=16")
+    ap.add_argument("--variants", default="",
+                    help="optional comma subset such as rank1,rank2; default tests plain and "
+                         "surgical capK=16 for every --attack-ranks value")
     ap.add_argument("--judge-model", default="deepseek/deepseek-v4-flash-0731")
     ap.add_argument("--judge-workers", type=int, default=64)
     ap.add_argument("--judge-max-tokens", type=int, default=1024)
@@ -148,6 +151,12 @@ def main():
     if not attack_ranks or attack_ranks[0] < 1 or attack_ranks[-1] > args.n_direction:
         ap.error("attack ranks must be within 1..n-direction")
     variants = variants_for(attack_ranks)
+    if args.variants:
+        requested = [value.strip() for value in args.variants.split(",") if value.strip()]
+        unknown = sorted(set(requested) - set(variants))
+        if not requested or unknown:
+            ap.error(f"--variants contains unsupported values: {unknown}")
+        variants = {name: variants[name] for name in requested}
 
     model, tok, device = load_model(args.model_id)
     if args.checkpoint:
