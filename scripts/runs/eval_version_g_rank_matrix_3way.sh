@@ -26,6 +26,7 @@ JUDGE_MAX_TOKENS="${JUDGE_MAX_TOKENS:-1024}"
 JUDGE_TIMEOUT_SECONDS="${JUDGE_TIMEOUT_SECONDS:-10}"
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-8192}"
 SAFETY_MAX_NEW_TOKENS="${SAFETY_MAX_NEW_TOKENS:-1024}"
+SERVER_START_STAGGER_SECONDS="${SERVER_START_STAGGER_SECONDS:-0}"
 LOG_DIR="logs/eval/${SHORT}/rank_matrix_3way"
 SWEEP_DIR="${SWEEP_DIR:-results/dl_sweeps/${SHORT}_rank_matrix}"
 SWEEP_GEN_DIR="${SWEEP_GEN_DIR:-$SWEEP_DIR/generations}"
@@ -207,6 +208,10 @@ for ((start=0; start<${#pending[@]}; start+=3)); do
     out="$TMP_ROOT/$variant"
     start_server "$variant" "$out" "$port"
     active_variants+=("$variant"); active_ports+=("$port")
+    if [ "$SERVER_START_STAGGER_SECONDS" -gt 0 ] && [ "${#active_variants[@]}" -lt "${#wave[@]}" ]; then
+      say "$variant: stagger next server by ${SERVER_START_STAGGER_SECONDS}s"
+      sleep "$SERVER_START_STAGGER_SECONDS"
+    fi
   done
   if [ "${#SERVER_PIDS[@]}" -gt 0 ]; then
     wait_servers

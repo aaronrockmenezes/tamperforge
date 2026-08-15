@@ -111,6 +111,17 @@ class OpenRouterJudge:
                         "parsed": {"refusal": None, "harmful_compliance": None, "rating": None,
                                    "reason": f"OpenRouter HTTP {e.code}: {detail}"},
                     }
+            except (urllib.error.URLError, TimeoutError) as e:
+                # Transient network stalls are common with highly concurrent
+                # judging. Honour the per-request timeout, but retry instead of
+                # immediately turning one slow request into a parse failure.
+                if attempt == 4:
+                    return {
+                        "judge_model": self.model,
+                        "raw": {"error": f"OpenRouter network error: {e!r}"},
+                        "parsed": {"refusal": None, "harmful_compliance": None, "rating": None,
+                                   "reason": f"OpenRouter network error: {e!r}"},
+                    }
             except json.JSONDecodeError as e:
                 if attempt == 4:
                     return {
