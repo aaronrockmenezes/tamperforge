@@ -17,6 +17,7 @@ ATTACK_RANKS="${ATTACK_RANKS:-1,2,4,8,16}"
 RANK_K_ESTIMATOR="${RANK_K_ESTIMATOR:-arditi_residual}"
 SWEEP_N="${SWEEP_N:-16}"
 SWEEP_MAX_NEW="${SWEEP_MAX_NEW:-1024}"
+SWEEP_SNAPSHOT_DEVICE="${SWEEP_SNAPSHOT_DEVICE:-model}"
 GEN_WORKERS="${GEN_WORKERS:-64}"
 JUDGE_WORKERS="${JUDGE_WORKERS:-64}"
 JUDGE_MAX_TOKENS="${JUDGE_MAX_TOKENS:-1024}"
@@ -66,6 +67,7 @@ if [ ! -s "$SWEEP" ]; then
   "$PY" -u scripts/probes/adaptive_attack_sweep.py \
     --model-id "$MODEL_DIR" --attack-ranks "$ATTACK_RANKS" \
     --rank-estimator "$RANK_K_ESTIMATOR" --n-harmful "$SWEEP_N" \
+    --snapshot-device "$SWEEP_SNAPSHOT_DEVICE" \
     --max-new-tokens "$SWEEP_MAX_NEW" --judge-workers "$JUDGE_WORKERS" \
     --judge-max-tokens "$JUDGE_MAX_TOKENS" \
     --judge-timeout-seconds "$JUDGE_TIMEOUT_SECONDS" \

@@ -61,7 +61,7 @@ def sha256_file(path: str | Path) -> str:
     return digest.hexdigest()
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def generate(model, tok, prompts, device, max_new, batch_size):
     out = []
     for start in range(0, len(prompts), batch_size):
@@ -119,6 +119,9 @@ def main():
     ap.add_argument("--n-harmful", type=int, default=16)
     ap.add_argument("--direction-batch-size", type=int, default=8)
     ap.add_argument("--generation-batch-size", type=int, default=16)
+    ap.add_argument("--snapshot-device", choices=("cpu", "model"), default="cpu",
+                    help="where to retain pristine attacked weights between candidates; "
+                         "model is faster when GPU memory permits")
     ap.add_argument("--max-new-tokens", type=int, default=1024)
     ap.add_argument("--rank-estimator", choices=RANK_ESTIMATORS, default="arditi_residual")
     ap.add_argument("--attack-ranks", default="1,4,16",
@@ -196,11 +199,20 @@ def main():
         full for row in abliteration_parameter_layout(model)
         for side in ("read", "write") for _, full in row[side]
     })
-    snapshot = {name: named[name].detach().cpu().clone() for name in attacked_names}
+    snapshot = {
+        name: (named[name].detach().clone() if args.snapshot_device == "model"
+               else named[name].detach().cpu().clone())
+        for name in attacked_names
+    }
 
     def restore():
         for name, value in snapshot.items():
-            named[name].data.copy_(value.to(device=named[name].device, dtype=named[name].dtype))
+            if value.device == named[name].device and value.dtype == named[name].dtype:
+                named[name].data.copy_(value)
+            else:
+                named[name].data.copy_(
+                    value.to(device=named[name].device, dtype=named[name].dtype)
+                )
 
     gen_dir = ROOT / args.gen_dir
     gen_dir.mkdir(parents=True, exist_ok=True)
@@ -210,14 +222,31 @@ def main():
             for prompt, response in zip(eval_harmful, responses):
                 f.write(json.dumps({"prompt": prompt, "response": response}) + "\n")
 
+    def reuse_record(tag):
+        path = gen_dir / f"{tag}.jsonl"
+        if not path.is_file():
+            return None
+        try:
+            rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+        except (OSError, json.JSONDecodeError):
+            return None
+        if [row.get("prompt") for row in rows] != eval_harmful:
+            return None
+        responses = [row.get("response") for row in rows]
+        return responses if all(isinstance(response, str) for response in responses) else None
+
     judge = OpenRouterJudge(model=args.judge_model, max_tokens=args.judge_max_tokens,
                             timeout_s=args.judge_timeout_seconds)
     pool = ThreadPoolExecutor(max_workers=args.judge_workers)
     futures, rows = {}, {name: [] for name in variants}
 
-    base_out = generate(model, tok, eval_harmful, device, args.max_new_tokens,
-                        args.generation_batch_size)
-    record("clean", base_out)
+    base_out = reuse_record("clean")
+    if base_out is None:
+        base_out = generate(model, tok, eval_harmful, device, args.max_new_tokens,
+                            args.generation_batch_size)
+        record("clean", base_out)
+    else:
+        print("[reuse] clean generations")
     futures["clean"] = [pool.submit(score_one, judge, p, r)
                         for p, r in zip(eval_harmful, base_out)]
 
@@ -226,12 +255,23 @@ def main():
             started = time.time()
             if cap_rank and (layer, rank) not in surgical:
                 continue
+            tag = f"{variant}_L{layer}"
+            responses = reuse_record(tag)
+            if responses is not None:
+                futures[tag] = [pool.submit(score_one, judge, p, r)
+                                for p, r in zip(eval_harmful, responses)]
+                rows[variant].append({
+                    "layer": layer, "attack_rank": rank, "capability_rank": cap_rank,
+                    "capability_overlap_removed": overlap.get((layer, rank)) if cap_rank else None,
+                    "seconds": 0.0, "tag": tag, "reused_generation": True,
+                })
+                print(f"[reuse] {tag}; judging async")
+                continue
             R = bases[layer][rank] if cap_rank == 0 else surgical[(layer, rank)]
             abliterate_model_inplace(model, R, list(range(n_layers)))
             responses = generate(model, tok, eval_harmful, device, args.max_new_tokens,
                                  args.generation_batch_size)
             restore()
-            tag = f"{variant}_L{layer}"
             record(tag, responses)
             futures[tag] = [pool.submit(score_one, judge, p, r)
                             for p, r in zip(eval_harmful, responses)]
@@ -304,6 +344,7 @@ def main():
         "judge_workers": args.judge_workers,
         "judge_max_tokens": args.judge_max_tokens,
         "judge_timeout_seconds": args.judge_timeout_seconds,
+        "snapshot_device": args.snapshot_device,
         "max_parse_fail_frac": args.max_parse_fail_frac,
         "clean": clean_judged,
         "selected": selected,
