@@ -496,9 +496,11 @@ class DirectionBank(NamedTuple):
         [0, jitter_deg] toward a random orthogonal direction -- see `_jitter`.
         """
         rank_key = (int(round(spec.read_layer)), spec.attack_rank)
-        if rank_key in self.ranked:
+        if spec.tag.startswith("canonical:rank_k:"):
             if spec.variant != "plain" or spec.per_layer:
                 raise ValueError("rank-k is supported only for shared canonical attacks")
+            if rank_key not in self.ranked:
+                raise KeyError(f"missing rank-k basis {rank_key}")
             R = self.ranked[rank_key]
             if spec.jitter_deg > 0:
                 J = torch.stack([_jitter(row, spec.jitter_deg, rng) for row in R])
@@ -638,10 +640,15 @@ def _selfcheck() -> None:
     R = _refusal_subspaces(H[:25], H[25:], (1, 2, 4), "svd")
     bank = DirectionBank({3: d}, {(3, 2): R[2]}, {}, {(3, 16): 0.0})
     rank2 = AttackSpec(*SCOPES["all"], [0, 1], None, False, "plain", 0, 3.0,
-                       "canonical:arditi:k2", attack_rank=2)
+                       "canonical:rank_k:k2", attack_rank=2)
     out = bank.directions_for(rank2._replace(jitter_deg=10), random.Random(1))
     assert out.shape == (2, d_model)
     assert torch.allclose(out @ out.T, torch.eye(2), atol=1e-5)
+    # A cached rank-1 canonical basis must not hijack ordinary/per-layer rank-1 attacks.
+    per_layer_bank = DirectionBank({0: d, 1: d}, {(0, 1): d.unsqueeze(0)}, {}, {})
+    ordinary = AttackSpec((), HERETIC_PROJ, [0, 1], None, True, "plain", 0, 0.0,
+                          "heretic:tent:perlayer")
+    assert set(per_layer_bank.directions_for(ordinary)) == {0, 1}
 
     # sampler: every spec well-formed, and the canonical arm keeps its mass
     rng = random.Random(0)
