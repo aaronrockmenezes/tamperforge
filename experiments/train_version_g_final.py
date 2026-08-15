@@ -452,12 +452,8 @@ def _task_degradation_loss(model, tok, qa, device, overrides, max_len: int = 320
     total = torch.zeros((), device=device)
     cnt = 0
     for q, a in qa:
-        text = apply_chat_template_no_think(
-            tok, [{"role": "user", "content": q}], tokenize=False, add_generation_prompt=True)
-        p_ids = tok(text, return_tensors="pt", truncation=True, max_length=max_len).to(device)
-        full = tok(text + a, return_tensors="pt", truncation=True,
-                   max_length=max_len).to(device)
-        plen = p_ids["input_ids"].shape[1]
+        full, plen = _chat_completion(tok, q, a, max_len)
+        full = full.to(device)
         if full["input_ids"].shape[1] <= plen:
             continue
         labels = full["input_ids"].clone()
@@ -484,6 +480,30 @@ def _lm_loss(model, tok, texts, device, overrides=None, max_len: int = 256) -> t
     return total / max(len(texts), 1)
 
 
+def _chat_completion(tok, prompt: str, completion: str, max_len: int):
+    """Tokenize prompt and assistant target natively; return full encoding + prompt length."""
+    common = {
+        "tokenize": True,
+        "return_tensors": "pt",
+        "return_dict": True,
+        "truncation": True,
+        "max_length": max_len,
+    }
+    prefix = apply_chat_template_no_think(
+        tok, [{"role": "user", "content": prompt}],
+        add_generation_prompt=True, **common,
+    )
+    full = apply_chat_template_no_think(
+        tok, [{"role": "user", "content": prompt},
+              {"role": "assistant", "content": completion}],
+        add_generation_prompt=False, continue_final_message=True, **common,
+    )
+    plen = min(prefix["input_ids"].shape[1], full["input_ids"].shape[1])
+    if not torch.equal(prefix["input_ids"][0, :plen], full["input_ids"][0, :plen]):
+        raise ValueError("chat template assistant target does not preserve the prompt prefix")
+    return full, plen
+
+
 def _refusal_loss(
     model,
     tok,
@@ -503,21 +523,8 @@ def _refusal_loss(
     spreads the refusal signal across token positions. Raise it to match."""
     prepared = []
     for prompt, response in pairs:
-        prefix = apply_chat_template_no_think(
-            tok,
-            [{"role": "user", "content": prompt}],
-            tokenize=False,
-            add_generation_prompt=True,
-        )
-        # Qwen3 thinking-mode templates leave the assistant inside an open
-        # ``<think>`` block. The supervised refusal is the final answer, not hidden
-        # reasoning, so close the block before appending the target response.
-        target = response
-        if os.environ.get("TF_QWEN_THINKING", "off") == "on" and "<think>" in prefix and "</think>" not in prefix:
-            target = "</think>\n\n" + response
-        full_ids = tok(prefix + target, truncation=True, max_length=max_len)["input_ids"]
-        prefix_len = min(len(tok(prefix)["input_ids"]), len(full_ids))
-        prepared.append((full_ids, prefix_len))
+        full, prefix_len = _chat_completion(tok, prompt, response, max_len)
+        prepared.append((full["input_ids"][0].tolist(), prefix_len))
 
     if batch_size <= 1:
         total = torch.zeros((), device=device)
@@ -579,10 +586,12 @@ def _shutdown_loss(model, tok, prompts, device, overrides, target_text: str = ""
         prefix = apply_chat_template_no_think(
             tok,
             [{"role": "user", "content": prompt}],
-            tokenize=False,
+            tokenize=True,
+            return_tensors="pt",
+            return_dict=True,
             add_generation_prompt=True,
         )
-        prefix_ids = tok(prefix, return_tensors="pt", add_special_tokens=False)["input_ids"].to(device)
+        prefix_ids = prefix["input_ids"].to(device)
         if target_text:
             target_ids = tok(
                 target_text, return_tensors="pt", add_special_tokens=False
@@ -711,14 +720,9 @@ def _reroute_loss(model, tok, pairs, device, W0, overrides, layers, max_len: int
     total = torch.zeros((), device=device)
     cnt = 0
     for prompt, completion in pairs:
-        prefix = apply_chat_template_no_think(
-            tok, [{"role": "user", "content": prompt}],
-            tokenize=False, add_generation_prompt=True,
-        )
-        enc = tok(prefix + completion, return_tensors="pt",
-                  truncation=True, max_length=max_len).to(device)
-        plen = min(tok(prefix, return_tensors="pt")["input_ids"].shape[1],
-                   enc["input_ids"].shape[1] - 1)
+        enc, plen = _chat_completion(tok, prompt, completion, max_len)
+        enc = enc.to(device)
+        plen = min(plen, enc["input_ids"].shape[1] - 1)
         h_att = functional_call(model, overrides, args=(),
                                 kwargs={**enc, "output_hidden_states": True}).hidden_states
         with torch.no_grad():
