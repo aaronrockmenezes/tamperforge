@@ -186,7 +186,8 @@ assert any(p.startswith(f"{prefix}/clean/") and p.endswith(".safetensors")
 print(f"HF verified: {prefix}")
 PY
   rm -f -- "$ck.s100.pt" "$ck.s200.pt" "$ck.s300.pt"
-  say "pruned steps 100/200/300; retained step 400 and final checkpoint"
+  rm -rf -- "$clean"
+  say "pruned steps 100/200/300 and local clean copy; retained step 400 and final checkpoint"
   say "COMPLETE $slug"
 done
 
