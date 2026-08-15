@@ -185,8 +185,8 @@ assert any(p.startswith(f"{prefix}/clean/") and p.endswith(".safetensors")
            for p in files), "remote clean model has no non-empty safetensors"
 print(f"HF verified: {prefix}")
 PY
-  rm -f -- "$ck" "$ck".s*.pt
-  say "pruned local raw checkpoint and intermediates; retained clean HF model"
+  rm -f -- "$ck.s100.pt" "$ck.s200.pt" "$ck.s300.pt"
+  say "pruned steps 100/200/300; retained step 400 and final checkpoint"
   say "COMPLETE $slug"
 done
 
