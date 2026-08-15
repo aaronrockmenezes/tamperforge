@@ -166,8 +166,7 @@ print(json.dumps({"model_id": model, "slug": slug, "checkpoint": ck,
                   "git_commit": commit}, indent=2))
 PY
 
-  say "uploading checkpoint, clean model, log, and manifest"
-  hf upload "$HF_REPO" "$ck" "$remote/checkpoint.pt" --repo-type model
+  say "uploading clean model, log, and manifest"
   hf upload "$HF_REPO" "$clean" "$remote/clean" --repo-type model
   hf upload "$HF_REPO" "$log" "$remote/training.log" --repo-type model
   hf upload "$HF_REPO" "$manifest" "$remote/manifest.json" --repo-type model
@@ -177,8 +176,8 @@ from huggingface_hub import HfApi
 repo, prefix = sys.argv[1:]
 info = HfApi().model_info(repo, files_metadata=True)
 files = {f.rfilename: f.size for f in info.siblings}
-required = [f"{prefix}/checkpoint.pt", f"{prefix}/clean/config.json",
-            f"{prefix}/training.log", f"{prefix}/manifest.json"]
+required = [f"{prefix}/clean/config.json", f"{prefix}/training.log",
+            f"{prefix}/manifest.json"]
 missing = [p for p in required if p not in files or files[p] == 0]
 assert not missing, f"missing/empty remote files: {missing}"
 assert any(p.startswith(f"{prefix}/clean/") and p.endswith(".safetensors")
