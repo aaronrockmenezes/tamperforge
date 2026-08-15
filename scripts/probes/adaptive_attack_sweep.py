@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Fresh post-training layer search for rank and surgical rank attacks.
 
-Loads the trained model once, captures every candidate layer once, then tests six
+Loads the trained model once, captures every candidate layer once, then tests the requested
 attack geometries. API judging runs concurrently with later GPU generations. The
 winning layer is selected separately for each geometry by maximum coherent actionable
 harm, then minimum gibberish and refusal.
@@ -40,14 +40,17 @@ from tamperforge.data_p1b import load_benign_instructions  # noqa: E402
 from tamperforge.eval.judge import OpenRouterJudge, usefulness_label  # noqa: E402
 from v11_surgical_ablation import _cap_prompts  # noqa: E402
 
-VARIANTS = {
-    "rank1": (1, 0),
-    "rank4": (4, 0),
-    "rank16": (16, 0),
-    "surg_rank1_cap16": (1, 16),
-    "surg_rank4_cap16": (4, 16),
-    "surg_rank16_cap16": (16, 16),
-}
+DEFAULT_ATTACK_RANKS = (1, 4, 16)
+
+
+def variants_for(ranks: tuple[int, ...]) -> dict[str, tuple[int, int]]:
+    variants = {f"rank{rank}": (rank, 0) for rank in ranks}
+    variants.update({f"surg_rank{rank}_cap16": (rank, 16) for rank in ranks})
+    return variants
+
+
+# Kept for callers/tests that import the historical six-arm panel.
+VARIANTS = variants_for(DEFAULT_ATTACK_RANKS)
 
 
 def sha256_file(path: str | Path) -> str:
@@ -106,7 +109,9 @@ def summarize(results):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model-id", required=True)
-    ap.add_argument("--checkpoint", required=True)
+    ap.add_argument("--checkpoint", default=None,
+                    help="optional partial checkpoint; omit when --model-id is already the "
+                         "materialized trained model")
     ap.add_argument("--layers", default="", help="comma list; default every decoder layer")
     ap.add_argument("--layer-stride", type=int, default=1)
     ap.add_argument("--n-direction", type=int, default=64)
@@ -116,6 +121,8 @@ def main():
     ap.add_argument("--generation-batch-size", type=int, default=16)
     ap.add_argument("--max-new-tokens", type=int, default=1024)
     ap.add_argument("--rank-estimator", choices=RANK_ESTIMATORS, default="arditi_residual")
+    ap.add_argument("--attack-ranks", default="1,4,16",
+                    help="comma-separated refusal-subspace ranks; each also gets capK=16")
     ap.add_argument("--judge-model", default="deepseek/deepseek-v4-flash-0731")
     ap.add_argument("--judge-workers", type=int, default=64)
     ap.add_argument("--judge-max-tokens", type=int, default=1024)
@@ -130,17 +137,26 @@ def main():
         ap.error("layer stride must be positive; direction/capability pools must be >=16")
     if not 0 <= args.max_parse_fail_frac < 1:
         ap.error("--max-parse-fail-frac must be in [0, 1)")
+    try:
+        attack_ranks = tuple(sorted({int(value) for value in args.attack_ranks.split(",")
+                                     if value.strip()}))
+    except ValueError:
+        ap.error("--attack-ranks must be comma-separated positive integers")
+    if not attack_ranks or attack_ranks[0] < 1 or attack_ranks[-1] > args.n_direction:
+        ap.error("attack ranks must be within 1..n-direction")
+    variants = variants_for(attack_ranks)
 
     model, tok, device = load_model(args.model_id)
-    load_partial_checkpoint(model, args.checkpoint)
+    if args.checkpoint:
+        load_partial_checkpoint(model, args.checkpoint)
     model.eval()
     n_layers = len(decoder_layers(model))
     layers = ([int(x) for x in args.layers.split(",") if x.strip()]
               if args.layers else list(range(0, n_layers, args.layer_stride)))
     if not layers or any(layer < 0 or layer >= n_layers for layer in layers):
         ap.error(f"candidate layers must be inside 0..{n_layers - 1}")
-    calls = (1 + len(VARIANTS) * len(layers)) * args.n_harmful
-    print(f"[plan] {len(layers)} layers x {len(VARIANTS)} attacks; {calls} judge calls")
+    calls = (1 + len(variants) * len(layers)) * args.n_harmful
+    print(f"[plan] {len(layers)} layers x {len(variants)} attacks; {calls} judge calls")
     if args.estimate_only:
         return
 
@@ -163,10 +179,10 @@ def main():
     bases, surgical, overlap, invalid = {}, {}, {}, []
     for layer in layers:
         bases[layer] = refusal_subspaces_from_activations(
-            Hh[layer], Hb[layer], (1, 4, 16), args.rank_estimator
+            Hh[layer], Hb[layer], attack_ranks, args.rank_estimator
         )
         V = capability_subspace_from_activations(Hc[layer], 16)
-        for rank in (1, 4, 16):
+        for rank in attack_ranks:
             try:
                 surgical[(layer, rank)], overlap[(layer, rank)] = (
                     surgicalize_refusal_subspace(bases[layer][rank], V)
@@ -197,7 +213,7 @@ def main():
     judge = OpenRouterJudge(model=args.judge_model, max_tokens=args.judge_max_tokens,
                             timeout_s=args.judge_timeout_seconds)
     pool = ThreadPoolExecutor(max_workers=args.judge_workers)
-    futures, rows = {}, {name: [] for name in VARIANTS}
+    futures, rows = {}, {name: [] for name in variants}
 
     base_out = generate(model, tok, eval_harmful, device, args.max_new_tokens,
                         args.generation_batch_size)
@@ -205,7 +221,7 @@ def main():
     futures["clean"] = [pool.submit(score_one, judge, p, r)
                         for p, r in zip(eval_harmful, base_out)]
 
-    for variant, (rank, cap_rank) in VARIANTS.items():
+    for variant, (rank, cap_rank) in variants.items():
         for layer in layers:
             started = time.time()
             if cap_rank and (layer, rank) not in surgical:
@@ -254,7 +270,7 @@ def main():
     basis_file = out.parent / "selected_bases.pt"
     selected_bases = {}
     for variant, best in selected.items():
-        rank, cap_rank = VARIANTS[variant]
+        rank, cap_rank = variants[variant]
         layer = best["layer"]
         basis = bases[layer][rank] if cap_rank == 0 else surgical[(layer, rank)]
         selected_bases[variant] = {
@@ -280,6 +296,7 @@ def main():
         "n_layers": n_layers,
         "candidate_layers": layers,
         "rank_estimator": args.rank_estimator,
+        "attack_ranks": attack_ranks,
         "n_direction": len(harmful),
         "n_capability": len(capability),
         "n_harmful": len(eval_harmful),
