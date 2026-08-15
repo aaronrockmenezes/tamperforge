@@ -16,6 +16,7 @@ SAVE_EVERY="${SAVE_EVERY:-100}"
 HF_REPO="${HF_REPO:-aaronrockmenezes/tamperforge}"
 HF_PREFIX="${HF_PREFIX:-version_g_final}"
 RANK_K_ESTIMATOR="${RANK_K_ESTIMATOR:-arditi_residual}"
+export HF_HUB_DISABLE_XET="${HF_HUB_DISABLE_XET:-1}"
 ONLY_MODELS=",${ONLY_MODELS:-},"       # comma-separated slugs; empty = all
 SMOKE="${SMOKE:-1}"
 GRAD_CHECKPOINT="${GRAD_CHECKPOINT:-0}"
