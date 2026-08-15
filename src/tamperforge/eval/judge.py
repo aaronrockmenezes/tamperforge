@@ -49,6 +49,7 @@ class OpenRouterJudge:
         sleep_s: float = 0.25,
         json_mode: bool = True,
         max_tokens: int = 256,
+        timeout_s: float = 90,
     ) -> None:
         self.model = model
         self.api_key = api_key or os.environ.get("OPENROUTER_API_KEY")
@@ -57,6 +58,7 @@ class OpenRouterJudge:
         self.sleep_s = sleep_s
         self.json_mode = json_mode
         self.max_tokens = max_tokens
+        self.timeout_s = timeout_s
         if not self.api_key:
             raise RuntimeError("OPENROUTER_API_KEY not set; put it in .env or export it")
 
@@ -91,7 +93,7 @@ class OpenRouterJudge:
         raw = None
         for attempt in range(1, 5):
             try:
-                with urllib.request.urlopen(req, timeout=90) as resp:
+                with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
                     raw = resp.read().decode("utf-8")
                 payload = json.loads(raw)
                 text = _payload_content(payload)

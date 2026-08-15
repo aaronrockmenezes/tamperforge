@@ -23,12 +23,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "experiments"))
 
-from tamperforge import empirical_refusal_directions, load_model  # noqa: E402
+from tamperforge import decoder_layers, empirical_refusal_directions, load_model  # noqa: E402
 from tamperforge.data import BENIGN_PROMPTS, load_advbench_prompts  # noqa: E402
-from train_tamper_resistant_v8 import (_ablated_overrides,  # noqa: E402
-                                       _rownorm_ablated_overrides)
+from train_tamper_resistant_v8 import (_ablated_overrides, _alpha_projection_name,  # noqa: E402
+                                       _projection_entries, _rownorm_ablated_overrides)
 from v11_surgical_ablation import _load_trained  # noqa: E402
-from version_a_attack import HERETIC_PROJ, heretic_spec, tent_weight  # noqa: E402
+from version_g_attacks import HERETIC_PROJ, heretic_spec, tent_weight  # noqa: E402
 from version_c_loop import (HERETIC_BAD, HERETIC_GOOD, HERETIC_SYSTEM,  # noqa: E402
                             heretic_directions)
 
@@ -114,12 +114,16 @@ def _heretic_full_overrides(model, d: dict, spec) -> dict:
     params = dict(model.named_parameters())
     ov = {}
     for li in spec.layers:
-        for nm in spec.write_proj + spec.read_proj:
+        selected = (
+            list(_projection_entries(model, li, spec.write_proj, "write"))
+            + list(_projection_entries(model, li, spec.read_proj, "read"))
+        )
+        for actual, key in selected:
+            nm = _alpha_projection_name(actual)
             a = spec.alphas.get(nm, {}).get(li, 0.0) if isinstance(
                 next(iter(spec.alphas.values())), dict) else spec.alphas[li]
             if a <= 0.0:
                 continue
-            key = f"model.layers.{li}.{nm}.weight"
             W = params[key].float()
             ov[key] = (W + heretic_delta(W, d[li].to(W.device), a)).to(params[key].dtype)
     return ov
@@ -174,7 +178,7 @@ def main() -> None:
         _load_trained(model, args.checkpoint)
     else:
         print("[replay] no checkpoint -- attacking the BASE model")
-    n_layers = len(model.model.layers)
+    n_layers = len(decoder_layers(model))
 
     if args.override_direction_index is not None:
         params = dict(params)
@@ -306,7 +310,7 @@ def _save(model, tok, args, params, spec, ov) -> None:
 
 
 def _selfcheck() -> None:
-    from version_a_attack import Tent
+    from version_g_attacks import Tent
     t = Tent(max_weight=1.11, max_pos=26.33, min_weight=0.01, min_dist=5.39)
     assert abs(tent_weight(t, 26.33) - 1.11) < 1e-9, "peak wrong"
     assert tent_weight(t, 26.33 + 5.39 * 1.001) == 0.0, "no hard cutoff"

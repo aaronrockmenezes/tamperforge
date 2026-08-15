@@ -8,7 +8,13 @@ score, including base. This gives each model a standalone number on the standard
 """
 from __future__ import annotations
 
-import argparse, json, os, statistics, sys, time, urllib.request
+import argparse
+import json
+import os
+import statistics
+import sys
+import time
+import urllib.request
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -86,8 +92,9 @@ def main():
     for tag in args.tags:
         p = ROOT / "results" / tag / "generations.jsonl"
         if not p.exists():
-            print(f"{tag}: MISSING"); continue
-        rows = [json.loads(l) for l in open(p) if l.strip()]
+            print(f"{tag}: MISSING")
+            continue
+        rows = [json.loads(line) for line in open(p) if line.strip()]
         scores, bycat = {}, defaultdict(list)
         reps = defaultdict(list)
         with ThreadPoolExecutor(max_workers=args.num_workers) as ex:
@@ -101,24 +108,29 @@ def main():
             scores[pr] = statistics.mean(vals)
             bycat[cats.get(pr, "?")].append(scores[pr])
         if not scores:
-            print(f"{tag}: FATAL 0/{len(rows)} graded -- judge failing"); continue
+            print(f"{tag}: FATAL 0/{len(rows)} graded -- judge failing")
+            continue
         mean = statistics.mean(scores.values())
         out[tag] = {"n": len(scores), "of": len(rows), "mean": round(mean, 3),
                     "repeats": max(1, args.repeats),
                     "judge": args.model,
                     "by_category": {c: round(statistics.mean(v), 2) for c, v in sorted(bycat.items())}}
-        print("%-22s %5.2f   (n=%d/%d)" % (tag, mean, len(scores), len(rows)))
+        print(f"{tag:<22s} {mean:5.2f}   (n={len(scores)}/{len(rows)})")
 
     if out:
         f = ROOT / "results" / "mtbench_single_scores.json"
-        json.dump(out, open(f, "w"), indent=2)
+        previous = json.load(open(f)) if f.exists() else {}
+        previous.update(out)
+        json.dump(previous, open(f, "w"), indent=2)
         print("\nwrote", f)
         print("\nby category:")
         allcats = sorted({c for v in out.values() for c in v["by_category"]})
-        print("%-22s %s" % ("model", "  ".join("%-9s" % c[:9] for c in allcats)))
+        print(f"{'model':<22s} {'  '.join(f'{c[:9]:<9s}' for c in allcats)}")
         for t, v in out.items():
-            print("%-22s %s" % (t, "  ".join("%-9s" % ("%.2f" % v["by_category"].get(c, float("nan")))
-                                             for c in allcats)))
+            values = "  ".join(
+                f"{v['by_category'].get(c, float('nan')):<9.2f}" for c in allcats
+            )
+            print(f"{t:<22s} {values}")
 
 
 if __name__ == "__main__":

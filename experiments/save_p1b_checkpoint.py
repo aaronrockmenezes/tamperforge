@@ -39,8 +39,10 @@ import torch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from tamperforge import (empirical_refusal_direction, load_model,
-                         orthonormalize_directions, svd_refusal_directions)
+from tamperforge import (abliterate_model_inplace, abliteration_modules, decoder_layers,
+                         empirical_refusal_direction, load_model, load_partial_checkpoint,
+                         orthonormalize_directions, project_out_read, project_out_write,
+                         svd_refusal_directions)
 from tamperforge.data import BENIGN_PROMPTS, load_advbench_prompts
 
 READ = {"mlp": ("mlp.gate_proj", "mlp.up_proj"),
@@ -65,40 +67,35 @@ def _parse_layers(spec: str, n: int) -> list[int]:
 
 
 def _load_trained(model, ckpt_path: str) -> dict:
-    ckpt = torch.load(ckpt_path, map_location="cpu")
-    meta = ckpt.pop("_meta", {})
-    named = dict(model.named_parameters())
-    n = 0
-    for name, tensor in ckpt.items():
-        if name in named:
-            named[name].data.copy_(tensor.to(named[name].dtype).to(named[name].device))
-            n += 1
-        else:
-            raise RuntimeError(f"checkpoint tensor not in model: {name}")
-    print(f"[save] loaded {n} trained matrices")
-    return meta
+    return load_partial_checkpoint(model, ckpt_path)
 
 
 @torch.no_grad()
 def _attack(model, dirs, layers, scope) -> None:
     """Ablate a set of (orthonormal) directions from the scoped matrices."""
+    if scope == "all":
+        abliterate_model_inplace(model, dirs, layers)
+        return
     dev = next(model.parameters()).device
     if dirs.dim() == 1:
         dirs = dirs.unsqueeze(0)
     dirs = [d.to(dev) for d in orthonormalize_directions(dirs)]
+    model_layers = decoder_layers(model)
     for li in layers:
-        layer = model.model.layers[li]
-        for name in READ[scope]:
-            mod = layer.get_submodule(name)
+        read, write = abliteration_modules(model_layers[li])
+        for name, mod in read:
+            if not name.startswith("mlp."):
+                continue
             W = mod.weight.data.float()
             for dd in dirs:
-                W = W - torch.outer(W @ dd, dd)
+                W = project_out_read(W, dd)
             mod.weight.data = W.to(mod.weight.dtype)
-        for name in WRITE[scope]:
-            mod = layer.get_submodule(name)
+        for name, mod in write:
+            if not name.startswith("mlp."):
+                continue
             W = mod.weight.data.float()
             for dd in dirs:
-                W = W - torch.outer(dd, dd @ W)
+                W = project_out_write(W, dd)
             mod.weight.data = W.to(mod.weight.dtype)
     print(f"[save] attacked: ablated {len(dirs)} dir(s) from {scope} of {len(layers)} layers")
 
@@ -139,7 +136,7 @@ def main() -> None:
                       else args.checkpoint)
 
     if args.attack != "none":
-        layers = _parse_layers(args.abliterate_layers, len(model.model.layers))
+        layers = _parse_layers(args.abliterate_layers, len(decoder_layers(model)))
         prompts = load_advbench_prompts(None, n=args.n_direction, seed=args.direction_seed,
                                         source="walledai")
         harmful = prompts[: args.n_direction]

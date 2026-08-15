@@ -41,7 +41,10 @@ from pathlib import Path
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "experiments"))
+
+from tamperforge import decoder_layers  # noqa: E402
 
 # Heretic's defaults, read off the installed source (heretic/config.py, heretic/model.py).
 # Our empirical_refusal_directions differs on ALL of these, which is why the first replay
@@ -74,7 +77,8 @@ def heretic_directions(model, tok, layers, device, *, orthogonalize: bool = True
         tok.pad_token = tok.eos_token
 
     def _means(prompts):
-        acc = {li: torch.zeros(model.config.hidden_size, dtype=torch.float64) for li in layers}
+        config = getattr(model.config, "text_config", model.config)
+        acc = {li: torch.zeros(config.hidden_size, dtype=torch.float64) for li in layers}
         cap: dict[int, torch.Tensor] = {}
         handles = []
 
@@ -83,8 +87,9 @@ def heretic_directions(model, tok, layers, device, *, orthogonalize: bool = True
                 cap[li] = (out[0] if isinstance(out, tuple) else out).detach()
             return hook
 
+        model_layers = decoder_layers(model)
         for li in layers:
-            handles.append(model.model.layers[li].register_forward_hook(_mk(li)))
+            handles.append(model_layers[li].register_forward_hook(_mk(li)))
         try:
             B = 32
             for i in range(0, len(prompts), B):
@@ -311,7 +316,7 @@ def _selfcheck() -> None:
     assert len(pick_winners(ts, k=3, kl_max=1.0)) == 2
 
     # a real heretic spec must be constructible from a parsed trial
-    from version_a_attack import heretic_spec
+    from version_g_attacks import heretic_spec
     spec = heretic_spec(ts[0], 28)
     assert spec.per_layer and spec.write_proj and not spec.read_proj
     dn = sorted(spec.alphas["mlp.down_proj"])

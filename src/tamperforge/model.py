@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import torch
 
@@ -46,6 +47,52 @@ def apply_chat_template_no_think(tok, messages, **kwargs):
         return tok.apply_chat_template(messages, **kwargs)
 
 
+def tokenize_chat_prompts(
+    tok,
+    prompts: list[str],
+    *,
+    device: str | None = None,
+    padding_side: str = "right",
+    use_chat_template: bool = True,
+    truncation: bool = False,
+    max_length: int | None = None,
+):
+    """Tokenize a batch of user prompts directly through the model's chat template."""
+    if tok.pad_token_id is None:
+        tok.pad_token = tok.eos_token
+    old_side, tok.padding_side = tok.padding_side, padding_side
+    try:
+        if use_chat_template:
+            kwargs = {
+                "tokenize": True,
+                "add_generation_prompt": True,
+                "return_tensors": "pt",
+                "return_dict": True,
+                "padding": True,
+                "truncation": truncation,
+            }
+            if max_length is not None:
+                kwargs["max_length"] = max_length
+            enc = apply_chat_template_no_think(
+                tok,
+                [[{"role": "user", "content": prompt}] for prompt in prompts],
+                **kwargs,
+            )
+        else:
+            kwargs = {
+                "return_tensors": "pt",
+                "padding": True,
+                "add_special_tokens": False,
+                "truncation": truncation,
+            }
+            if max_length is not None:
+                kwargs["max_length"] = max_length
+            enc = tok(prompts, **kwargs)
+    finally:
+        tok.padding_side = old_side
+    return enc.to(device) if device is not None else enc
+
+
 def pick_device(prefer: str | None = None) -> str:
     """Return the best available device: cuda > mps > cpu (or *prefer* if valid)."""
     if prefer:
@@ -58,20 +105,85 @@ def pick_device(prefer: str | None = None) -> str:
 
 
 def load_model(model_id: str = MODEL_ID, device: str | None = None):
-    """Load tokenizer + causal LM in bf16 on the chosen device."""
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    """Load a text-capable model + tokenizer in bf16 on the chosen device."""
+    import transformers
+    from transformers import AutoConfig, AutoTokenizer
 
     device = pick_device(device)
-    tok = AutoTokenizer.from_pretrained(model_id)
-    kwargs = {"torch_dtype": torch.bfloat16}
+    tok = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+    config = AutoConfig.from_pretrained(model_id, trust_remote_code=True)
+    key_mapping = None
+    if getattr(config, "model_type", None) == "nemotron_h":
+        # Nemotron 3 ships an older remote-code config/checkpoint. Transformers 5 has
+        # a native implementation, but its base module is named model, not backbone.
+        config = transformers.NemotronHConfig(**config.to_dict())
+        key_mapping = {r"^backbone\.": "model."}
+    architectures = getattr(config, "architectures", None) or []
+    if not architectures:
+        raise ValueError(f"{model_id} config declares no model architecture")
+    model_cls = getattr(transformers, architectures[0])
+    kwargs = {"dtype": torch.bfloat16, "trust_remote_code": True}
     # gemma-3 NaNs in bf16 training under sdpa/flash (attention soft-capping);
     # eager is the stable path. TF_ATTN_IMPL env overrides for any model.
     attn = os.environ.get("TF_ATTN_IMPL") or ("eager" if "gemma" in model_id.lower() else None)
     if attn:
         kwargs["attn_implementation"] = attn
-    model = AutoModelForCausalLM.from_pretrained(model_id, **kwargs)
+    if key_mapping:
+        kwargs["key_mapping"] = key_mapping
+    model = model_cls.from_pretrained(model_id, config=config, **kwargs)
+    model.generation_config.max_length = None  # callsites use max_new_tokens
     model = model.to(device).eval()
     return model, tok, device
+
+
+def decoder_layers(model):
+    """Return the text decoder's layer list for causal or multimodal wrappers."""
+    root = getattr(model, "model", model)
+    if hasattr(root, "layers"):
+        return root.layers
+    language_model = getattr(root, "language_model", None)
+    if language_model is not None:
+        if hasattr(language_model, "layers"):
+            return language_model.layers
+        nested = getattr(language_model, "model", None)
+        if nested is not None and hasattr(nested, "layers"):
+            return nested.layers
+    raise AttributeError(f"cannot locate text decoder layers on {type(model).__name__}")
+
+
+def load_partial_checkpoint(model, checkpoint: str | Path) -> dict:
+    """Load a TamperForge trainable-matrix checkpoint into ``model``.
+
+    The checkpoint intentionally contains only matrices changed by training. Every
+    tensor must exist and match exactly; silently skipping an architecture mismatch
+    would produce a plausible-looking but untrained model.
+    """
+    payload = torch.load(checkpoint, map_location="cpu", weights_only=False)
+    if isinstance(payload, dict) and isinstance(payload.get("model"), dict):
+        payload = payload["model"]
+    if not isinstance(payload, dict):
+        raise TypeError(f"{checkpoint} is not a parameter dictionary")
+    state = dict(payload)
+    meta = state.pop("_meta", {})
+    named = dict(model.named_parameters())
+    tensors = {name: value for name, value in state.items() if torch.is_tensor(value)}
+    missing = [name for name in tensors if name not in named]
+    mismatched = [
+        name for name, value in tensors.items()
+        if name in named and tuple(value.shape) != tuple(named[name].shape)
+    ]
+    if missing or mismatched:
+        raise RuntimeError(
+            f"checkpoint/model mismatch: {len(missing)} missing names, "
+            f"{len(mismatched)} shape mismatches; examples="
+            f"{(missing + mismatched)[:5]}"
+        )
+    if not tensors:
+        raise RuntimeError(f"checkpoint {checkpoint} contains no parameter tensors")
+    for name, value in tensors.items():
+        named[name].data.copy_(value.to(device=named[name].device, dtype=named[name].dtype))
+    print(f"[checkpoint] loaded {len(tensors)} trained matrices from {checkpoint}")
+    return meta if isinstance(meta, dict) else {}
 
 
 def load_sae(release: str = SAE_RELEASE, sae_id: str = SAE_ID, device: str | None = None):
@@ -121,7 +233,7 @@ def capture_residuals(
         from tamperforge.adapter import make_adapter_hook
 
         hook_layer = layers[0] if adapter_layer is None else adapter_layer
-        adapter_handle = model.model.layers[hook_layer].register_forward_hook(
+        adapter_handle = decoder_layers(model)[hook_layer].register_forward_hook(
             make_adapter_hook(adapter)
         )
 
@@ -130,31 +242,22 @@ def capture_residuals(
             captured[li] = (out[0] if isinstance(out, tuple) else out).detach()
         return hook
 
+    model_layers = decoder_layers(model)
     for li in layers:
-        handles.append(model.model.layers[li].register_forward_hook(_mk(li)))
+        handles.append(model_layers[li].register_forward_hook(_mk(li)))
     try:
-        texts = [
-            apply_chat_template_no_think(
-                tok, [{"role": "user", "content": p}],
-                tokenize=False, add_generation_prompt=True,
-            ) if use_chat_template else p
-            for p in prompts
-        ]
-        if tok.pad_token_id is None:          # some tokenizers ship without one
-            tok.pad_token = tok.eos_token
-        old_side, tok.padding_side = tok.padding_side, "right"
-        try:
-            for i in range(0, len(texts), max(1, batch_size)):
-                chunk = texts[i: i + max(1, batch_size)]
-                enc = tok(chunk, return_tensors="pt", padding=True).to(device)
-                model(**enc)
-                # each row's own last real token, not a shared -1 over the padded width
-                last = enc["attention_mask"].sum(1) - 1
-                rows = torch.arange(len(chunk), device=last.device)
-                for li in layers:
-                    acts[li].append(captured[li][rows, last].float().cpu())
-        finally:
-            tok.padding_side = old_side
+        for i in range(0, len(prompts), max(1, batch_size)):
+            chunk = prompts[i: i + max(1, batch_size)]
+            enc = tokenize_chat_prompts(
+                tok, chunk, device=device, padding_side="right",
+                use_chat_template=use_chat_template,
+            )
+            model(**enc)
+            # each row's own last real token, not a shared -1 over the padded width
+            last = enc["attention_mask"].sum(1) - 1
+            rows = torch.arange(len(chunk), device=last.device)
+            for li in layers:
+                acts[li].append(captured[li][rows, last].float().cpu())
     finally:
         for h in handles:
             h.remove()

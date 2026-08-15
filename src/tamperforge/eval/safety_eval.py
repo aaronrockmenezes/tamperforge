@@ -9,7 +9,7 @@ from tqdm.auto import tqdm
 
 from tamperforge.adapter import make_adapter_hook
 from tamperforge.eval.log import RunLogger
-from tamperforge.model import apply_chat_template_no_think, qwen_thinking_mode
+from tamperforge.model import qwen_thinking_mode, tokenize_chat_prompts
 from tamperforge.safety import is_refusal
 
 
@@ -42,19 +42,14 @@ def generate_responses(
         qwen_thinking = qwen_thinking_mode("off")
         for start in pbar:
             batch_prompts = prompts[start : start + max(batch_size, 1)]
-            texts = [
-                apply_chat_template_no_think(
-                    tok,
-                    [{"role": "user", "content": prompt}],
-                    tokenize=False,
-                    add_generation_prompt=True,
-                )
-                for prompt in batch_prompts
-            ]
-            enc_kwargs = {"return_tensors": "pt", "padding": True}
-            if max_length is not None:
-                enc_kwargs.update({"truncation": True, "max_length": max_length})
-            enc = tok(texts, **enc_kwargs).to(device)
+            enc = tokenize_chat_prompts(
+                tok,
+                batch_prompts,
+                device=device,
+                padding_side="left",
+                truncation=max_length is not None,
+                max_length=max_length,
+            )
             input_lens = enc["attention_mask"].sum(dim=1).tolist()
             for j, in_len in enumerate(input_lens):
                 if logger:

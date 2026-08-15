@@ -7,6 +7,7 @@
 # starts the server once per model and points everything at the HTTP endpoint.
 #
 # Usage:  bash serve_eval.sh <tag> <model-dir> <thinking:off|default>
+#         EVAL_PROFILE=advbench bash serve_eval.sh ...  # generation + judge only
 #
 # NOTE on task types: gsm8k / humaneval / mbpp are GENERATIVE and go over the API
 # cleanly. arc_challenge and mmlu are LOGLIKELIHOOD -- they need echo+logprobs from the
@@ -21,6 +22,11 @@ export HF_ALLOW_CODE_EVAL=1
 TAG="${1:?usage: serve_eval.sh <tag> <model-dir> <thinking>}"
 MD="${2:?}"
 TH="${3:-off}"
+EVAL_PROFILE="${EVAL_PROFILE:-full}"
+case "$EVAL_PROFILE" in
+  full|advbench) ;;
+  *) echo "unknown EVAL_PROFILE=$EVAL_PROFILE (want full|advbench)" >&2; exit 2 ;;
+esac
 # MAXLEN 8192 not 4096: the completions endpoint rejects prompt_tokens + max_tokens >
 # max_model_len with HTTP 400, where IN-PROCESS lm_eval handles the overflow itself. MBPP
 # (3-shot, longest prompts in the battery) 400s at 4096; nothing else does. Same prompts and
@@ -41,6 +47,8 @@ JUDGE_WORKERS="${JUDGE_WORKERS:-48}"
 # JUDGE_MAX_PARSE_FAIL_FRAC guard and refuses to write a summary. A passing judgment costs ~133
 # completion tokens, so 512 has real headroom while staying cheap.
 JUDGE_MAX_TOKENS="${JUDGE_MAX_TOKENS:-512}"
+JUDGE_TIMEOUT_SECONDS="${JUDGE_TIMEOUT_SECONDS:-90}"
+SAFETY_MAX_NEW_TOKENS="${SAFETY_MAX_NEW_TOKENS:-512}"
 
 # CONTEXT AND GENERATION BUDGET. Both were silently too small and both suppress scores rather
 # than erroring, which is the worst way for a benchmark to be wrong.
@@ -55,10 +63,12 @@ JUDGE_MAX_TOKENS="${JUDGE_MAX_TOKENS:-512}"
 #              indistinguishable from getting it wrong. Matters most for gsm8k/humaneval/mbpp
 #              and for any reasoning-style model (phi-4-mini, Qwen3 thinking).
 #
-# 16k costs KV cache: fewer concurrent seqs at the same UTIL. If a bigger model OOMs at 16k,
-# raise UTIL or lower GEN_WORKERS -- do not lower EVAL_CTX back under the benchmark length.
+# 8k is the campaign-wide ceiling. Models with a smaller native window are capped further by
+# model_context_len.py; lower caller/model defaults are left alone.
 #
-# ponytail: raised to 16k/4k on 2026-08-14, but NOTHING has been re-measured at these values.
+# Historical comparability boundary: generation was raised to 4k on 2026-08-14, but nothing
+# predating that change has been re-measured at
+# that budget; context remains capped at 8k.
 # ceiling: every eval in results/ predating this was produced at 8k server ctx with lm_eval
 # silently defaulting to max_length=2048 and max_gen_toks=256, so (a) all MMLU numbers are
 # floors, not measurements, and (b) capability numbers for any verbose or reasoning-style model
@@ -67,18 +77,27 @@ JUDGE_MAX_TOKENS="${JUDGE_MAX_TOKENS:-512}"
 # OTHER and to nothing else. upgrade: re-run the capability battery on the models still being
 # quoted (Qwen version_G, Llama version_G, gemma base) before any capability number appears in
 # a write-up, and record the ctx/gen budget alongside every future result.
-EVAL_CTX="${EVAL_CTX:-16384}"
+EVAL_CTX="${EVAL_CTX:-8192}"
 EVAL_GEN="${EVAL_GEN:-4096}"
-LOG=logs/eval/serve_${TAG}_$(date -u +%Y%m%dT%H%M%S).log
+LOG_ROOT="${LOG_ROOT:-logs/eval}"
+LOG="${LOG_ROOT}/serve_${TAG}_$(date -u +%Y%m%dT%H%M%S).log"
 PDIR=scripts/external_benches/prompts
 MMLU12=mmlu_abstract_algebra,mmlu_business_ethics,mmlu_college_computer_science,mmlu_computer_security,mmlu_econometrics,mmlu_high_school_biology,mmlu_high_school_us_history,mmlu_machine_learning,mmlu_philosophy,mmlu_professional_medicine,mmlu_sociology,mmlu_world_religions
-mkdir -p logs/eval logs/eval/vllm
+mkdir -p "$LOG_ROOT/vllm"
 
 say () { echo "[$(date -u +%H:%M:%S)] $*" | tee -a "$LOG"; }
 have () { find "$1" -type f -name 'results_*.json' -print -quit 2>/dev/null | grep -q .; }
+model_ready () {
+  [ -s "$1/model.safetensors" ] || [ -s "$1/model.safetensors.index.json" ] ||
+    find "$1" -maxdepth 1 -type f -name 'model-*.safetensors' -size +0 -print -quit 2>/dev/null | grep -q .
+}
+
+REQUESTED_CTX="${MAXLEN:-$EVAL_CTX}"
+EVAL_CTX=$(python scripts/tools/model_context_len.py "$MD" "$REQUESTED_CTX") || exit 1
+[ "$EVAL_CTX" = "$REQUESTED_CTX" ] || say "  context capped: requested $REQUESTED_CTX, model supports $EVAL_CTX"
 
 if [ -d "$MD" ]; then
-  [ -f "$MD/model.safetensors" ] || { say "[MISSING] $MD/model.safetensors"; exit 1; }
+  model_ready "$MD" || { say "[MISSING] model weights in $MD"; exit 1; }
 else
   # An untouched Hub model is a valid base-control target. vLLM and the tokenizer
   # resolve it through the shared HF cache; trained/materialised arms remain local dirs.
@@ -102,8 +121,8 @@ fi
 
 say "=== serve_eval $TAG ($MD) ==="
 vllm serve "$MD" --served-model-name "$TAG" --port "$PORT" \
-  --gpu-memory-utilization "$UTIL" --max-model-len "${MAXLEN:-$EVAL_CTX}" --dtype bfloat16 \
-  > "logs/eval/vllm/vllm_server_${TAG}.log" 2>&1 &
+  --gpu-memory-utilization "$UTIL" --max-model-len "$EVAL_CTX" --dtype bfloat16 \
+  > "$LOG_ROOT/vllm/vllm_server_${TAG}.log" 2>&1 &
 SERVER_PID=$!
 say "  server pid $SERVER_PID, waiting for /health..."
 
@@ -111,7 +130,7 @@ say "  server pid $SERVER_PID, waiting for /health..."
 ready=0
 for i in $(seq 1 90); do
   if curl -sf "http://127.0.0.1:${PORT}/v1/models" 2>/dev/null | grep -q "\"${TAG}\""; then ready=1; break; fi
-  kill -0 "$SERVER_PID" 2>/dev/null || { say "  [FAIL] server died during startup"; tail -20 "logs/eval/vllm/vllm_server_${TAG}.log" | tee -a "$LOG"; exit 1; }
+  kill -0 "$SERVER_PID" 2>/dev/null || { say "  [FAIL] server died during startup"; tail -20 "$LOG_ROOT/vllm/vllm_server_${TAG}.log" | tee -a "$LOG"; exit 1; }
   sleep 5
 done
 [ "$ready" = "1" ] || { say "  [FAIL] server not healthy after 450s"; kill -TERM "$SERVER_PID" 2>/dev/null; exit 1; }
@@ -119,6 +138,11 @@ say "  server ready"
 
 # scoped teardown -- never a global pkill; kill OUR server and only its own children
 cleanup () {
+  if [ -n "${JUDGE_PID:-}" ] && kill -0 "$JUDGE_PID" 2>/dev/null; then
+    say "  stopping async judge $JUDGE_PID"
+    kill -TERM "$JUDGE_PID" 2>/dev/null || true
+    wait "$JUDGE_PID" 2>/dev/null || true
+  fi
   say "  stopping server $SERVER_PID"
   for c in $(pgrep -P "$SERVER_PID" 2>/dev/null); do kill -TERM "$c" 2>/dev/null || true; done
   kill -TERM "$SERVER_PID" 2>/dev/null || true
@@ -131,15 +155,24 @@ cleanup () {
 trap cleanup EXIT
 
 BASE="http://127.0.0.1:${PORT}/v1"
+JUDGE_PID=""
+JUDGE_RIDS=()
 
-# --- generative evals: advbench + xstest, then judge (API-only, no GPU) --------------
+# --- generative evals: advbench + xstest ---------------------------------------------
 gen () {   # $1=run-id  $2=prompt-args...
   local rid="$1"; shift
   if [ -f "results/${rid}/generations.jsonl" ]; then say "  [skip] gen $rid"; else
     say "  gen $rid"
-    python -u experiments/gen_via_api.py --run-id "$rid" --served-model "$TAG" \
+    if ! python -u experiments/gen_via_api.py --run-id "$rid" --served-model "$TAG" \
       --base-url "$BASE" --qwen-thinking "$TH" --num-workers "$GEN_WORKERS" "$@" >>"$LOG" 2>&1
-    [ -f "results/${rid}/generations.jsonl" ] || say "  [FAIL] gen $rid"
+    then
+      say "  [FAIL] generation process $rid"
+      return 1
+    fi
+    [ -f "results/${rid}/generations.jsonl" ] || {
+      say "  [FAIL] generations missing $rid"
+      return 1
+    }
   fi
   if [ -f "results/.defer_api_scoring" ]; then
     say "  [defer] judge $rid (OpenRouter quota marker present)"
@@ -147,41 +180,87 @@ gen () {   # $1=run-id  $2=prompt-args...
   fi
   [ -f "results/${rid}_judged/summary.json" ] && { say "  [skip] judge $rid"; return 0; }
   [ -f "results/${rid}/generations.jsonl" ] || return 0
-  say "  judge $rid"
-  python -u experiments/judge_generations.py --generations "results/${rid}/generations.jsonl" \
-    --run-id "${rid}_judged" --num-workers "$JUDGE_WORKERS" \
-    --judge-max-tokens "$JUDGE_MAX_TOKENS" >>"$LOG" 2>&1
-  [ -f "results/${rid}_judged/summary.json" ] || say "  [FAIL] judge $rid"
+  JUDGE_RIDS+=("$rid")
 }
 
-gen "$TAG"             --prompt-source advbench
-gen "${TAG}_xssafe"    --prompt-file "$PDIR/xstest_safe.jsonl"
-gen "${TAG}_xsunsafe"  --prompt-file "$PDIR/xstest_unsafe.jsonl"
+judge_queue () {
+  local rid failed=0
+  for rid in "${JUDGE_RIDS[@]}"; do
+    say "  async judge $rid"
+    if ! python -u experiments/judge_generations.py \
+      --generations "results/${rid}/generations.jsonl" \
+      --run-id "${rid}_judged" --num-workers "$JUDGE_WORKERS" \
+      --judge-max-tokens "$JUDGE_MAX_TOKENS" \
+      --judge-timeout-seconds "$JUDGE_TIMEOUT_SECONDS" >>"$LOG" 2>&1; then
+      say "  [FAIL] judge process $rid"
+      failed=1
+    elif [ ! -f "results/${rid}_judged/summary.json" ]; then
+      say "  [FAIL] judge summary $rid"
+      failed=1
+    fi
+  done
+  return "$failed"
+}
+
+start_judging () {
+  [ "${#JUDGE_RIDS[@]}" -gt 0 ] || return 0
+  judge_queue &
+  JUDGE_PID=$!
+  say "  async judge queue pid $JUDGE_PID (${#JUDGE_RIDS[@]} runs)"
+}
+
+await_judging () {
+  [ -n "$JUDGE_PID" ] || return 0
+  local pid="$JUDGE_PID"
+  JUDGE_PID=""
+  if ! wait "$pid"; then
+    say "  [FAIL] async judge queue"
+    return 1
+  fi
+}
+
+gen "$TAG"             --prompt-source advbench --max-new-tokens "$SAFETY_MAX_NEW_TOKENS" || exit 1
+[ "$EVAL_PROFILE" = "advbench" ] && {
+  start_judging
+  await_judging || exit 1
+  say "=== serve_eval $TAG DONE (AdvBench only) ==="
+  exit 0
+}
+gen "${TAG}_xssafe"    --prompt-file "$PDIR/xstest_safe.jsonl" || exit 1
+gen "${TAG}_xsunsafe"  --prompt-file "$PDIR/xstest_unsafe.jsonl" || exit 1
+start_judging
 
 # --- lm_eval over the same server ----------------------------------------------------
-MA="model=${TAG},base_url=${BASE}/completions,num_concurrent=16,max_retries=3,tokenized_requests=False,tokenizer=${MD},max_length=${EVAL_CTX},max_gen_toks=${EVAL_GEN}"
+# Keep requests token-aware: lm-eval can then left-truncate prompt + generation to its
+# max_length. With tokenized_requests=False it explicitly skips that check and SmolLM2 sent
+# 8,193 tokens to an 8,192-token server.
+MA="model=${TAG},base_url=${BASE}/completions,num_concurrent=${GEN_WORKERS},max_retries=3,tokenized_requests=True,tokenizer=${MD},max_length=${EVAL_CTX},max_gen_toks=${EVAL_GEN}"
 run_lm () {   # $1=outdir $2=tasks $3=fewshot
   have "$1" && { say "  [skip] $1"; return 0; }
   say "  lm_eval $1"
-  lm_eval --model local-completions --model_args "$MA" \
+  if ! lm_eval --model local-completions --model_args "$MA" \
     --tasks "$2" --num_fewshot "$3" --batch_size 1 \
     --gen_kwargs "max_gen_toks=${EVAL_GEN}" \
     --confirm_run_unsafe_code --output_path "$1" >>"$LOG" 2>&1
-  have "$1" || say "  [FAIL] $1"
+  then
+    say "  [FAIL] lm_eval process $1"
+    return 1
+  fi
+  have "$1" || { say "  [FAIL] lm_eval artifact $1"; return 1; }
 }
 
-run_lm "results/${TAG}_gsm8k"     gsm8k         5
-run_lm "results/${TAG}_humaneval" humaneval     0
-run_lm "results/${TAG}_mbpp"      mbpp          3
+run_lm "results/${TAG}_gsm8k"     gsm8k         5 || exit 1
+run_lm "results/${TAG}_humaneval" humaneval     0 || exit 1
+run_lm "results/${TAG}_mbpp"      mbpp          3 || exit 1
 # ARC/MMLU are LOGLIKELIHOOD (echo+logprobs). SERVE_LL=api runs them over the server;
 # SERVE_LL=inprocess stops the server first and uses the in-process engine -- the safe
 # fallback when the smoke gate cannot reproduce known numbers over the API.
 if [ "${SERVE_LL:-api}" = "api" ]; then
-  run_lm "results/${TAG}_arc"       arc_challenge 0
+  run_lm "results/${TAG}_arc"       arc_challenge 0 || exit 1
   if [ "${SKIP_MMLU:-0}" = 1 ]; then
     say "  [skip requested] MMLU"
   else
-    run_lm "results/${TAG}_mmlu"      "$MMLU12"     5
+    run_lm "results/${TAG}_mmlu"      "$MMLU12"     5 || exit 1
   fi
 else
   say "  SERVE_LL=inprocess -- stopping server, running arc/mmlu in-process"
@@ -214,4 +293,5 @@ else
   [ "${SKIP_MMLU:-0}" != 1 ] || say "  [skip requested] MMLU"
 fi
 
+await_judging || exit 1
 say "=== serve_eval $TAG DONE ==="

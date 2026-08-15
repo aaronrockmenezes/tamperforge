@@ -133,6 +133,7 @@ def main() -> None:
     ap.add_argument("--judge-model", default="deepseek/deepseek-v4-flash-0731")
     ap.add_argument("--judge-json-mode", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--judge-max-tokens", type=int, default=256)
+    ap.add_argument("--judge-timeout-seconds", type=float, default=90)
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--row-ids", default=None, help="Comma-separated source row i values to judge")
     ap.add_argument("--condition", default=None,
@@ -155,6 +156,7 @@ def main() -> None:
         args.judge_model,
         json_mode=args.judge_json_mode,
         max_tokens=args.judge_max_tokens,
+        timeout_s=args.judge_timeout_seconds,
     )
 
     rows = []

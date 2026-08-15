@@ -13,6 +13,67 @@ from __future__ import annotations
 
 import torch
 
+from .model import decoder_layers
+
+
+READ_PROJECTIONS = {
+    "q_proj", "k_proj", "v_proj", "qkv_proj",
+    "gate_proj", "up_proj", "gate_up_proj",
+    "in_proj", "in_proj_qkv", "in_proj_z", "in_proj_b", "in_proj_a",
+    "per_layer_input_gate",
+}
+WRITE_PROJECTIONS = {"o_proj", "out_proj", "down_proj", "per_layer_projection"}
+
+
+def abliteration_modules(layer, require_both: bool = True):
+    """Return named residual-read and residual-write matrices in one decoder layer."""
+    read, write = [], []
+    for name, module in layer.named_modules():
+        leaf = name.rsplit(".", 1)[-1]
+        if not hasattr(module, "weight") or getattr(module.weight, "ndim", 0) != 2:
+            continue
+        if leaf in READ_PROJECTIONS:
+            read.append((name, module))
+        elif leaf in WRITE_PROJECTIONS:
+            write.append((name, module))
+    if require_both and (not read or not write):
+        raise ValueError(
+            f"unsupported decoder layer {type(layer).__name__}: "
+            f"found {len(read)} read and {len(write)} write projections"
+        )
+    return read, write
+
+
+def abliteration_parameter_layout(model):
+    """Return architecture-native residual projection parameter names per layer.
+
+    This supports ordinary decoder LMs, nested multimodal text decoders, fused Phi
+    projections, and Qwen3.5 linear-attention projections without guessing a fixed
+    ``model.layers.*.q_proj`` path.
+    """
+    cached = getattr(model, "_tamperforge_projection_layout", None)
+    if cached is not None:
+        return cached
+    names = {id(param): name for name, param in model.named_parameters()}
+    layout = []
+    for index, layer in enumerate(decoder_layers(model)):
+        read, write = abliteration_modules(layer, require_both=False)
+
+        def rows(modules):
+            out = []
+            for local_name, module in modules:
+                full_name = names.get(id(module.weight))
+                if full_name is None:
+                    raise RuntimeError(
+                        f"layer {index} projection {local_name} is not a named parameter"
+                    )
+                out.append((local_name, full_name))
+            return tuple(out)
+
+        layout.append({"read": rows(read), "write": rows(write)})
+    model._tamperforge_projection_layout = tuple(layout)
+    return model._tamperforge_projection_layout
+
 
 def orthonormalize_directions(directions: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     """Return an orthonormal row basis spanning ``directions``.
@@ -58,7 +119,7 @@ def abliterate_model_inplace(
     specified layers. Modifies the model in-place; nothing saved to disk.
 
     Args:
-        model: ``AutoModelForCausalLM`` instance (already on device).
+        model: text-capable Transformers model (already on device).
         directions: Unit-norm directions ``[n_dirs, d_model]`` (or ``[d_model]``).
         layers: Layer indices to abliterate (e.g. ``[13]`` or ``list(range(26))``).
     """
@@ -68,16 +129,11 @@ def abliterate_model_inplace(
     print(f"[abliterate] {len(dirs)} direction(s), "
           f"{len(layers)} layer(s): {layers[0]}..{layers[-1]}")
 
+    model_layers = decoder_layers(model)
     for layer_idx in layers:
-        layer = model.model.layers[layer_idx]
-        read_mods = [
-            layer.self_attn.q_proj,
-            layer.self_attn.k_proj,
-            layer.self_attn.v_proj,
-            layer.mlp.gate_proj,
-            layer.mlp.up_proj,
-        ]
-        write_mods = [layer.self_attn.o_proj, layer.mlp.down_proj]
+        read_named, write_named = abliteration_modules(model_layers[layer_idx])
+        read_mods = [module for _, module in read_named]
+        write_mods = [module for _, module in write_named]
 
         for mod in read_mods:
             W = mod.weight.data.float().to(dev)
