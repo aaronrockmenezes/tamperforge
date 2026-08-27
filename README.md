@@ -1,28 +1,44 @@
 # tamperforge
 
-> A pre-release procedure that entangles **safety** with **capability** in
-> open-weight LLMs, so that cheap automated uncensoring is self-defeating.
+> A research framework testing whether **safety** can be entangled with **capability** in
+> open-weight LLMs so cheap automated uncensoring becomes self-defeating.
 
-Model makers run tamperforge on a finished model (after pre-train / SFT / RLHF,
-**before** publishing weights). The released checkpoint then resists the cheap,
-scripted attacks: abliterating safety also degrades capability — *smart-and-safe
-or dumb-and-dangerous*.
+The intended use is a pre-release transformation of a finished model (after pre-train / SFT /
+RLHF, before publishing weights): abliterating safety should also degrade capability —
+*smart-and-safe or dumb-and-dangerous*. Current experiments do **not** establish that robustly.
 
 This is the **framework** spinoff of the [mindweather](https://github.com/aaronrockmenezes/mindweather)
 research repo (which holds the blog drafts + exploratory experiments).
 
+**Current verdict (2026-08-15): do not spend more training compute on the current Version G
+recipe.** Fresh, checkpoint-specific direction estimation and layer selection broke both the
+older Qwen3-0.6B Version G checkpoint and the newly trained Phi-4-mini Version G checkpoint.
+The strong claim that TamperForge robustly makes abliteration self-defeating is therefore
+falsified for the tested adaptive threat model. The legacy naive/fixed-attack wall remains a
+real bounded observation; the defensible research result is now that the wall does not survive
+fresh adaptive re-estimation. See `docs/findings_fresh_rank_attacks_2026_08_15.md` and
+`docs/handoff_2026_08_15_codex.md`.
+
+`scripts/runs/version_g_final.sh` is the canonical **reproducer** for the final recipe, not a
+recommendation for a new campaign. Older `chain_*` and model/version-specific launchers remain
+historical reproduction only.
+
 ## What it does / does not claim
 
+- ❌ **Fresh adaptive rank attacks: NOT solved.** Re-estimating directions on the released
+  checkpoint and selecting the best layer recovered 43.1%/68.5% held-out coherent harm on
+  Qwen3-0.6B under rank-1/rank-2, and 83.5%/59.7% on Phi-4-mini. These are judged AdvBench
+  rates after excluding the 16 layer-selection prompts.
 - ✅ **Kill cheap (naive) abliteration** — abliterating the tamper-resistant model via the
   standard rank-1 attack yields ~0% coherent harm / ~99% gibberish AND craters capability,
-  while abliterating the base gives coherent harm with capability intact. MAD verified across
-  gemma/Qwen/Llama (ABL-v8, all 3/3 architectures proven 2026-07-04).
-- ✅ **ABL-v8 = the conditional wall (current product).** v8 fixes v7's clean tax: the
+  while abliterating the base gives coherent harm with capability intact. This fixed-attack
+  observation reproduced across gemma/Qwen/Llama (ABL-v8, 2026-07-04).
+- ⚠️ **ABL-v8 = the historical conditional wall.** v8 fixes v7's clean tax: the
   clean model is **base-like** — safe, coherent, capable, AND helpful (v7 over-refused 98%
   of benign prompts; v8 = 0.31 ≈ base), while abliteration still self-destructs under the
   naive attack. Proven on all 3 architectures. Mechanism: generative clean-anchor + two-stage
   curriculum.
-- ❌ **Adaptive attacker: NOT solved.** Survives a per-layer adaptive attack on all 3 archs,
+- ❌ **Adaptive attacker: NOT solved.** It survived one bounded in-house per-layer attack,
   and gemma v7 (prior product version) survived Heretic's KL-optimizer. **But Heretic BREAKS
   ABL-v8 on all 3 architectures** — Llama 88% harm, gemma 93% harm (zero capability cost, any
   trial), Qwen 82% harm (zero capability cost, any trial) (`docs/heretic_v8_2026_07_18.md`).
@@ -31,22 +47,34 @@ research repo (which holds the blog drafts + exploratory experiments).
   task-dependent (kills code/instructions, math softer); seed/snapshot selection needed.
 - ❌ **Not** fine-tune-proof (FTR thread = closed negative; abliteration-resist ≠ FT-resist).
 
-Read **`CLAUDE.md`** + the live devlog **`docs/devlog_2026_07_17.md`** first (newest,
-most important), then **`docs/handoff_2026_07_03_MASTER.md`**, **`MEMORY.md`**,
+Read **`docs/handoff_2026_08_15_codex.md`** first, then **`CLAUDE.md`** and
+**`docs/findings_fresh_rank_attacks_2026_08_15.md`**. Older context follows in
+**`docs/devlog_2026_07_17.md`**, **`docs/handoff_2026_07_03_MASTER.md`**, **`MEMORY.md`**,
 **`THREAT_MODEL.md`**, **`ROADMAP.md`**, and the latest results: `docs/devlog_2026_07_04.md`
 (ABL-v8, 3/3 architectures), `docs/heretic_v8_2026_07_18.md` (Heretic breaks v8 on
 all three), `full_eval_matrices/*` (full matrices), `docs/findings_external_benches_ifeval_2026_07_03.md`.
 
 ## Status
 
-**MAD thesis proven on 3 architectures against the naive rank-1 attack** (gemma-3-1b, Qwen3-0.6B,
-Llama-3.2-1B; ABL-v8 = current product). **But an adaptive attacker (Heretic, KL-optimizing
-abliteration) breaks the wall on ALL 3 architectures** — real coherent harm (82-93%) at
-little-to-no capability cost everywhere tested. Confirmed universal, not architecture-specific.
-FT-resistance is closed negative (do not reopen without a new mechanism). Eval harness (LLM judge +
-`usefulness_label`, 5-bench harm suite, lm_eval ARC/MMLU/IFEval/GSM8K, over-refusal suite) all
-built and run at full datasets. Do not claim "survives adaptive attacks" as a blanket statement.
-Latest: `docs/devlog_2026_07_17.md`, `docs/heretic_v8_2026_07_18.md`.
+**The naive/fixed rank-1 wall was observed across three small architectures, but it is not a
+robust defense.** Heretic already broke ABL-v8 on all three architectures. The 2026-08-15 fresh
+rank attack adds a stronger failure: even ordinary Arditi-style rank-1/rank-2 attacks work when
+their directions and winning layers are recomputed on the final checkpoint. On Phi-4-mini,
+centered `L_rr` fell from about 0.955 over the first 25 steps to 0.060 over the last 25 while
+fresh attacks still produced 60-84% coherent harm. The optimizer solved the internal surrogate;
+the desired behavior did not follow.
+
+Five 500-step Version G clean checkpoints were trained and upload-verified under
+`aaronrockmenezes/tamperforge/version_g_final/`: Phi-4-mini, Ministral-3-3B, Llama-3.2-3B,
+Qwen3-4B-2507, and Gemma-4-E2B. Only Phi-4-mini has the completed fresh rank-1/rank-2 adaptive
+evaluation described above. Later Phi checkpoint probes (steps 600–1000) are exploratory
+16/64-prompt layer sweeps, not additional full confirmation runs. The complete Phi table,
+LoRA/surgical probes, and storage boundary are in
+[`docs/results_phi4mini_rank1_trajectory_20260827.md`](docs/results_phi4mini_rank1_trajectory_20260827.md).
+The newer Qwen3-0.6B checkpoint-by-checkpoint rank-1/rank-2 tables are compiled in
+[`results/compiled/qwen06_new_vg_progress_20260827/report.md`](results/compiled/qwen06_new_vg_progress_20260827/report.md).
+These uploads are experiment artifacts, not validated defenses.
+Qwen3.5-4B failed the one-step smoke before training.
 
 ## Source and archive
 
@@ -85,7 +113,8 @@ docs/common_issues.md # known infra/eval failures and fixes
 
 ## Core facts
 
-- Model: `google/gemma-3-1b-it` (26 layers, d_model=1152, bf16).
+- Original reference model: `google/gemma-3-1b-it` (26 layers, d_model=1152, bf16); current
+  artifacts span multiple model families.
 - P1 proof-of-concept does not depend on SAEs. SAE support is retained for later
   mechanistic analysis.
 - bf16 → fp32 cast before any numpy / small-vector matmul.

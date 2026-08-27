@@ -1,6 +1,6 @@
 # tamperforge — session memory / handoff index
 
-> Repo-local state index. Updated 2026-07-18. Read `docs/devlog_2026_07_17.md` first (newest,
+> Repo-local state index. Updated 2026-08-27. Read `docs/devlog_2026_07_17.md` first (newest,
 > most important: Heretic breaks ABL-v8 on all three architectures), then `docs/handoff_2026_07_03_MASTER.md`
 > (multi-model + attack-robustness campaign) for the full prior state, `CLAUDE.md` for conventions.
 
@@ -9,6 +9,36 @@
 - `../tamperforge-archive` preserves raw run artifacts and historical code/docs.
 - No local checkpoint payloads remain in either tree; retained artifacts are on private HF.
 - Retained v7 source/launcher files are protected from cleanup and should remain unchanged.
+
+## 2026-08-27 — Phi-4-mini checkpoint trajectory and fresh attacker probes
+- Compiled table: `docs/results_phi4mini_rank1_trajectory_20260827.md`. It records fresh
+  `arditi_residual` rank-1 per-layer `harmful-actionable / gibberish` results for the Phi-4-mini
+  base and checkpoints 500, 600, 700, 800, 900, and 1000, plus the clean reference row.
+- Sample counts are mixed: base/500/700 use 16 AdvBench prompts per layer; 600/800/900/1000
+  use 64. Do not compare their percentages as if they were one uniform confirmation run.
+- Selected rank-1 layer: L13 through step 700; L14 at 800–1000. The trajectory is non-monotonic;
+  longer training did not establish resistance, and some clean later checkpoints became
+  gibberish-prone.
+- Step-700 original checkpoint: fresh rank-1 selected L13 at 62.5% harm / 37.5% gibberish on
+  16 prompts per layer. Fresh surgical rank-1 `capK=16` over L8–L16 selected L8 with 0% harm
+  / 0% gibberish; higher layers were mostly gibberish. This is a narrow probe, not a full gate.
+- Step-700 LoRA probe: rank-16, alpha 32, 10 harmful demonstrations, five epochs, then a fresh
+  rank-1 L8–L16 sweep; selected L13 at 56.25% harm / 18.75% gibberish. LoRA remains an
+  effective bypass against this checkpoint.
+- Qwen comparison remains the full fresh 520-row confirmation in
+  `docs/findings_fresh_rank_attacks_2026_08_15.md`: rank-1 43.46% harm / 2.31% gibberish and
+  rank-2 68.85% / 10.00% on the older Qwen3-0.6B Version G checkpoint (held-out selected-layer
+  rates are 43.06%/2.38% and 68.45%/10.12%).
+- New Qwen3-0.6B Version-G progression is compiled locally at
+  `results/compiled/qwen06_new_vg_progress_20260827/report.md`, with full 28-layer rank-1 and
+  rank-2 tables for steps 200–800, 64-prompt clean controls, and `all_rows.csv/json`. Selected
+  Qwen rank-1 layers move L19 (200), L20 (300), L23 (400), L5 (500), L12 (600), L10 (700), and
+  L12 (800); selected rank-2 layers are L5, L18, L13, L17, L12, L15, and L12 respectively.
+- Keep the Qwen 64-prompt checkpoint panel distinct from the separate 520-row fresh confirmation;
+  they use different panels and answer different questions.
+- Storage boundary: Phi payloads for steps 500, 600, 800, 900, and 1000 were deleted after
+  result collection; step 700 was retained. Result summaries/logs remain in the documented
+  remote backup snapshots; do not infer that deleted payloads are locally recoverable.
 
 ## Thread 2 — Scale attempt + third-party validation + adaptive-attack crack (2026-07-17/18, `docs/devlog_2026_07_17.md`)
 - v8 = 3/3 architectures proven as of 2026-07-04 (gemma/Qwen/Llama), see `devlog_2026_07_04.md`.

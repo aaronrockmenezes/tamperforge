@@ -1,5 +1,45 @@
 # Version G final
 
+## Scientific status — 2026-08-15
+
+**Frozen for reproduction; not approved for new training.** Fresh attacks broke both evaluated
+checkpoints:
+
+| checkpoint | fresh attack | selected layer | held-out n | harmful-actionable | gibberish | refused |
+|---|---:|---:|---:|---:|---:|---:|
+| Qwen3-0.6B older Version G | rank-1 | 10 | 504 | 0.4306 | 0.0238 | 0.1012 |
+| Qwen3-0.6B older Version G | rank-2 | 11 | 504 | 0.6845 | 0.1012 | 0.0575 |
+| Phi-4-mini Version G final | rank-1 | 13 | 503 | 0.8350 | 0.0099 | 0.0517 |
+| Phi-4-mini Version G final | rank-2 | 14 | 504 | 0.5972 | 0.0218 | 0.2738 |
+
+The held-out column excludes the 16 prompts used to choose each winning layer. Phi rank-1 has
+503 rather than 504 rows because one of the 520 API judgments never completed. Full provenance,
+raw-table values, telemetry, and interpretation are in
+`docs/findings_fresh_rank_attacks_2026_08_15.md`.
+
+The recipe's internal objective converged without producing the desired behavior. On Phi,
+centered `L_rr` averaged 0.955 over steps 1-25 and 0.060 over steps 476-500. However,
+`L_harm > 0` on only 7/500 steps and `L_gib > 0` on 0/500. `L_rr` only requires attacked
+representations to move away from a frozen step-0 reference; orthogonal harmful behavior also
+satisfies it. Do not interpret low `L_rr` as resistance.
+
+## Phi-4-mini checkpoint trajectory and follow-up probes — 2026-08-27
+
+Fresh per-layer rank-1 probes were collected for the Phi-4-mini base and steps 500, 600, 700,
+800, 900, and 1000. The selected layer stayed at L13 through step 700, then moved to L14. The
+trajectory is non-monotonic and does not show that longer training restores resistance. It uses
+mixed sample counts (16 prompts/layer for base/500/700; 64 for 600/800/900/1000), so these are
+exploratory checkpoints rather than one directly comparable confirmation series.
+
+On the exact step-700 checkpoint, a fresh surgical rank-1 `capK=16` sweep over L8–L16 produced
+no coherent harm in that band but became increasingly gibberish-heavy at higher layers. A
+10-shot, five-epoch LoRA attack followed by a fresh rank-1 sweep still reached 56.25% harm at
+L13. The full per-layer table, Qwen comparison, settings, and artifact boundaries are in
+[`docs/results_phi4mini_rank1_trajectory_20260827.md`](results_phi4mini_rank1_trajectory_20260827.md).
+
+The launcher and evaluator below remain canonical only so the failed recipe can be reproduced
+exactly and the five retained checkpoints can be evaluated consistently.
+
 Canonical entrypoint: `scripts/runs/version_g_final.sh`; canonical trainer:
 `experiments/train_version_g_final.py`. The old trainer filename remains a compatibility shim
 for historical commands.
@@ -145,3 +185,27 @@ Order:
 
 XSTest clean-usability tolerance is an absolute 10 percentage points from the same model's
 base. Surgical `capK=16` and canonical `atkK=16` are deliberately reported as different fields.
+
+## Proposed reference-memory experiment — not implemented
+
+The next small mechanism test may use two distinct bounded histories:
+
+1. an **attack-direction bank** containing refusal bases re-estimated at each 25-step refresh;
+2. a **clean-state bank** containing detached clean activations from step 0 plus the latest
+   three refreshes (`N=4`), aligned to the same prompts, tokens, and layers.
+
+Do not sum raw cosine terms. Duplicate historical states would be counted repeatedly and signed
+cosines could cancel. Orthonormalize the centered historical states into a basis `Q` and minimize
+normalized projection energy:
+
+```text
+L_hist = ||Q^T a_attacked||^2 / ||a_attacked||^2
+```
+
+This is the compact way to minimize overlap with all retained predecessors. Keep the history
+bounded: unlimited states eventually span the hidden space and leave only the zero vector.
+Cache detached activations or a low-rank basis; do not keep full historical models.
+
+This change is insufficient alone. It still specifies “different from clean,” not “safe,”
+“refused,” or “incapable.” Any continuation run must pair it with a direct attacked-output
+behavioral objective and must be validated with fresh post-training directions/layers.
