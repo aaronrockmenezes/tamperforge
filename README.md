@@ -10,6 +10,32 @@ RLHF, before publishing weights): abliterating safety should also degrade capabi
 This is the **framework** spinoff of the [mindweather](https://github.com/aaronrockmenezes/mindweather)
 research repo (which holds the blog drafts + exploratory experiments).
 
+## ▶ NEXT STEP — loss-term ablation matrix (planned, not run)
+
+**Read [`docs/plan_2026_08_30_ablation_matrix.md`](docs/plan_2026_08_30_ablation_matrix.md)
+before starting any new training.** One RTX Pro 6000, nine arms, Qwen3-0.6B + Phi-4-mini
+(+ optionally Qwen3-4B or Gemma-4-E2B). Launcher: `scripts/runs/ablation_matrix.sh`.
+
+It exists because the attacked branch of the loss has never been shown to contribute anything:
+`L_harm` fires on 6–7 steps out of 500–1000 (margin unreachably low), four more terms sit at
+λ=0, and `L_rr` converges while attacked behaviour stays 60–85% harmful. The matrix knocks each
+term out to find which are load-bearing, and fixes two concrete defects — `harm_margin` 4 → 16,
+and `rr_layers` `last_half` → `all`. On Phi the rerouting loss never scored the layer the attack
+actually wins at (DL 13, rr starts at 16); Phi is the only one of five trained models with that
+gap and the only one that demonstrably failed. Companion telemetry provenance:
+[`docs/handoff_2026_08_29_lambda_sweep.md`](docs/handoff_2026_08_29_lambda_sweep.md).
+
+> **Blocking prerequisite for any cross-model claim: harm targets are Qwen-specific.**
+> `data/harm_targets_qwen.json` holds 404 harmful completions mined from an attacked *Qwen*.
+> The 2026-08-15 campaign trained Phi-4-mini, Ministral-3-3B, Llama-3.2-3B and Gemma-4-E2B
+> against that same file — teacher-forcing Qwen's prose, `<think>` blocks included, through
+> four other tokenizers and model families. This is a second data leak, separate from the
+> AdvBench exposure, and it makes every cross-model comparison in this repo dirty.
+> **Mine harm targets per family** (`experiments/mine_harm_targets.py`, sourced from a judged
+> run on a *different* model than the one being trained) before comparing across families.
+
+---
+
 **Current verdict (2026-08-15): do not spend more training compute on the current Version G
 recipe.** Fresh, checkpoint-specific direction estimation and layer selection broke both the
 older Qwen3-0.6B Version G checkpoint and the newly trained Phi-4-mini Version G checkpoint.
