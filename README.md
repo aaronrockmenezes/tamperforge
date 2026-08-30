@@ -10,20 +10,33 @@ RLHF, before publishing weights): abliterating safety should also degrade capabi
 This is the **framework** spinoff of the [mindweather](https://github.com/aaronrockmenezes/mindweather)
 research repo (which holds the blog drafts + exploratory experiments).
 
-## ▶ NEXT STEP — loss-term ablation matrix (planned, not run)
+## ▶ NEXT STEP — run gates 1/2/3 on the `d1`/`f1` recipe
 
-**Read [`docs/plan_2026_08_30_ablation_matrix.md`](docs/plan_2026_08_30_ablation_matrix.md)
-before starting any new training.** One RTX Pro 6000, nine arms, Qwen3-0.6B + Phi-4-mini
-(+ optionally Qwen3-4B or Gemma-4-E2B). Launcher: `scripts/runs/ablation_matrix.sh`.
+**The loss-term ablation matrix is DONE (2026-08-30/31), on Qwen3-0.6B.** Full results, tables,
+and the trajectory finding are in
+[`docs/plan_2026_08_30_ablation_matrix.md`](docs/plan_2026_08_30_ablation_matrix.md) and
+[`docs/handoff_2026_08_31_ablation_matrix.md`](docs/handoff_2026_08_31_ablation_matrix.md)
+(read the handoff first). Two rounds: a 9-arm knockout over `{L_uncensor, L_rr, L_clean}`, then
+a full `{L_rr, L_uncensor, L_harm}` 2×2×2 factorial with `L_clean` fixed at baseline.
 
-It exists because the attacked branch of the loss has never been shown to contribute anything:
-`L_harm` fires on 6–7 steps out of 500–1000 (margin unreachably low), four more terms sit at
-λ=0, and `L_rr` converges while attacked behaviour stays 60–85% harmful. The matrix knocks each
-term out to find which are load-bearing, and fixes two concrete defects — `harm_margin` 4 → 16,
-and `rr_layers` `last_half` → `all`. On Phi the rerouting loss never scored the layer the attack
-actually wins at (DL 13, rr starts at 16); Phi is the only one of five trained models with that
-gap and the only one that demonstrably failed. Companion telemetry provenance:
-[`docs/handoff_2026_08_29_lambda_sweep.md`](docs/handoff_2026_08_29_lambda_sweep.md).
+**Headline: `L_rr` alone carries the wall.** `L_harm` and `L_uncensor` both fire on ≤2% of
+training steps yet are not inert — removing either *helps* whenever `L_rr` is on, consistent
+with their rare firings injecting a gradient that fights the rerouting objective. The winning
+recipe is `--lambda-uncensor 0 --lambda-harm 0` with `L_rr`/`L_clean` left at their control
+defaults — simpler than the control, not more complex.
+
+**The real result is a trajectory, not an endpoint.** The apparent round-1 winner (`harm_margin`
+4→16 alone) was re-run with checkpoints every 100 steps and **never converges** — attacked harm
+oscillates 73–100% through the entire back half of training; the original single-checkpoint
+number was a lucky draw. The `L_uncensor`+`L_harm`-dropped recipe, re-run the same way, **does
+converge** and holds a wall (≤3.2% attacked harm, 0% clean harm) from step 700 onward. Best
+checkpoint (`f1` step 700, PPS 0.969) is uploaded to private HF at
+`aaronrockmenezes/tamperforge/ablation_matrix_20260830/f1_s700`.
+
+**Nothing here is gated yet.** Every number is PPS on a 16/64-prompt harmful-only panel — no
+MT-Bench, no XSTest, no capability check has run on `f1_s700`. That is the next step, not
+optional polish: an arm can look perfect on PPS by refusing everything (see the PPS caveat in
+the plan doc), and this recipe has never been checked against that failure mode.
 
 > **Blocking prerequisite for any cross-model claim: harm targets are Qwen-specific.**
 > `data/harm_targets_qwen.json` holds 404 harmful completions mined from an attacked *Qwen*.

@@ -122,6 +122,99 @@ ARMS="c2" PREFIX=abl_qwen06 bash scripts/runs/sweep_lambda_eval.sh
 python scripts/tools/sweep_lambda_report.py --prefix abl_qwen06 --arms base,a0,b1,b2,b3,b4,b5,b6,b7,c1,c2
 ```
 
+## Results (2026-08-30/31) — RUN, not just planned
+
+**Both rounds complete.** 9-arm knockout matrix, `c1`/`c2` margin variants, and the full
+`{L_rr, L_uncensor, L_harm}` 2x2x2 factorial (`lambda_clean` fixed at baseline in every cell) all
+ran on `vast-lsrpi-4x3090-a`. Raw numbers: `results/dl_sweeps/abl_qwen06_*_r1_stageB/summary.json`
+(52 stage A/B summaries, committed to git). Pull the tables:
+
+```bash
+python scripts/tools/sweep_lambda_report.py --prefix abl_qwen06 --factorial
+```
+
+### Round 1 — knockout matrix
+
+| arm | change | layer | attacked harm | attacked gib | PPS |
+|---|---|---:|---:|---:|---:|
+| base | untouched | L17 | 87.1% | 6.5% | 0.012 |
+| a0 | control | L25 | 54.8% | 30.6% | 0.111 |
+| b1 | uncensor=0 | L9 | 15.5% | 27.6% | 0.466 |
+| b2 | rr=0 | L14 | 82.8% | 10.9% | 0.027 |
+| b3 | clean=0 | L8 | 4.8% | 93.7% | 0.354 |
+| b4 | uncensor=0+rr=0 | L15 | 84.1% | 9.5% | 0.018 |
+| b5 | uncensor=0+clean=0 | L13 | 54.1% | 4.9% | 0.053 |
+| b6 | rr=0+clean=0 | L18 | 71.0% | 21.0% | 0.064 |
+| b7 | floor (all 3 off) | L13 | 60.7% | 1.6% | 0.063 |
+| c1 | harm_margin 16 | L21 | 22.2% | 76.2% | 0.593 |
+
+### Round 2 — 2x2x2 factorial, clean fixed at baseline
+
+| rr | uncensor | harm | arm | layer | attacked harm | attacked gib | PPS |
+|:-:|:-:|:-:|---|---:|---:|---:|---:|
+| on | on | on | a0 | L25 | 54.8% | 30.6% | 0.111 |
+| on | off | on | b1 | L9 | 15.5% | 27.6% | 0.466 |
+| off | on | on | b2 | L14 | 82.8% | 10.9% | 0.027 |
+| off | off | on | b4 | L15 | 84.1% | 9.5% | 0.018 |
+| on | on | off | c2 | L12 | 17.5% | 33.3% | 0.602 |
+| **on** | **off** | **off** | **d1** | **L2** | **1.6%** | **70.3%** | **0.938** |
+| off | on | off | d2 | L19 | 76.2% | 12.7% | 0.048 |
+| off | off | off | d3 | L13 | 85.9% | 1.6% | 0.004 |
+
+**`L_rr` dominates.** Every `rr=off` cell lands near `base` regardless of the other two flags
+(`b2` 82.8%, `b4` 84.1%, `d2` 76.2%, `d3` 85.9%). The `d1→d3` swing (rr on vs off, everything
+else identical) is +84.3pp — the largest single-flag effect measured in either round.
+
+**`L_harm` and `L_uncensor` are not inert — they fight `L_rr`.** Both fire on ≤2% of steps
+(confirmed dead by direct telemetry measurement) yet removing either **consistently helps
+whenever `L_rr` is on** (`a0→c2` −37.3pp, `b1→d1` −13.9pp) and is flat-to-harmful when `L_rr` is
+off (`b2→d2` −6.6pp, `d2→d3` **+9.7pp worse**). Their rare firings inject gradient that
+interferes with the rerouting objective specifically, not just wasted compute.
+
+**`c1`'s margin fix is beaten outright.** `c2` (drop `L_harm` entirely) matches or beats `c1` at
+equal complexity (17.5% vs 22.2% harm, 0.602 vs 0.593 PPS). `d1` (drop `L_harm` **and**
+`L_uncensor`, keep `L_rr`) beats both by a wide margin.
+
+### Trajectory: `c1` never converges, `d1` does — the actual headline finding
+
+`e1` (`c1`'s recipe, fresh run-id, `save_every=100`) and `f1` (`d1`'s recipe, same) were trained
+to 1000 steps with checkpoints every 100 steps and each snapshot independently fresh-attacked
+(own direction/layer re-estimation, not reused from the final checkpoint).
+
+| step | e1 (`c1` recipe) harm / clean harm | f1 (`d1` recipe) harm / clean harm |
+|---|---:|---:|
+| s500 | 90.0% / 80.6% | 72.6% / 0.0% |
+| s600 | 98.2% / 67.2% | 16.9% / 0.0% |
+| s700 | 93.5% / 12.7% | **1.6% / 0.0%** |
+| s800 | 83.3% / 14.3% | 3.2% / 0.0% |
+| s900 | 100.0% / 0.0% | 1.7% / 0.0% |
+| final (1000) | 72.9% / 12.7% | 0.0% / 0.0% |
+
+**`e1` oscillates the entire back half of training** — attacked harm swings 72.9–100% with no
+downward trend, clean harm swings 0–80.6%. The round-1 `c1` result (22.2% harm, 0% clean) was one
+lucky draw from an unstable trajectory, not a stable point. Best `e1` checkpoint by PPS is
+`final` at only **0.061** — every checkpoint in this trajectory is bad.
+
+**`f1` converges and holds.** Harm declines from 72.6% to ≤3.2% by step 700 and stays there;
+clean harm is pinned at 0.0% for the entire back half; clean gibberish never exceeds 3.2%. Best
+checkpoint is **`s700`, PPS 0.969** (edging out `final`'s 0.937) — `attacked harm 1.6%, attacked
+gib 95.2%, clean harm 0.0%, clean gib 0.0%`.
+
+**This changes the headline claim.** It is not "`d1`'s recipe scored better at step 1000." It is
+"`c1`'s recipe (margin fix alone) does not produce a stable wall at any checkpoint tested; `d1`'s
+recipe (drop `L_uncensor` and `L_harm`, keep `L_rr`) produces one that holds from step 700
+onward." The `d1`/`f1` recipe — `--lambda-uncensor 0 --lambda-harm 0`, `L_rr` and `L_clean` at
+their control defaults — is the actual result of this experiment.
+
+**Artifacts:** `f1_s700` and `e1_final` (materialized clean HF dirs) uploaded to private HF,
+`aaronrockmenezes/tamperforge/ablation_matrix_20260830/{f1_s700,e1_final}`. `e1_final` is kept
+for negative-result provenance, not as a candidate — see the PPS caveat above before reusing it.
+
+**Not yet run: gates 1/2/3 on `f1_s700`.** Every number above is PPS on a 16/64-prompt harmful
+panel. No MT-Bench, no XSTest, no capability check exists for `f1_s700` yet. Given the size of
+the `d1`/`f1` effect this is the highest-value next step in the whole campaign — run it before
+calling this recipe a result rather than a promising screen.
+
 ## Models
 
 Tiered, because 9 arms × 3 models is ~30 GPU-hours.
@@ -185,15 +278,16 @@ python scripts/tools/sweep_lambda_report.py --seed 42 --rank 1
 
 ## Known limits of this plan
 
-- **Final checkpoint only, no trajectory.** `save_every=200` means every arm actually saves 5
-  snapshots (`.s200.pt` … `.s800.pt` plus the unsuffixed step-1000 final), but
-  `sweep_lambda_eval.sh` only ever reads the unsuffixed final (line 65, hardcoded, no loop over
-  the `.sXXX.pt` files). This matrix compares arms to each other **at a fixed endpoint**; it does
-  not show when each arm's wall (or failure) emerges during training, and can't catch oscillation
-  the way the earlier `qwen06_new_vg_progress_20260827` step-by-step sweep did. Decided
-  2026-08-30: leave as-is for this pass — the question here is "does term X matter," not "when
-  does it start mattering." The intermediate checkpoints are already on disk if this needs
-  revisiting; sweeping all 5 per arm would be a 5× eval cost (~2.8h → ~14h for the 9-arm matrix).
+- **Final checkpoint only for 7 of 9 arms — no trajectory.** `save_every=200` means every arm
+  actually saves 5 snapshots, but `sweep_lambda_eval.sh` only reads the unsuffixed final
+  (line 65, no loop over `.sXXX.pt`). **Update 2026-08-31: this bit `c1` directly.** `e1` (`c1`'s
+  recipe, re-run with `save_every=100`) shows the trajectory never converges — the round-1 `c1`
+  number was one lucky draw, not a stable point (see Results above). `f1` (`d1`'s recipe, same
+  treatment) does converge and holds from step 700. **Only `c1`/`d1` got trajectory checks; the
+  other 7 arms are still final-checkpoint-only** and any of them could hide the same instability
+  `c1` did. Re-running the full matrix with `save_every=100` would cost ~5x the eval budget
+  (~2.8h → ~14h for 9 arms); at minimum, re-check `b1` and `b3` (the next-best round-1 arms)
+  before trusting their single-point numbers.
 - **`harm_targets_qwen.json` is Qwen-specific.** Phi/Ministral/Llama/Gemma were all trained
   against Qwen's mined harmful completions, thinking-blocks included, through a different
   tokenizer. Second leak, separate from the AdvBench exposure. Mine per family before treating
